@@ -1,0 +1,316 @@
+[
+  {
+    "reg_number": "admin",
+    "full_name": "Admin User",
+    "gender": "Male",
+    "department_branch": "CSE (AI)",
+    "year": "4th Year (2022)",
+    "mobile_number": "1234567890",
+    "email_id": "admin@admin.com",
+    "password": "Spcreative@123"
+  },
+  {
+    "reg_number": "12345",
+    "full_name": "A B",
+    "gender": "Male",
+    "department_branch": "CSE",
+    "year": "4th Year (2022)",
+    "mobile_number": "1234567890",
+    "email_id": "q@m.n",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Relay 4×100 m",
+        "team_name": "Relay 4X100 M Team 1"
+      },
+      {
+        "sport": "Carrom"
+      },
+      {
+        "sport": "Relay 4×400 m",
+        "team_name": "Team 5"
+      },
+      {
+        "sport": "Table Tennis",
+        "team_name": "Table Tennis 1"
+      }
+    ],
+    "captain_in": [
+      "Relay 4×100 m",
+      "Relay 4×400 m",
+      "Kabaddi",
+      "Table Tennis"
+    ]
+  },
+  {
+    "reg_number": "23456",
+    "full_name": "C d",
+    "gender": "Male",
+    "department_branch": "CSE (AI)",
+    "year": "4th Year (2022)",
+    "mobile_number": "1234567890",
+    "email_id": "q@m.n",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Carrom"
+      },
+      {
+        "sport": "Table Tennis",
+        "team_name": "Table Tennis 1"
+      }
+    ],
+    "captain_in": [
+      "Relay 4×100 m"
+    ]
+  },
+  {
+    "reg_number": "34567",
+    "full_name": "E F",
+    "gender": "Male",
+    "department_branch": "ECE",
+    "year": "4th Year (2022)",
+    "mobile_number": "1234567890",
+    "email_id": "q@m.n",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Carrom"
+      },
+      {
+        "sport": "Chess"
+      },
+      {
+        "sport": "Essay Writing"
+      },
+      {
+        "sport": "Relay 4×400 m",
+        "team_name": "Team 5"
+      },
+      {
+        "sport": "Table Tennis",
+        "team_name": "Table Tennis 1"
+      }
+    ],
+    "captain_in": []
+  },
+  {
+    "reg_number": "45678",
+    "full_name": "G J",
+    "gender": "Male",
+    "department_branch": "EE",
+    "year": "4th Year (2022)",
+    "mobile_number": "1234567890",
+    "email_id": "q@m.o",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Relay 4×100 m",
+        "team_name": "Relay 4X100 M Team 1"
+      },
+      {
+        "sport": "Chess"
+      },
+      {
+        "sport": "Table Tennis",
+        "team_name": "Table Tennis 1"
+      }
+    ],
+    "captain_in": [
+      "Relay 4×400 m"
+    ]
+  },
+  {
+    "reg_number": "56789",
+    "full_name": "Q m",
+    "gender": "Male",
+    "department_branch": "CE",
+    "year": "4th Year (2022)",
+    "mobile_number": "1234567809",
+    "email_id": "a@b.c",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Relay 4×100 m",
+        "team_name": "Relay 4X100 M Team 1"
+      },
+      {
+        "sport": "Relay 4×400 m",
+        "team_name": "Team 5"
+      },
+      {
+        "sport": "Table Tennis",
+        "team_name": "Table Tennis 2"
+      }
+    ],
+    "captain_in": []
+  },
+  {
+    "reg_number": "67890",
+    "full_name": "A n",
+    "gender": "Male",
+    "department_branch": "ME",
+    "year": "1st Year (2025)",
+    "mobile_number": "0987654321",
+    "email_id": "q@s.m",
+    "password": "12345",
+    "participated_in": [],
+    "captain_in": []
+  },
+  {
+    "reg_number": "09876",
+    "full_name": "Q v",
+    "gender": "Female",
+    "department_branch": "CSE",
+    "year": "2nd Year (2024)",
+    "mobile_number": "1243568790",
+    "email_id": "q@s.m",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Relay 4×100 m",
+        "team_name": "Relay 4X100 M Team 2"
+      }
+    ],
+    "captain_in": [
+      "Relay 4×100 m",
+      "Kabaddi"
+    ]
+  },
+  {
+    "reg_number": "98765",
+    "full_name": "S b",
+    "gender": "Female",
+    "department_branch": "CSE (AI)",
+    "year": "2nd Year (2024)",
+    "mobile_number": "3456789012",
+    "email_id": "a@m.n",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Relay 4×100 m",
+        "team_name": "Relay 4X100 M Team 2"
+      }
+    ],
+    "captain_in": []
+  },
+  {
+    "reg_number": "87654",
+    "full_name": "D B",
+    "gender": "Female",
+    "department_branch": "ECE",
+    "year": "2nd Year (2024)",
+    "mobile_number": "1243567809",
+    "email_id": "q@s.n",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Relay 4×100 m",
+        "team_name": "Relay 4X100 M Team 2"
+      }
+    ],
+    "captain_in": []
+  },
+  {
+    "reg_number": "65432",
+    "full_name": "S V",
+    "gender": "Female",
+    "department_branch": "CE",
+    "year": "2nd Year (2024)",
+    "mobile_number": "2345687091",
+    "email_id": "a@v.m",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Relay 4×100 m",
+        "team_name": "Relay 4X100 M Team 2"
+      }
+    ],
+    "captain_in": []
+  },
+  {
+    "reg_number": "132457",
+    "full_name": "S v",
+    "gender": "Male",
+    "department_branch": "MTE",
+    "year": "4th Year (2022)",
+    "mobile_number": "0192837465",
+    "email_id": "q@m.n",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Carrom"
+      },
+      {
+        "sport": "Relay 4×100 m",
+        "team_name": "Relay 4X100 M Team 1"
+      },
+      {
+        "sport": "Relay 4×400 m",
+        "team_name": "Team 5"
+      },
+      {
+        "sport": "Chess"
+      },
+      {
+        "sport": "Table Tennis",
+        "team_name": "Table Tennis 2"
+      }
+    ],
+    "captain_in": []
+  },
+  {
+    "reg_number": "10101",
+    "full_name": "12345",
+    "gender": "Male",
+    "department_branch": "CSE",
+    "year": "4th Year (2022)",
+    "mobile_number": "1111111111",
+    "email_id": "q@m.n",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Story Writing"
+      },
+      {
+        "sport": "Group Discussion"
+      },
+      {
+        "sport": "Debate"
+      },
+      {
+        "sport": "Extempore"
+      },
+      {
+        "sport": "Quiz"
+      },
+      {
+        "sport": "Table Tennis",
+        "team_name": "Table Tennis 2"
+      }
+    ],
+    "captain_in": [
+      "Kabaddi",
+      "Cricket",
+      "Volleyball",
+      "Table Tennis"
+    ]
+  },
+  {
+    "reg_number": "10100",
+    "full_name": "A A",
+    "gender": "Male",
+    "department_branch": "CSE",
+    "year": "4th Year (2022)",
+    "mobile_number": "1111111111",
+    "email_id": "Q@m.n",
+    "password": "12345",
+    "participated_in": [
+      {
+        "sport": "Table Tennis",
+        "team_name": "Table Tennis 2"
+      }
+    ],
+    "captain_in": []
+  }
+]

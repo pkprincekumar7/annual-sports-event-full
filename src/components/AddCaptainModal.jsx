@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchWithAuth } from '../utils/api'
+import logger from '../utils/logger'
 
 function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
   const [players, setPlayers] = useState([])
@@ -46,7 +47,7 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
         }
       } catch (err) {
         if (!isMounted || err.name === 'AbortError') return
-        console.error('Error fetching data:', err)
+        logger.error('Error fetching data:', err)
         setPlayers([])
         setSports([])
       }
@@ -125,7 +126,7 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
         setIsSubmitting(false)
       }
     } catch (err) {
-      console.error(err)
+      logger.error('Error adding captain:', err)
       onStatusPopup('❌ Error adding captain. Please try again.', 'error', 2500)
       setIsSubmitting(false)
     }
@@ -136,9 +137,6 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
   return (
     <div
       className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <aside className="max-w-[600px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
         <button

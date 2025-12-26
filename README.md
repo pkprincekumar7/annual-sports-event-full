@@ -140,11 +140,13 @@ Create a `.env` file in the root directory to set these values. For production b
 │   │   ├── PlayerListModal.jsx
 │   │   ├── AboutSection.jsx
 │   │   ├── Footer.jsx
-│   │   └── StatusPopup.jsx
+│   │   ├── StatusPopup.jsx
+│   │   └── ErrorBoundary.jsx  # React Error Boundary for error handling
 │   ├── config/
 │   │   └── api.js       # API configuration
 │   ├── utils/
-│   │   └── api.js       # API utility functions (fetchWithAuth, decodeJWT, caching)
+│   │   ├── api.js       # API utility functions (fetchWithAuth, decodeJWT, caching)
+│   │   └── logger.js    # Logging utility for production-ready error handling
 │   ├── App.jsx          # Main app component
 │   ├── main.jsx         # Entry point
 │   └── index.css        # Global styles with Tailwind
@@ -152,6 +154,8 @@ Create a `.env` file in the root directory to set these values. For production b
 │   └── database.js      # MongoDB connection configuration
 ├── models/
 │   └── Player.js        # Player Mongoose model with indexes
+├── utils/
+│   └── logger.js        # Backend logging utility
 ├── server.js            # Express.js backend server
 ├── index.html
 ├── package.json         # Combined frontend and backend dependencies
@@ -179,6 +183,10 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ All original styling preserved with Tailwind CSS
 - ✅ **Request caching and deduplication** - Reduces API calls and improves performance
 - ✅ **Request cancellation** - Prevents race conditions and memory leaks
+- ✅ **Error Boundary** - Catches React errors and displays user-friendly error UI
+- ✅ **Production-ready logging** - Environment-aware logging utility (debug logs only in development)
+- ✅ **Persistent authentication** - User stays logged in after page refresh (token-based)
+- ✅ **Modal behavior** - Modals don't close on outside click (must use close button)
 
 ### Backend Features
 - ✅ RESTful API with Express.js
@@ -190,6 +198,8 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Captain role management
 - ✅ **Optimized MongoDB queries** - Uses indexes and projections for better performance
 - ✅ **Password exclusion** - Passwords never sent in API responses
+- ✅ **Production-ready logging** - Environment-aware logging utility (debug logs only in development)
+- ✅ **Optimized user endpoint** - `/api/me` endpoint for fetching current user (more efficient than fetching all players)
 
 ## API Integration
 
@@ -207,6 +217,7 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
 
 #### Authentication
 - `POST /api/login` - User authentication (returns JWT token)
+- `GET /api/me` - Get current user data (requires authentication, optimized endpoint)
 
 #### Player Management
 - `GET /api/players` - Get all players (requires authentication)
@@ -244,15 +255,37 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
 - User data is fetched from the server on app mount and after login (not stored in localStorage)
 - Token is automatically included in all authenticated API requests via `fetchWithAuth` utility
 - On token expiration (401/403), user is automatically logged out and redirected
+- **Authentication persistence**: User stays logged in after page refresh - token is preserved and user data is automatically fetched on app mount
+- **Optimized user fetching**: Uses `/api/me` endpoint to fetch only current user data (more efficient than `/api/players`)
 
 ### API Utility Functions
 
 The application uses utility functions in `src/utils/api.js`:
 
 - `fetchWithAuth(url, options)` - Makes authenticated API calls with automatic token inclusion, caching, and deduplication
-- `fetchCurrentUser()` - Optimized function to fetch current user data (uses cache)
+- `fetchCurrentUser()` - Optimized function to fetch current user data using `/api/me` endpoint (uses cache, more efficient than fetching all players)
 - `decodeJWT(token)` - Decodes JWT token on client side (for display purposes only)
 - `clearCache(url)` - Clears cached data for a specific endpoint or all cache
+
+### Logging and Error Handling
+
+#### Frontend Logging (`src/utils/logger.js`)
+- **Environment-aware logging**: Debug/info/warn logs only shown in development
+- **Error logging**: Errors always logged (even in production)
+- **API logging**: Special `api()` method for API-related debug information
+- **Methods**: `debug()`, `info()`, `warn()`, `error()`, `api()`
+
+#### Backend Logging (`utils/logger.js`)
+- **Environment-aware logging**: Debug/info/warn logs only shown in development
+- **Error logging**: Errors always logged (even in production)
+- **Server logging**: Special `server()` method for server startup messages
+- **Methods**: `debug()`, `info()`, `warn()`, `error()`, `api()`, `server()`
+
+#### Error Boundary (`src/components/ErrorBoundary.jsx`)
+- **React Error Boundary**: Catches JavaScript errors in component tree
+- **User-friendly UI**: Displays error message with "Try Again" and "Refresh Page" options
+- **Development mode**: Shows detailed error information and stack trace
+- **Production mode**: Shows clean error message without technical details
 
 ### Performance Optimizations
 
@@ -754,6 +787,7 @@ sudo systemctl status annual-sports-frontend
 - **StatusPopup.jsx** - Displays success/error messages
 - **AboutSection.jsx** - About section content
 - **Footer.jsx** - Footer content
+- **ErrorBoundary.jsx** - React Error Boundary for catching and handling React errors
 
 ## State Management
 
@@ -770,7 +804,7 @@ The application uses React hooks for state management:
 - **Request Caching**: Reduces redundant API calls by caching GET requests
 - **Request Deduplication**: Prevents multiple identical requests from executing simultaneously
 - **Request Cancellation**: All API calls support cancellation to prevent memory leaks
-- **Optimized User Fetching**: Uses `fetchCurrentUser()` helper instead of fetching all players
+- **Optimized User Fetching**: Uses `fetchCurrentUser()` helper with dedicated `/api/me` endpoint (fetches only current user, not all players)
 
 ### Backend Optimizations
 - **MongoDB Indexes**: Strategic indexes on frequently queried fields
@@ -790,6 +824,30 @@ The application uses React hooks for state management:
 - MongoDB indexes are automatically created when the Player model is first loaded
 - Cache is automatically cleared on authentication failures
 - Request cancellation prevents state updates after component unmount
+- **Error Boundary** wraps the entire application to catch and handle React errors gracefully
+- **Logging utilities** are used throughout the codebase for production-ready error tracking
+- All console statements have been replaced with logger utilities for better production control
+- **Authentication persistence**: User authentication is preserved across page refreshes using JWT tokens stored in localStorage
+- **Optimized API calls**: `/api/me` endpoint fetches only current user data instead of all players, improving performance and reducing network traffic
+- **Modal UX**: Modals require explicit close action (X button or Cancel) - they don't close on outside click to prevent accidental closures
+
+## Security Considerations
+
+### Current Implementation
+- ✅ JWT-based authentication with token expiration
+- ✅ Password fields excluded from all API responses
+- ✅ Input validation on all endpoints
+- ✅ Admin-only endpoints properly protected
+- ✅ CORS configuration for cross-origin requests
+- ✅ Error messages don't expose sensitive information
+
+### Recommendations for Production
+- ⚠️ **Password Hashing**: Currently passwords are stored in plain text. For production, implement password hashing using bcrypt or similar library
+- ⚠️ **JWT Secret**: Ensure `JWT_SECRET` is set via environment variable and uses a strong, random secret
+- ⚠️ **CORS**: Restrict CORS origins to specific domains in production instead of allowing all origins
+- ⚠️ **HTTPS**: Always use HTTPS in production to encrypt data in transit
+- ⚠️ **Rate Limiting**: Consider implementing rate limiting to prevent abuse
+- ⚠️ **Input Sanitization**: Consider additional input sanitization for XSS prevention
 
 ## Splitting Backend and Frontend
 

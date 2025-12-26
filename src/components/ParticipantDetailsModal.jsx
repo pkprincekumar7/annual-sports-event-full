@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchWithAuth } from '../utils/api'
+import logger from '../utils/logger'
 
 function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup }) {
   const [participants, setParticipants] = useState([])
@@ -51,7 +52,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
       // URL encode the sport name to handle special characters
       const encodedSport = encodeURIComponent(sport)
       const url = `/api/participants/${encodedSport}`
-      console.log('Fetching participants for sport:', sport, 'URL:', url)
+      logger.api('Fetching participants for sport:', sport, 'URL:', url)
       
       const response = await fetchWithAuth(url, { signal })
       
@@ -61,10 +62,10 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
         try {
           const errorData = await response.json()
           errorMessage = errorData.error || errorData.details || errorMessage
-          console.error('API Error:', errorData)
+          logger.error('API Error:', errorData)
         } catch (e) {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`
-          console.error('Response parse error:', e)
+          logger.error('Response parse error:', e)
         }
         setError(errorMessage)
         setLoading(false)
@@ -72,7 +73,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
       }
 
       const data = await response.json()
-      console.log('Participant data received:', data)
+      logger.api('Participant data received:', data)
 
       if (data.success) {
         setParticipants(data.participants || [])
@@ -81,7 +82,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
       }
     } catch (err) {
       if (err.name === 'AbortError') return
-      console.error('Error fetching participant details:', err)
+      logger.error('Error fetching participant details:', err)
       setError(`Error while fetching participant details: ${err.message || 'Please check your connection and try again.'}`)
     } finally {
       setLoading(false)
@@ -138,7 +139,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
         setParticipantToDelete(null)
       }
     } catch (err) {
-      console.error(err)
+      logger.error('Error removing participation:', err)
       if (onStatusPopup) {
         onStatusPopup('❌ Error removing participation. Please try again.', 'error', 2500)
       }
@@ -160,9 +161,6 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
   return (
     <div
       className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <aside className="max-w-[700px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
         <button
@@ -243,10 +241,14 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
                             handleDeleteClick(participant)
                           }}
                           disabled={deleting}
-                          className="ml-2 px-3 py-1.5 rounded-[6px] text-[0.8rem] font-semibold bg-[rgba(239,68,68,0.2)] text-red-400 border border-[rgba(239,68,68,0.4)] hover:bg-[rgba(239,68,68,0.3)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className={`ml-2 mr-2 px-4 py-1.5 rounded-[8px] text-[0.8rem] font-semibold uppercase tracking-[0.05em] transition-all ${
+                            deleting
+                              ? 'bg-[rgba(239,68,68,0.3)] text-[rgba(239,68,68,0.6)] cursor-not-allowed'
+                              : 'bg-gradient-to-r from-[#ef4444] to-[#dc2626] text-white cursor-pointer hover:shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:-translate-y-0.5'
+                          }`}
                           title="Remove Participation"
                         >
-                          Delete
+                          {deleting ? 'Deleting...' : 'Delete'}
                         </button>
                       )}
                     </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { API_URL } from '../utils/api'
+import logger from '../utils/logger'
 
 function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
   const [regNumber, setRegNumber] = useState('')
@@ -47,7 +48,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
         setIsLoading(false)
       }
     } catch (err) {
-      console.error(err)
+      logger.error('Error while logging in:', err)
       onStatusPopup('❌ Error while logging in. Please try again.', 'error', 2500)
       setIsLoading(false)
     }
@@ -58,9 +59,6 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
   return (
     <div
       className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative">
         <button

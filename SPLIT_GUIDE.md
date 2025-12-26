@@ -68,6 +68,7 @@ cp -r models/ annual-sports-backend/
 - `server.js` → `annual-sports-backend/server.js`
 - `config/database.js` → `annual-sports-backend/config/database.js`
 - `models/Player.js` → `annual-sports-backend/models/Player.js`
+- `utils/logger.js` → `annual-sports-backend/utils/logger.js`
 
 ### Step 3: Create Backend package.json
 
@@ -242,7 +243,10 @@ cp postcss.config.js annual-sports-frontend/
 ```
 
 **Files to copy:**
-- `src/` → `annual-sports-frontend/src/`
+- `src/` → `annual-sports-frontend/src/` (includes all components, utils, config)
+  - `src/components/ErrorBoundary.jsx` - Error Boundary component
+  - `src/utils/logger.js` - Frontend logging utility
+  - `src/utils/api.js` - API utility functions
 - `public/` → `annual-sports-frontend/public/`
 - `index.html` → `annual-sports-frontend/index.html`
 - `vite.config.js` → `annual-sports-frontend/vite.config.js`
@@ -538,6 +542,8 @@ parent-directory/
 │   │   └── database.js
 │   ├── models/
 │   │   └── Player.js
+│   ├── utils/
+│   │   └── logger.js
 │   ├── server.js
 │   ├── package.json
 │   ├── .env
@@ -547,8 +553,13 @@ parent-directory/
 └── annual-sports-frontend/
     ├── src/
     │   ├── components/
+    │   │   ├── ErrorBoundary.jsx
+    │   │   └── (other components)
     │   ├── config/
+    │   │   └── api.js
     │   ├── utils/
+    │   │   ├── api.js
+    │   │   └── logger.js
     │   ├── App.jsx
     │   ├── main.jsx
     │   └── index.css

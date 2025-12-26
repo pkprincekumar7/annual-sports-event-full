@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchWithAuth, API_URL, clearCache } from '../utils/api'
+import logger from '../utils/logger'
 
 function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate }) {
   const [registrationCountdown, setRegistrationCountdown] = useState('')
@@ -35,7 +36,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         }
       } catch (err) {
         if (!isMounted || err.name === 'AbortError') return
-        console.error('Error fetching players:', err)
+        logger.error('Error fetching players:', err)
         setPlayers([])
       }
     }
@@ -163,7 +164,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         setIsSubmitting(false)
       }
     } catch (err) {
-      console.error(err)
+      logger.error('Error while saving player:', err)
       onStatusPopup('❌ Error while saving. Please try again.', 'error', 2500)
       setIsSubmitting(false)
     }
@@ -283,7 +284,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         return
       }
     } catch (validationError) {
-      console.error('Error validating participations:', validationError)
+      logger.error('Error validating participations:', validationError)
       onStatusPopup('❌ Error validating participations. Please try again.', 'error', 4000)
       setIsSubmitting(false)
       return
@@ -332,12 +333,12 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                 }
               }
             } catch (updateError) {
-              console.error('Error updating user data:', updateError)
+              logger.error('Error updating user data:', updateError)
               // Don't block success message if user update fails
             }
           }
         } catch (participationError) {
-          console.error('Error updating participation:', participationError)
+          logger.error('Error updating participation:', participationError)
           onStatusPopup('❌ Error updating player participations. Please try again.', 'error', 4000)
           setIsSubmitting(false)
           return
@@ -353,7 +354,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         onClose()
       }, 2500)
     } catch (err) {
-      console.error(err)
+      logger.error('Error while submitting team registration:', err)
       onStatusPopup('❌ Error while submitting. Please try again.', 'error', 2500)
       setIsSubmitting(false)
     }
@@ -408,13 +409,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           onClose()
         }, 2500)
       } catch (participationError) {
-        console.error('Error updating participation:', participationError)
+        logger.error('Error updating participation:', participationError)
         onStatusPopup('❌ Error updating participation. Please try again.', 'error', 4000)
         setIsSubmitting(false)
         return
       }
     } catch (err) {
-      console.error(err)
+      logger.error('Error while submitting individual registration:', err)
       onStatusPopup('❌ Error while submitting. Please try again.', 'error', 2500)
       setIsSubmitting(false)
     }
@@ -427,9 +428,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     return (
       <div
         className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose()
-        }}
       >
         <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative">
           <button
@@ -489,9 +487,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     return (
       <div
         className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) onClose()
-        }}
       >
         <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
           <button
@@ -600,9 +595,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   return (
     <div
       className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
         <button

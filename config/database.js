@@ -1,4 +1,5 @@
 import mongoose from 'mongoose'
+import logger from '../utils/logger.js'
 
 const connectDB = async () => {
   try {
@@ -8,10 +9,10 @@ const connectDB = async () => {
       // Remove deprecated options, use default settings
     })
     
-    console.log(`MongoDB Connected: ${conn.connection.host}`)
+    logger.server(`MongoDB Connected: ${conn.connection.host}`)
     return conn
   } catch (error) {
-    console.error('Error connecting to MongoDB:', error.message)
+    logger.error('Error connecting to MongoDB:', error.message)
     process.exit(1)
   }
 }

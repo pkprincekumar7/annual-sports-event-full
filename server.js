@@ -5,6 +5,7 @@ import XLSX from 'xlsx'
 import jwt from 'jsonwebtoken'
 import connectDB from './config/database.js'
 import Player from './models/Player.js'
+import logger from './utils/logger.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -106,7 +107,7 @@ const authenticateToken = async (req, res, next) => {
       }
       next()
     } catch (error) {
-      console.error('Error verifying user in database:', error)
+      logger.error('Error verifying user in database:', error)
       return res.status(500).json({ 
         success: false, 
         error: 'Failed to verify user. Please try again.' 
@@ -129,13 +130,35 @@ const requireAdmin = (req, res, next) => {
 // Connect to MongoDB
 connectDB()
 
+// API endpoint to get current user data (requires authentication)
+// More efficient than fetching all players just to get one user
+app.get('/api/me', authenticateToken, async (req, res) => {
+  try {
+    const user = await Player.findOne({ reg_number: req.user.reg_number }).select('-password').lean()
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      })
+    }
+    res.json({ success: true, player: user })
+  } catch (error) {
+    logger.error('Error fetching current user data:', error)
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch user data',
+      details: error.message 
+    })
+  }
+})
+
 // API endpoint to get all players (requires authentication)
 app.get('/api/players', authenticateToken, async (req, res) => {
   try {
     const players = await Player.find({}).select('-password').lean()
     res.json({ success: true, players })
   } catch (error) {
-    console.error('Error reading players data:', error)
+    logger.error('Error reading players data:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to read players data',
@@ -159,7 +182,7 @@ app.get('/api/sports', authenticateToken, requireAdmin, (req, res) => {
     ]
     res.json({ success: true, sports: teamSports })
   } catch (error) {
-    console.error('Error getting sports list:', error)
+    logger.error('Error getting sports list:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to get sports list',
@@ -334,7 +357,7 @@ app.post('/api/add-captain', authenticateToken, requireAdmin, async (req, res) =
       player: playerData
     })
   } catch (error) {
-    console.error('Error adding captain:', error)
+    logger.error('Error adding captain:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to add captain',
@@ -430,7 +453,7 @@ app.delete('/api/remove-captain', authenticateToken, requireAdmin, async (req, r
       player: playerData
     })
   } catch (error) {
-    console.error('Error removing captain:', error)
+    logger.error('Error removing captain:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to remove captain',
@@ -487,7 +510,7 @@ app.get('/api/captains-by-sport', authenticateToken, requireAdmin, async (req, r
       captainsBySport 
     })
   } catch (error) {
-    console.error('Error fetching captains by sport:', error)
+    logger.error('Error fetching captains by sport:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to fetch captains by sport',
@@ -662,7 +685,7 @@ app.post('/api/validate-participations', authenticateToken, async (req, res) => 
       message: 'All players can participate'
     })
   } catch (error) {
-    console.error('Error validating participations:', error)
+    logger.error('Error validating participations:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to validate participations',
@@ -986,7 +1009,7 @@ app.post('/api/update-team-participation', authenticateToken, async (req, res) =
       updated_count: updatedPlayers.length
     })
   } catch (error) {
-    console.error('Error updating team participation:', error)
+    logger.error('Error updating team participation:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to update team participation',
@@ -1110,7 +1133,7 @@ app.post('/api/update-participation', authenticateToken, async (req, res) => {
       player: playerData
     })
   } catch (error) {
-    console.error('Error updating participation:', error)
+    logger.error('Error updating participation:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to update participation',
@@ -1183,7 +1206,7 @@ app.post('/api/login', async (req, res) => {
       token: token
     })
   } catch (error) {
-    console.error('Error during login:', error)
+    logger.error('Error during login:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to process login',
@@ -1294,7 +1317,7 @@ app.post('/api/save-player', async (req, res) => {
       player: newPlayer
     })
   } catch (error) {
-    console.error('Error saving player data:', error)
+    logger.error('Error saving player data:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to save player data',
@@ -1427,7 +1450,7 @@ app.post('/api/save-players', async (req, res) => {
       count: players.length
     })
   } catch (error) {
-    console.error('Error saving players data:', error)
+    logger.error('Error saving players data:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to save players data',
@@ -1493,7 +1516,7 @@ app.delete('/api/remove-participation', authenticateToken, requireAdmin, async (
       player: playerData
     })
   } catch (error) {
-    console.error('Error removing participation:', error)
+    logger.error('Error removing participation:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to remove participation',
@@ -1507,7 +1530,7 @@ app.get('/api/teams/:sport', authenticateToken, async (req, res) => {
   try {
     // Decode the sport name from URL parameter
     let sport = decodeURIComponent(req.params.sport)
-    console.log('Received request for teams - sport:', sport)
+    logger.api('Received request for teams - sport:', sport)
 
     if (!sport) {
       return res.status(400).json({ 
@@ -1562,7 +1585,7 @@ app.get('/api/teams/:sport', authenticateToken, async (req, res) => {
     // Sort teams by team name
     teams.sort((a, b) => a.team_name.localeCompare(b.team_name))
 
-    console.log(`Found ${teams.length} teams for sport: ${sport}`)
+    logger.api(`Found ${teams.length} teams for sport: ${sport}`)
 
     res.json({ 
       success: true, 
@@ -1571,7 +1594,7 @@ app.get('/api/teams/:sport', authenticateToken, async (req, res) => {
       total_teams: teams.length
     })
   } catch (error) {
-    console.error('Error getting teams:', error)
+    logger.error('Error getting teams:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to get teams',
@@ -1585,7 +1608,7 @@ app.get('/api/participants/:sport', authenticateToken, requireAdmin, async (req,
   try {
     // Decode the sport name from URL parameter
     let sport = decodeURIComponent(req.params.sport)
-    console.log('Received request for participants - sport:', sport)
+    logger.api('Received request for participants - sport:', sport)
 
     if (!sport) {
       return res.status(400).json({ 
@@ -1626,7 +1649,7 @@ app.get('/api/participants/:sport', authenticateToken, requireAdmin, async (req,
       total_participants: participants.length
     })
   } catch (error) {
-    console.error('Error getting participants:', error)
+    logger.error('Error getting participants:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to get participants',
@@ -1863,7 +1886,7 @@ app.post('/api/update-team-player', authenticateToken, requireAdmin, async (req,
       new_player: newPlayerData
     })
   } catch (error) {
-    console.error('Error updating team player:', error)
+    logger.error('Error updating team player:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to update team player',
@@ -1941,7 +1964,7 @@ app.delete('/api/delete-team', authenticateToken, requireAdmin, async (req, res)
       team_members: teamMembers
     })
   } catch (error) {
-    console.error('Error deleting team:', error)
+    logger.error('Error deleting team:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to delete team',
@@ -2047,7 +2070,7 @@ app.put('/api/update-player', authenticateToken, requireAdmin, async (req, res) 
       player: playerData
     })
   } catch (error) {
-    console.error('Error updating player data:', error)
+    logger.error('Error updating player data:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to update player data',
@@ -2174,7 +2197,7 @@ app.get('/api/export-excel', authenticateToken, requireAdmin, async (req, res) =
     // Send Excel file
     res.send(excelBuffer)
   } catch (error) {
-    console.error('Error exporting Excel:', error)
+    logger.error('Error exporting Excel:', error)
     res.status(500).json({ 
       success: false, 
       error: 'Failed to export Excel file',
@@ -2184,7 +2207,7 @@ app.get('/api/export-excel', authenticateToken, requireAdmin, async (req, res) =
 })
 
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`)
-  console.log(`MongoDB connected. Player data stored in MongoDB.`)
+  logger.server(`Server running on http://localhost:${PORT}`)
+  logger.server(`MongoDB connected. Player data stored in MongoDB.`)
 })
 

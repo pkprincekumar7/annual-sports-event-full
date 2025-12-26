@@ -1,7 +1,9 @@
 import API_URL from '../config/api.js'
+import logger from './logger.js'
 
 // Cache configuration
 const CACHE_TTL = {
+  '/api/me': 30000, // 30 seconds for current user data
   '/api/players': 30000, // 30 seconds for players list
   '/api/sports': 300000, // 5 minutes for sports list (rarely changes)
   default: 10000, // 10 seconds default
@@ -24,7 +26,7 @@ export const decodeJWT = (token) => {
     )
     return JSON.parse(jsonPayload)
   } catch (error) {
-    console.error('Error decoding JWT:', error)
+    logger.error('Error decoding JWT:', error)
     return null
   }
 }
@@ -106,8 +108,8 @@ export const fetchWithAuth = async (url, options = {}) => {
     }
   }
 
-  // Create AbortController for request cancellation
-  const abortController = new AbortController()
+  // Use provided signal or create a new AbortController
+  const abortController = options.signal ? null : new AbortController()
   const signal = options.signal || abortController.signal
 
   // Make the request
@@ -123,9 +125,13 @@ export const fetchWithAuth = async (url, options = {}) => {
       // Clear cache on auth failure
       clearCache()
       
-      // Redirect to login or reload page if not already on login
-      if (!window.location.pathname.includes('login')) {
-        window.location.reload()
+      // Only reload if explicitly requested (not during initial user fetch)
+      // The calling code should handle the auth error appropriately
+      if (options.reloadOnAuthError !== false && !window.location.pathname.includes('login')) {
+        // Use setTimeout to allow the calling code to handle the error first
+        setTimeout(() => {
+          window.location.reload()
+        }, 100)
       }
       return response
     }
@@ -143,7 +149,7 @@ export const fetchWithAuth = async (url, options = {}) => {
         })
       } catch (e) {
         // If response is not JSON, don't cache
-        console.warn('Response is not JSON, skipping cache:', url)
+        logger.warn('Response is not JSON, skipping cache:', url)
       }
     }
 
@@ -171,37 +177,50 @@ export const fetchWithAuth = async (url, options = {}) => {
   return requestPromise
 }
 
-// Fetch current user data only (optimized - requires backend endpoint)
-// Falls back to fetching all players if endpoint doesn't exist
+// Fetch current user data only (optimized - uses dedicated /api/me endpoint)
+// Returns { user: userData, authError: boolean } to distinguish auth failures from other errors
 export const fetchCurrentUser = async () => {
   const token = localStorage.getItem('authToken')
   if (!token) {
-    return null
+    return { user: null, authError: false }
   }
 
   try {
     const decoded = decodeJWT(token)
     if (!decoded || !decoded.reg_number) {
-      return null
+      // Invalid token format - this is an auth error
+      return { user: null, authError: true }
     }
 
-    // Try to fetch current user directly (if backend supports it)
-    // For now, we'll use the optimized approach: fetch all players but use cache
-    const response = await fetchWithAuth('/api/players')
+    // Fetch current user directly using dedicated endpoint (more efficient)
+    // Don't reload on auth error during initial fetch - let App.jsx handle it
+    const response = await fetchWithAuth('/api/me', { reloadOnAuthError: false })
+    
+    // Check for authentication errors
+    if (response.status === 401 || response.status === 403) {
+      // Token is invalid or expired - auth error
+      return { user: null, authError: true }
+    }
+    
     if (response.ok) {
       const data = await response.json()
-      if (data.success && data.players) {
-        const user = data.players.find(p => p.reg_number === decoded.reg_number)
-        if (user) {
-          const { password: _, ...userData } = user
-          return userData
-        }
+      if (data.success && data.player) {
+        // Backend returns 'player' for /api/me endpoint
+        const { password: _, ...userData } = data.player
+        return { user: userData, authError: false }
+      } else {
+        logger.warn('Unexpected response structure from /api/me:', data)
+        return { user: null, authError: false }
       }
     }
-    return null
+    
+    // Other errors (network, server errors, etc.) - not auth errors
+    logger.warn('API call failed with status:', response.status, 'for /api/me')
+    return { user: null, authError: false }
   } catch (error) {
-    console.error('Error fetching current user:', error)
-    return null
+    // Network errors or other exceptions - not auth errors
+    logger.error('Error fetching current user:', error)
+    return { user: null, authError: false }
   }
 }
 

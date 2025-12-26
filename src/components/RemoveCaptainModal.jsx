@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchWithAuth } from '../utils/api'
+import logger from '../utils/logger'
 
 function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
   const [captainsBySport, setCaptainsBySport] = useState({})
@@ -22,7 +23,7 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
           }
         })
         .catch((err) => {
-          console.error('Error fetching captains by sport:', err)
+          logger.error('Error fetching captains by sport:', err)
           setCaptainsBySport({})
           onStatusPopup('❌ Error fetching captains. Please try again.', 'error', 2500)
         })
@@ -82,7 +83,7 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
             }
           })
           .catch((err) => {
-            console.error('Error refreshing captains:', err)
+            logger.error('Error refreshing captains:', err)
           })
         setCaptainToRemove(null)
       } else {
@@ -91,7 +92,7 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
         setCaptainToRemove(null)
       }
     } catch (err) {
-      console.error(err)
+      logger.error('Error removing captain:', err)
       onStatusPopup('❌ Error removing captain. Please try again.', 'error', 2500)
       setCaptainToRemove(null)
     } finally {
@@ -123,9 +124,6 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
   return (
     <div
       className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <aside className="max-w-[700px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
         <button

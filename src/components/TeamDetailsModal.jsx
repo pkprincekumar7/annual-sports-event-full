@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchWithAuth } from '../utils/api'
+import logger from '../utils/logger'
 
 function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup }) {
   const [teams, setTeams] = useState([])
@@ -73,7 +74,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
       }
     } catch (err) {
       if (err.name === 'AbortError') return
-      console.error('Error fetching players:', err)
+      logger.error('Error fetching players:', err)
     }
   }
 
@@ -90,7 +91,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
       // URL encode the sport name to handle special characters like ×
       const encodedSport = encodeURIComponent(sport)
       const url = `/api/teams/${encodedSport}`
-      console.log('Fetching teams for sport:', sport, 'URL:', url)
+      logger.api('Fetching teams for sport:', sport, 'URL:', url)
       
       const response = await fetchWithAuth(url, signal ? { signal } : {})
       
@@ -102,10 +103,10 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
         try {
           const errorData = await response.json()
           errorMessage = errorData.error || errorData.details || errorMessage
-          console.error('API Error:', errorData)
+          logger.error('API Error:', errorData)
         } catch (e) {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`
-          console.error('Response parse error:', e)
+          logger.error('Response parse error:', e)
         }
         setError(errorMessage)
         setLoading(false)
@@ -113,7 +114,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
       }
 
       const data = await response.json()
-      console.log('Team data received:', data)
+      logger.api('Team data received:', data)
 
       if (data.success) {
         let teamsToShow = data.teams || []
@@ -142,7 +143,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
       }
     } catch (err) {
       if (err.name === 'AbortError') return
-      console.error('Error fetching team details:', err)
+      logger.error('Error fetching team details:', err)
       setError(`Error while fetching team details: ${err.message || 'Please check your connection and try again.'}`)
     } finally {
       setLoading(false)
@@ -260,7 +261,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
         }
       }
     } catch (err) {
-      console.error('Error updating player:', err)
+      logger.error('Error updating player:', err)
       if (onStatusPopup) {
         onStatusPopup('❌ Error updating player. Please try again.', 'error', 3000)
       }
@@ -295,12 +296,16 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
         if (onStatusPopup) {
           onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
         }
+        setShowDeleteConfirm(false)
+        setDeletingTeam(null)
       }
     } catch (err) {
-      console.error('Error deleting team:', err)
+      logger.error('Error deleting team:', err)
       if (onStatusPopup) {
         onStatusPopup('❌ Error deleting team. Please try again.', 'error', 3000)
       }
+      setShowDeleteConfirm(false)
+      setDeletingTeam(null)
     } finally {
       setUpdating(false)
     }
@@ -311,9 +316,6 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
   return (
     <div
       className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <aside className="max-w-[700px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
         <button
@@ -409,9 +411,14 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
                           setDeletingTeam(team.team_name)
                           setShowDeleteConfirm(true)
                         }}
-                        className="ml-2 px-3 py-1.5 rounded-[6px] text-[0.8rem] font-semibold bg-[rgba(239,68,68,0.2)] text-red-400 border border-[rgba(239,68,68,0.4)] hover:bg-[rgba(239,68,68,0.3)] transition-colors"
+                        disabled={(updating && deletingTeam === team.team_name) || (showDeleteConfirm && deletingTeam === team.team_name)}
+                        className={`ml-2 mr-2 px-4 py-1.5 rounded-[8px] text-[0.8rem] font-semibold uppercase tracking-[0.05em] transition-all ${
+                          (updating && deletingTeam === team.team_name) || (showDeleteConfirm && deletingTeam === team.team_name)
+                            ? 'bg-[rgba(239,68,68,0.3)] text-[rgba(239,68,68,0.6)] cursor-not-allowed'
+                            : 'bg-gradient-to-r from-[#ef4444] to-[#dc2626] text-white cursor-pointer hover:shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:-translate-y-0.5'
+                        }`}
                       >
-                        Delete
+                        {updating && deletingTeam === team.team_name ? 'Deleting...' : 'Delete'}
                       </button>
                     )}
                   </div>

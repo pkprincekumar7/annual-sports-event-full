@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchWithAuth, fetchCurrentUser, decodeJWT, clearCache } from './utils/api'
+import logger from './utils/logger'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
 import SportsSection from './components/SportsSection'
@@ -13,6 +14,7 @@ import PlayerListModal from './components/PlayerListModal'
 import AboutSection from './components/AboutSection'
 import Footer from './components/Footer'
 import StatusPopup from './components/StatusPopup'
+import ErrorBoundary from './components/ErrorBoundary'
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -41,31 +43,135 @@ function App() {
     const fetchUserData = async () => {
       const token = localStorage.getItem('authToken')
       if (!token) {
-        if (isMounted) setIsLoadingUser(false)
+        if (isMounted) {
+          setIsLoadingUser(false)
+          setAuthToken(null)
+          setLoggedInUser(null)
+        }
         return
       }
 
+      // Ensure authToken state is set from localStorage
+      if (isMounted) {
+        setAuthToken(token)
+      }
+
+      // Store token before fetch to check if it gets cleared
+      const tokenBeforeFetch = token
+
       try {
         // Use optimized fetchCurrentUser function (uses cache)
-        const userData = await fetchCurrentUser()
+        const result = await fetchCurrentUser()
         
         if (!isMounted) return
 
-        if (userData) {
-          setLoggedInUser(userData)
-        } else {
-          // User not found, clear token
-          localStorage.removeItem('authToken')
+        // Check if token was cleared during fetch (indicates auth error)
+        const tokenAfterFetch = localStorage.getItem('authToken')
+        const tokenWasCleared = tokenBeforeFetch && !tokenAfterFetch
+
+        if (result.user) {
+          // Successfully fetched user data
+          setLoggedInUser(result.user)
+          setAuthToken(tokenBeforeFetch) // Ensure authToken state is set
+          setIsLoadingUser(false) // Stop loading
+          // Ensure token is set (in case it was temporarily missing)
+          if (tokenBeforeFetch && !tokenAfterFetch) {
+            localStorage.setItem('authToken', tokenBeforeFetch)
+          }
+        } else if (result.authError || tokenWasCleared) {
+          // Authentication error - token is invalid or expired
+          // Token may have already been cleared by fetchWithAuth
+          logger.info('Authentication error detected, clearing token')
+          if (localStorage.getItem('authToken')) {
+            localStorage.removeItem('authToken')
+          }
           setAuthToken(null)
+          setLoggedInUser(null)
+          setIsLoadingUser(false) // Stop loading
+        } else {
+          // If result.user is null but authError is false and token wasn't cleared,
+          // it means a temporary error (network issue, server error, etc.)
+          logger.warn('Temporary error fetching user data. Result:', result)
+          
+          // Ensure authToken state is set since token exists
+          setAuthToken(tokenBeforeFetch)
+          
+          // Retry immediately without delay for better UX
+          // Keep loading true until retry completes
+          const retryFetch = async () => {
+            if (!isMounted) return
+            try {
+              const retryResult = await fetchCurrentUser()
+              if (!isMounted) return
+              
+              if (retryResult.user) {
+                setLoggedInUser(retryResult.user)
+                setAuthToken(localStorage.getItem('authToken'))
+                setIsLoadingUser(false) // Stop loading on success
+              } else if (retryResult.authError) {
+                // Auth error on retry - clear token
+                logger.info('Authentication error on retry, clearing token')
+                localStorage.removeItem('authToken')
+                setAuthToken(null)
+                setLoggedInUser(null)
+                setIsLoadingUser(false) // Stop loading on auth error
+              } else {
+                // Retry also failed with temporary error - stop loading but keep token
+                setIsLoadingUser(false)
+              }
+            } catch (retryError) {
+              if (!isMounted) return
+              logger.error('Error on retry fetch:', retryError)
+              setIsLoadingUser(false) // Stop loading even on error
+              // Keep token - might be temporary network issue
+            }
+          }
+          
+          // Retry immediately (no delay) - use setTimeout with 0 to run after current execution
+          setTimeout(retryFetch, 0)
+          // Don't set loading to false here - let retry handle it
         }
       } catch (error) {
         if (!isMounted) return
-        console.error('Error fetching user data:', error)
-        // On error, clear token
-        localStorage.removeItem('authToken')
-        setAuthToken(null)
-      } finally {
-        if (isMounted) setIsLoadingUser(false)
+        logger.error('Error fetching user data:', error)
+        // On unexpected errors, check if token still exists
+        // Only clear if it was explicitly cleared (auth error)
+        const currentToken = localStorage.getItem('authToken')
+        if (!currentToken && tokenBeforeFetch) {
+          // Token was cleared during fetch, likely an auth error
+          setAuthToken(null)
+          setLoggedInUser(null)
+          setIsLoadingUser(false)
+        } else {
+          // Token still exists - might be temporary network issue
+          // Retry once
+          const retryFetch = async () => {
+            if (!isMounted) return
+            try {
+              const retryResult = await fetchCurrentUser()
+              if (!isMounted) return
+              
+              if (retryResult.user) {
+                setLoggedInUser(retryResult.user)
+                setAuthToken(localStorage.getItem('authToken'))
+                setIsLoadingUser(false)
+              } else if (retryResult.authError) {
+                localStorage.removeItem('authToken')
+                setAuthToken(null)
+                setLoggedInUser(null)
+                setIsLoadingUser(false)
+              } else {
+                setIsLoadingUser(false)
+              }
+            } catch (retryError) {
+              if (!isMounted) return
+              logger.error('Error on retry fetch:', retryError)
+              setIsLoadingUser(false)
+            }
+          }
+          setTimeout(retryFetch, 0)
+          // Don't set loading to false here - let retry handle it
+        }
       }
     }
 
@@ -198,15 +304,21 @@ function App() {
       // Clear cache to force fresh fetch
       clearCache('/api/players')
       // Use optimized fetchCurrentUser function
-      const userData = await fetchCurrentUser()
-      if (userData) {
-        setLoggedInUser(userData)
-      } else {
+      const result = await fetchCurrentUser()
+      if (result.user) {
+        setLoggedInUser(result.user)
+      } else if (result.authError) {
+        // Auth error - clear user and token
         setLoggedInUser(null)
+        localStorage.removeItem('authToken')
+        setAuthToken(null)
+      } else {
+        // Temporary error - keep current user state, don't clear
+        // User stays logged in with cached data
       }
     } catch (error) {
-      console.error('Error refreshing user data:', error)
-      setLoggedInUser(null)
+      logger.error('Error refreshing user data:', error)
+      // On unexpected errors, don't clear user - might be temporary network issue
     }
   }
 
@@ -272,13 +384,13 @@ function App() {
       
       showStatusPopup('✅ Excel file downloaded successfully!', 'success', 2500)
     } catch (err) {
-      console.error('Error exporting Excel:', err)
+      logger.error('Error exporting Excel:', err)
       showStatusPopup('❌ Error exporting Excel file. Please try again.', 'error', 3000)
     }
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <Navbar />
       <main id="top" className="max-w-[1300px] mx-auto px-4 py-6 pb-10 grid grid-cols-[minmax(0,1.6fr)] gap-10 max-md:grid-cols-1">
         <section>
@@ -392,7 +504,7 @@ function App() {
       <AboutSection />
       <Footer />
       <StatusPopup popup={statusPopup} />
-    </>
+    </ErrorBoundary>
   )
 }
 

@@ -1603,6 +1603,66 @@ app.get('/api/teams/:sport', authenticateToken, async (req, res) => {
   }
 })
 
+// API endpoint to get total participants count for a specific sport (non-team events) - no admin required
+app.get('/api/participants-count/:sport', authenticateToken, async (req, res) => {
+  try {
+    // Decode the sport name from URL parameter
+    let sport = decodeURIComponent(req.params.sport)
+    logger.api('Received request for participants count - sport:', sport)
+
+    if (!sport) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Sport name is required' 
+      })
+    }
+
+    // Count players who have participated in this sport without team_name
+    // For non-team events, team_name is either missing, null, or empty string
+    // Use aggregation pipeline for more reliable counting
+    const result = await Player.aggregate([
+      {
+        $match: {
+          reg_number: { $ne: 'admin' }
+        }
+      },
+      {
+        $unwind: '$participated_in'
+      },
+      {
+        $match: {
+          'participated_in.sport': sport,
+          $or: [
+            { 'participated_in.team_name': { $exists: false } },
+            { 'participated_in.team_name': null },
+            { 'participated_in.team_name': '' }
+          ]
+        }
+      },
+      {
+        $count: 'total'
+      }
+    ])
+    
+    const count = result.length > 0 ? result[0].total : 0
+    
+    logger.api(`Participants count for ${sport}: ${count}`)
+
+    res.json({ 
+      success: true, 
+      sport: sport,
+      total_participants: count
+    })
+  } catch (error) {
+    logger.error('Error getting participants count:', error)
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to get participants count',
+      details: error.message 
+    })
+  }
+})
+
 // API endpoint to get all participants for a specific sport (non-team events)
 app.get('/api/participants/:sport', authenticateToken, requireAdmin, async (req, res) => {
   try {

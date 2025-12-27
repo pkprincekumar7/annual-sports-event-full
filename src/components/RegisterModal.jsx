@@ -7,6 +7,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   const [players, setPlayers] = useState([])
   const [selectedPlayers, setSelectedPlayers] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [totalTeams, setTotalTeams] = useState(0)
+  const [loadingTeams, setLoadingTeams] = useState(false)
+  const [totalParticipants, setTotalParticipants] = useState(0)
+  const [loadingParticipants, setLoadingParticipants] = useState(false)
 
   const isTeam = selectedSport?.type === 'team'
   const playerCount = isTeam ? selectedSport?.players || 0 : 0
@@ -14,10 +18,54 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
   // Fetch players list for team player dropdowns (with caching and cancellation)
   useEffect(() => {
-    if (!isOpen || !isTeam) {
+    if (!isOpen) {
       setPlayers([])
+      setTotalTeams(0)
+      setTotalParticipants(0)
       return
     }
+
+    if (!isTeam) {
+      // For non-team events, fetch participants count
+      let isMounted = true
+      const abortController = new AbortController()
+
+      const fetchParticipantsCount = async () => {
+        if (!selectedSport?.name) return
+        
+        setLoadingParticipants(true)
+        try {
+          const encodedSport = encodeURIComponent(selectedSport.name)
+          const response = await fetchWithAuth(`/api/participants-count/${encodedSport}`, {
+            signal: abortController.signal,
+          })
+          
+          if (!isMounted) return
+
+          const data = await response.json()
+          if (data.success) {
+            setTotalParticipants(data.total_participants || 0)
+          }
+        } catch (err) {
+          if (!isMounted || err.name === 'AbortError') return
+          logger.error('Error fetching participants count:', err)
+          setTotalParticipants(0)
+        } finally {
+          if (isMounted) {
+            setLoadingParticipants(false)
+          }
+        }
+      }
+
+      fetchParticipantsCount()
+
+      return () => {
+        isMounted = false
+        abortController.abort()
+      }
+    }
+
+    // For team events
 
     let isMounted = true
     const abortController = new AbortController()
@@ -41,13 +89,41 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       }
     }
 
+    const fetchTotalTeams = async () => {
+      if (!selectedSport?.name) return
+      
+      setLoadingTeams(true)
+      try {
+        const encodedSport = encodeURIComponent(selectedSport.name)
+        const response = await fetchWithAuth(`/api/teams/${encodedSport}`, {
+          signal: abortController.signal,
+        })
+        
+        if (!isMounted) return
+
+        const data = await response.json()
+        if (data.success) {
+          setTotalTeams(data.total_teams || 0)
+        }
+      } catch (err) {
+        if (!isMounted || err.name === 'AbortError') return
+        logger.error('Error fetching total teams:', err)
+        setTotalTeams(0)
+      } finally {
+        if (isMounted) {
+          setLoadingTeams(false)
+        }
+      }
+    }
+
     fetchPlayers()
+    fetchTotalTeams()
 
     return () => {
       isMounted = false
       abortController.abort()
     }
-  }, [isOpen, isTeam])
+  }, [isOpen, isTeam, selectedSport])
 
   // Reset selected players when modal opens/closes or sport changes
   useEffect(() => {
@@ -423,8 +499,59 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
   if (!isOpen) return null
 
-  // Individual/Cultural Events - Confirmation Dialog
+  // Check if user has already participated in this non-team event
+  const hasAlreadyParticipated = !isTeam && loggedInUser?.participated_in && 
+    Array.isArray(loggedInUser.participated_in) &&
+    loggedInUser.participated_in.some(p => p.sport === selectedSport?.name)
+
+  // Individual/Cultural Events - Confirmation Dialog or Already Participated View
   if (selectedSport && !isTeam) {
+    // If user has already participated, show view-only mode
+    if (hasAlreadyParticipated) {
+      return (
+        <div
+          className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
+        >
+          <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative">
+            <button
+              type="button"
+              className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer hover:text-[#ffe66d] transition-colors"
+              onClick={onClose}
+            >
+              ✕
+            </button>
+
+            <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Participation Status</div>
+            <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
+              {selectedSport.name.toUpperCase()}
+            </div>
+            <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-6">PCE, Purnea • Umang – 2026 Sports Fest</div>
+
+            <div className="text-center mb-6">
+              <div className="inline-block px-4 py-2 rounded-full bg-[rgba(34,197,94,0.2)] text-[#22c55e] text-[0.9rem] font-bold uppercase tracking-[0.1em] border border-[rgba(34,197,94,0.4)]">
+                ✓ Already Participated
+              </div>
+            </div>
+
+            <div className="text-[0.9rem] text-[#cbd5ff] mb-8 text-center">
+              Total Players Participated: <span className="text-[#ffe66d] font-bold text-[1.1rem]">{loadingParticipants ? '...' : totalParticipants}</span>
+            </div>
+
+            <div className="flex justify-center mt-[0.8rem]">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-8 py-[9px] rounded-full border border-[rgba(148,163,184,0.7)] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_10px_26px_rgba(15,23,42,0.9)]"
+              >
+                Close
+              </button>
+            </div>
+          </aside>
+        </div>
+      )
+    }
+
+    // User hasn't participated yet - show confirmation dialog
     return (
       <div
         className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
@@ -442,7 +569,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
             {selectedSport.name.toUpperCase()}
           </div>
-          <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-6">PCE, Purnea • Umang – 2026 Sports Fest</div>
+          <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">PCE, Purnea • Umang – 2026 Sports Fest</div>
+          <div className="text-[0.9rem] text-[#cbd5ff] mb-4 text-center">
+            Total Players Participated: <span className="text-[#ffe66d] font-bold">{loadingParticipants ? '...' : totalParticipants}</span>
+          </div>
 
           {registrationCountdown && (
             <div className="my-2 mb-6 text-center text-base font-semibold text-red-500">{registrationCountdown}</div>
@@ -502,8 +632,11 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             Team Registration
           </div>
           <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">PCE, Purnea • Umang – 2026 Sports Fest</div>
-          <div className="my-1 mb-4 text-center text-[0.95rem] font-semibold text-[#ffe66d]">
+          <div className="my-1 mb-2 text-center text-[0.95rem] font-semibold text-[#ffe66d]">
             Sports Name: {selectedSport.name.toUpperCase()}
+          </div>
+          <div className="text-[0.9rem] text-[#cbd5ff] mb-4 text-center">
+            Total Teams Participated: <span className="text-[#ffe66d] font-bold">{loadingTeams ? '...' : totalTeams}</span>
           </div>
 
           {registrationCountdown && (

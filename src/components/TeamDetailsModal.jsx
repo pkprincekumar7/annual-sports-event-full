@@ -4,6 +4,7 @@ import logger from '../utils/logger'
 
 function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup }) {
   const [teams, setTeams] = useState([])
+  const [totalTeams, setTotalTeams] = useState(0)
   const [loading, setLoading] = useState(false)
   const [expandedTeams, setExpandedTeams] = useState(new Set())
   const [error, setError] = useState(null)
@@ -33,6 +34,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
     if (!isOpen || !sport) {
       // Reset state when modal closes
       setTeams([])
+      setTotalTeams(0)
       setExpandedTeams(new Set())
       setError(null)
       setEditingPlayer(null)
@@ -117,6 +119,9 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
       logger.api('Team data received:', data)
 
       if (data.success) {
+        // Store total teams count from API response
+        setTotalTeams(data.total_teams || 0)
+        
         let teamsToShow = data.teams || []
         
         // If captain or enrolled participant, filter to show only their team
@@ -348,24 +353,26 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
           </div>
         )}
 
-        {!loading && !error && teams.length === 0 && (
-          <div className="text-center py-8 text-[#a5b4fc]">
-            {shouldShowOnlyUserTeam 
-              ? (isCaptain 
-                  ? "You haven't created a team for this sport yet. Please register a team first."
-                  : "You are not enrolled in any team for this sport yet.")
-              : "No teams registered for this sport yet."
-            }
-          </div>
+        {!loading && !error && (
+          <>
+            <div className="text-[0.9rem] text-[#cbd5ff] mb-4 text-center">
+              Total Teams Participated: <span className="text-[#ffe66d] font-bold">{totalTeams}</span>
+            </div>
+            {teams.length === 0 && (
+              <div className="text-center py-8 text-[#a5b4fc]">
+                {shouldShowOnlyUserTeam 
+                  ? (isCaptain 
+                      ? "You haven't created a team for this sport yet. Please register a team first."
+                      : "You are not enrolled in any team for this sport yet.")
+                  : "No teams registered for this sport yet."
+                }
+              </div>
+            )}
+          </>
         )}
 
         {!loading && !error && teams.length > 0 && (
           <div className="space-y-3">
-            {!shouldShowOnlyUserTeam && (
-              <div className="text-[0.9rem] text-[#cbd5ff] mb-4 text-center">
-                Total Teams: <span className="text-[#ffe66d] font-bold">{teams.length}</span>
-              </div>
-            )}
             {teams.map((team) => {
               const isExpanded = expandedTeams.has(team.team_name)
               // Check if this is the user's team (captain or enrolled participant)

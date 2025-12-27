@@ -246,8 +246,9 @@ function App() {
         loggedInUser.participated_in.some(p => p.sport === sport.name)
       
       if (hasParticipated) {
-        // User has already participated - show message
-        showStatusPopup('You have already participated.', 'error', 3000)
+        // User has already participated - show popup with total participants count
+        setSelectedSport(sport)
+        setIsModalOpen(true)
         return
       }
     }

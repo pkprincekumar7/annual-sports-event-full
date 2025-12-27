@@ -29,8 +29,8 @@ A full-stack application for managing annual sports event registrations with Rea
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd annual-sports-event-ui
+git clone https://github.com/pkprincekumar7/annual-sports-event-full.git
+cd annual-sports-event-full
 ```
 
 2. Install dependencies:
@@ -62,17 +62,17 @@ VITE_API_URL=http://localhost:3001
 
 # Backend Configuration
 PORT=3001
-MONGODB_URI=mongodb://localhost:27017/annual-sports
+MONGODB_URI=mongodb://localhost:27017/annual-sports-event
 JWT_SECRET=your-secret-key-change-in-production
 REGISTRATION_DEADLINE=2026-01-07T00:00:00
 ```
 
-   For production, update these values accordingly:
-   ```env
-   VITE_API_URL=https://your-api-server.com
-   MONGODB_URI=mongodb://your-mongodb-connection-string
-   JWT_SECRET=your-strong-secret-key
-   ```
+For production, update these values accordingly:
+```env
+VITE_API_URL=https://your-api-server.com
+MONGODB_URI=mongodb://your-mongodb-connection-string
+JWT_SECRET=your-strong-secret-key
+```
 
 4. Start the backend server:
 ```bash
@@ -115,7 +115,7 @@ The application uses environment variables for configuration:
 
 ### Backend Variables
 - `PORT` - Backend server port (default: `3001`)
-- `MONGODB_URI` - MongoDB connection string (default: `mongodb://localhost:27017/annual-sports`)
+- `MONGODB_URI` - MongoDB connection string (default: `mongodb://localhost:27017/annual-sports-event`)
 - `JWT_SECRET` - Secret key for JWT token signing (default: `your-secret-key-change-in-production`)
 - `REGISTRATION_DEADLINE` - Registration deadline date (default: `2026-01-07T00:00:00`)
 
@@ -176,17 +176,19 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Captain assignment and team management
 - ✅ Team and individual event registration
 - ✅ Participation tracking and limits
+- ✅ Total teams/participants count display - Shows total teams participated for team events and total players participated for non-team events
+- ✅ Already participated view - Shows popup with participation status and total count when user has already participated
 - ✅ Status popups for success/error messages
 - ✅ Loading states for all API operations
 - ✅ Form validation with proper error handling
 - ✅ User data fetched from server (not stored in localStorage)
 - ✅ All original styling preserved with Tailwind CSS
-- ✅ **Request caching and deduplication** - Reduces API calls and improves performance
-- ✅ **Request cancellation** - Prevents race conditions and memory leaks
-- ✅ **Error Boundary** - Catches React errors and displays user-friendly error UI
-- ✅ **Production-ready logging** - Environment-aware logging utility (debug logs only in development)
-- ✅ **Persistent authentication** - User stays logged in after page refresh (token-based)
-- ✅ **Modal behavior** - Modals don't close on outside click (must use close button)
+- ✅ Request caching and deduplication - Reduces API calls and improves performance
+- ✅ Request cancellation - Prevents race conditions and memory leaks
+- ✅ Error Boundary - Catches React errors and displays user-friendly error UI
+- ✅ Production-ready logging - Environment-aware logging utility (debug logs only in development)
+- ✅ Persistent authentication - User stays logged in after page refresh (token-based)
+- ✅ Modal behavior - Modals don't close on outside click (must use close button)
 
 ### Backend Features
 - ✅ RESTful API with Express.js
@@ -196,10 +198,12 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Excel export functionality
 - ✅ Team and individual event management
 - ✅ Captain role management
-- ✅ **Optimized MongoDB queries** - Uses indexes and projections for better performance
-- ✅ **Password exclusion** - Passwords never sent in API responses
-- ✅ **Production-ready logging** - Environment-aware logging utility (debug logs only in development)
-- ✅ **Optimized user endpoint** - `/api/me` endpoint for fetching current user (more efficient than fetching all players)
+- ✅ Participants count endpoint - Efficient aggregation-based endpoint for counting participants in non-team events
+- ✅ Teams count in response - Team endpoints return total teams count along with team data
+- ✅ Optimized MongoDB queries - Uses indexes and projections for better performance
+- ✅ Password exclusion - Passwords never sent in API responses
+- ✅ Production-ready logging - Environment-aware logging utility (debug logs only in development)
+- ✅ Optimized user endpoint - `/api/me` endpoint for fetching current user (more efficient than fetching all players)
 
 ## API Integration
 
@@ -238,12 +242,13 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
 - `DELETE /api/remove-captain` - Remove captain role (admin only)
 
 #### Team Management
-- `GET /api/teams/:sport` - Get teams for a specific sport (requires authentication)
+- `GET /api/teams/:sport` - Get teams for a specific sport (requires authentication, returns `total_teams` count)
 - `POST /api/update-team-player` - Replace player in team (admin only)
 - `DELETE /api/delete-team` - Delete a team (admin only)
 
 #### Participant Management
 - `GET /api/participants/:sport` - Get participants for a specific sport (admin only)
+- `GET /api/participants-count/:sport` - Get total participants count for a specific sport (requires authentication, no admin required)
 
 #### Data Export
 - `GET /api/export-excel` - Export players data to Excel (admin only)
@@ -255,8 +260,8 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
 - User data is fetched from the server on app mount and after login (not stored in localStorage)
 - Token is automatically included in all authenticated API requests via `fetchWithAuth` utility
 - On token expiration (401/403), user is automatically logged out and redirected
-- **Authentication persistence**: User stays logged in after page refresh - token is preserved and user data is automatically fetched on app mount
-- **Optimized user fetching**: Uses `/api/me` endpoint to fetch only current user data (more efficient than `/api/players`)
+- Authentication persistence: User stays logged in after page refresh - token is preserved and user data is automatically fetched on app mount
+- Optimized user fetching: Uses `/api/me` endpoint to fetch only current user data (more efficient than `/api/players`)
 
 ### API Utility Functions
 
@@ -316,7 +321,7 @@ The application uses utility functions in `src/utils/api.js`:
 1. Ensure MongoDB is running (local or remote)
 2. Set environment variables in `.env` file:
    - `VITE_API_URL` (defaults to `http://localhost:3001` if not set)
-   - `MONGODB_URI` (defaults to `mongodb://localhost:27017/annual-sports`)
+   - `MONGODB_URI` (defaults to `mongodb://localhost:27017/annual-sports-event`)
    - `JWT_SECRET` (use a strong secret in production)
    - `PORT` (defaults to `3001`)
 
@@ -385,20 +390,20 @@ sudo apt install -y nodejs
 
 ### Step 2: Clone and Setup the Project
 
-1. Clone the repository to your desired location (e.g., `/var/www/annual-sports-event-ui`):
+1. Clone the repository to your desired location (e.g., `/var/www/annual-sports-event-full`):
 
 ```bash
 # Navigate to the directory where you want to install the application
 cd /var/www
 
 # Clone the repository (replace with your actual repository URL)
-sudo git clone <repository-url> annual-sports-event-ui
+sudo git clone <repository-url> annual-sports-event-full
 
 # Change ownership to your user (replace 'ubuntu' with your username)
-sudo chown -R ubuntu:ubuntu annual-sports-event-ui
+sudo chown -R ubuntu:ubuntu annual-sports-event-full
 
 # Navigate to the project directory
-cd annual-sports-event-ui
+cd annual-sports-event-full
 ```
 
 2. Install project dependencies:
@@ -438,7 +443,7 @@ Create a systemd service file to manage the application as a system service:
 sudo nano /etc/systemd/system/annual-sports-frontend.service
 ```
 
-Add the following configuration (replace `/var/www/annual-sports-event-ui` with your actual project path and `ubuntu` with your username):
+Add the following configuration (replace `/var/www/annual-sports-event-full` with your actual project path and `ubuntu` with your username):
 
 ```ini
 [Unit]
@@ -449,7 +454,7 @@ After=network.target
 Type=simple
 User=ubuntu
 Group=ubuntu
-WorkingDirectory=/var/www/annual-sports-event-ui
+WorkingDirectory=/var/www/annual-sports-event-full
 Environment=NODE_ENV=production
 Environment=PORT=5173
 ExecStart=/usr/bin/npm run preview
@@ -637,6 +642,318 @@ sudo nginx -t  # Test configuration
 sudo systemctl reload nginx
 ```
 
+## Backend Deployment
+
+This section describes how to deploy the backend API server on a Linux server using systemd for process management. The service will automatically start on boot and restart on failure.
+
+### Prerequisites
+
+- Ubuntu/Debian Linux server (or similar distribution)
+- Root or sudo access
+- Node.js and npm installed
+- MongoDB installed and running (local or remote)
+- Git (for cloning the repository)
+
+### Step 1: Install Node.js and npm
+
+If Node.js is not already installed on your server, install it using the following commands:
+
+```bash
+# Update package list
+sudo apt update
+
+# Install Node.js (this will install both nodejs and npm)
+sudo apt install nodejs npm -y
+
+# Verify installation
+node --version
+npm --version
+```
+
+**Note:** The default Node.js version from Ubuntu repositories might be older. For Node.js v16 or higher, consider using NodeSource repository:
+
+```bash
+# Install Node.js 18.x (LTS)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+```
+
+### Step 2: Install MongoDB
+
+If MongoDB is not already installed, install it:
+
+```bash
+# Import MongoDB public GPG key
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+
+# Add MongoDB repository
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+
+# Update package list
+sudo apt update
+
+# Install MongoDB
+sudo apt install -y mongodb-org
+
+# Start MongoDB service
+sudo systemctl start mongod
+sudo systemctl enable mongod
+```
+
+### Step 3: Clone and Setup the Project
+
+1. Clone the repository to your desired location (e.g., `/var/www/annual-sports-event-full`):
+
+```bash
+# Navigate to the directory where you want to install the application
+cd /var/www
+
+# Clone the repository (replace with your actual repository URL)
+sudo git clone <repository-url> annual-sports-event-full
+
+# Change ownership to your user (replace 'ubuntu' with your username)
+sudo chown -R ubuntu:ubuntu annual-sports-event-full
+
+# Navigate to the project directory
+cd annual-sports-event-full
+```
+
+2. Install project dependencies:
+
+```bash
+npm install
+```
+
+3. Create the `.env` file with production configuration:
+
+```bash
+# Create .env file
+nano .env
+```
+
+Add the following content (replace with your actual values):
+
+```env
+# Backend Configuration
+PORT=3001
+MONGODB_URI=mongodb://localhost:27017/annual-sports-event
+JWT_SECRET=your-strong-secret-key-change-in-production
+REGISTRATION_DEADLINE=2026-01-07T00:00:00
+```
+
+Save and exit (Ctrl+X, then Y, then Enter).
+
+**Note:** For production, use a strong, random JWT_SECRET and ensure MongoDB connection string is correct.
+
+### Step 4: Create systemd Service File
+
+Create a systemd service file to manage the backend API server as a system service:
+
+```bash
+sudo nano /etc/systemd/system/annual-sports-backend.service
+```
+
+Add the following configuration (replace `/var/www/annual-sports-event-full` with your actual project path and `ubuntu` with your username):
+
+```ini
+[Unit]
+Description=Annual Sports Backend - Express.js API Server
+After=network.target mongod.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/var/www/annual-sports-event-full
+Environment=NODE_ENV=production
+Environment=PORT=3001
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=annual-sports-backend
+
+# Security settings
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Configuration Explanation:**
+- `Description`: Human-readable description of the service
+- `After=network.target mongod.service`: Ensures the service starts after network and MongoDB are available
+- `Type=simple`: Service runs in the foreground
+- `User` and `Group`: User account that will run the service (replace with your username)
+- `WorkingDirectory`: Full path to your project directory
+- `Environment`: Sets environment variables (NODE_ENV=production, PORT=3001)
+- `ExecStart`: Command to start the service (`npm start` runs `node server.js`)
+- `Restart=always`: Automatically restart the service if it crashes
+- `RestartSec=10`: Wait 10 seconds before restarting
+- `StandardOutput` and `StandardError`: Redirect logs to systemd journal
+- `SyslogIdentifier`: Tag for log entries
+- `PrivateTmp`: Use private /tmp directory for security
+- `WantedBy=multi-user.target`: Start service at boot
+
+Save and exit the file (Ctrl+X, then Y, then Enter).
+
+### Step 5: Enable and Start the Service
+
+1. Reload systemd to recognize the new service:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+2. Enable the service to start automatically on boot:
+
+```bash
+sudo systemctl enable annual-sports-backend
+```
+
+3. Start the service:
+
+```bash
+sudo systemctl start annual-sports-backend
+```
+
+4. Check the service status:
+
+```bash
+sudo systemctl status annual-sports-backend
+```
+
+You should see output indicating the service is active and running. The backend API will be accessible on `http://your-server-ip:3001` (or the configured port).
+
+### Step 6: Managing the Service
+
+#### Check Service Status
+
+```bash
+sudo systemctl status annual-sports-backend
+```
+
+#### Stop the Service
+
+```bash
+sudo systemctl stop annual-sports-backend
+```
+
+#### Start the Service
+
+```bash
+sudo systemctl start annual-sports-backend
+```
+
+#### Restart the Service
+
+```bash
+sudo systemctl restart annual-sports-backend
+```
+
+**Note:** Restart the service after making changes to the code or configuration:
+
+1. Pull latest changes: `git pull origin main` (or your branch name)
+2. Install new dependencies if needed: `npm install`
+3. Update `.env` if needed: `nano .env`
+4. Restart the service: `sudo systemctl restart annual-sports-backend`
+
+#### Disable Auto-start on Boot
+
+```bash
+sudo systemctl disable annual-sports-backend
+```
+
+#### View Service Logs
+
+**Real-time log monitoring:**
+```bash
+sudo journalctl -u annual-sports-backend -f
+```
+
+**View last 50 log entries:**
+```bash
+sudo journalctl -u annual-sports-backend -n 50
+```
+
+**View logs since today:**
+```bash
+sudo journalctl -u annual-sports-backend --since today
+```
+
+**View logs with timestamps:**
+```bash
+sudo journalctl -u annual-sports-backend --since "2024-01-01 00:00:00"
+```
+
+### Step 7: Firewall Configuration
+
+If you're using UFW (Uncomplicated Firewall), allow traffic on port 3001:
+
+```bash
+# Allow port 3001
+sudo ufw allow 3001/tcp
+
+# Or allow from specific IP only (more secure)
+sudo ufw allow from <your-ip> to any port 3001
+
+# Check firewall status
+sudo ufw status
+```
+
+### Step 8: Reverse Proxy (Optional but Recommended)
+
+For production, it's recommended to use a reverse proxy (Nginx or Apache) in front of the Express.js server. This provides:
+- SSL/TLS encryption (HTTPS)
+- Better performance
+- Standard ports (80/443)
+- Additional security features
+
+#### Nginx Configuration Example
+
+1. Install Nginx (if not already installed):
+
+```bash
+sudo apt install nginx -y
+```
+
+2. Create Nginx configuration:
+
+```bash
+sudo nano /etc/nginx/sites-available/annual-sports-backend
+```
+
+Add the following configuration:
+
+```nginx
+server {
+    listen 80;
+    server_name api.your-domain.com;  # Replace with your domain or IP
+
+    location / {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+3. Enable the site:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/annual-sports-backend /etc/nginx/sites-enabled/
+sudo nginx -t  # Test configuration
+sudo systemctl reload nginx
+```
+
 ### Troubleshooting
 
 #### Service Fails to Start
@@ -654,13 +971,13 @@ cat /etc/systemd/system/annual-sports-frontend.service
 
 3. Ensure the project is built:
 ```bash
-cd /var/www/annual-sports-event-ui
+cd /var/www/annual-sports-event-full
 ls -la dist/  # Should show built files
 ```
 
 4. Test running the preview command manually:
 ```bash
-cd /var/www/annual-sports-event-ui
+cd /var/www/annual-sports-event-full
 npm run preview
 ```
 
@@ -687,17 +1004,17 @@ If you encounter permission errors:
 
 1. Check file ownership:
 ```bash
-ls -la /var/www/annual-sports-event-ui
+ls -la /var/www/annual-sports-event-full
 ```
 
 2. Fix ownership if needed:
 ```bash
-sudo chown -R ubuntu:ubuntu /var/www/annual-sports-event-ui
+sudo chown -R ubuntu:ubuntu /var/www/annual-sports-event-full
 ```
 
 3. Ensure the service user has execute permissions:
 ```bash
-sudo chmod +x /var/www/annual-sports-event-ui
+sudo chmod +x /var/www/annual-sports-event-full
 ```
 
 #### Service Not Accessible
@@ -724,13 +1041,173 @@ sudo ufw status
 curl http://localhost:5173
 ```
 
+### Backend Troubleshooting
+
+#### Backend Service Fails to Start
+
+1. Check service status and logs:
+```bash
+sudo systemctl status annual-sports-backend
+sudo journalctl -u annual-sports-backend -n 50
+```
+
+2. Verify the project path in the service file is correct:
+```bash
+cat /etc/systemd/system/annual-sports-backend.service
+```
+
+3. Ensure MongoDB is running:
+```bash
+sudo systemctl status mongod
+# If not running, start it:
+sudo systemctl start mongod
+```
+
+4. Check MongoDB connection in `.env` file:
+```bash
+cd /var/www/annual-sports-event-full
+cat .env | grep MONGODB_URI
+```
+
+5. Test running the server command manually:
+```bash
+cd /var/www/annual-sports-event-full
+npm start
+```
+
+6. Verify Node.js and npm are installed:
+```bash
+node --version
+npm --version
+```
+
+#### Backend Port Already in Use
+
+If port 3001 is already in use, you can:
+
+1. Change the port in `.env` file:
+```bash
+nano .env
+# Change PORT=3001 to PORT=3002 (or another available port)
+```
+
+2. Update the systemd service file to match:
+```bash
+sudo nano /etc/systemd/system/annual-sports-backend.service
+# Update Environment=PORT=3001 to Environment=PORT=3002
+```
+
+3. Reload and restart the service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart annual-sports-backend
+```
+
+#### Backend Permission Issues
+
+If you encounter permission errors:
+
+1. Check file ownership:
+```bash
+ls -la /var/www/annual-sports-event-full
+```
+
+2. Fix ownership if needed:
+```bash
+sudo chown -R ubuntu:ubuntu /var/www/annual-sports-event-full
+```
+
+3. Ensure the service user has execute permissions:
+```bash
+sudo chmod +x /var/www/annual-sports-event-full
+```
+
+#### Backend Service Not Accessible
+
+1. Check if the service is running:
+```bash
+sudo systemctl status annual-sports-backend
+```
+
+2. Verify the port is listening:
+```bash
+sudo netstat -tlnp | grep 3001
+# or
+sudo ss -tlnp | grep 3001
+```
+
+3. Check firewall rules:
+```bash
+sudo ufw status
+```
+
+4. Test locally on the server:
+```bash
+curl http://localhost:3001/api/players
+# Should return an authentication error (which means the server is running)
+```
+
+#### MongoDB Connection Issues
+
+1. Check if MongoDB is running:
+```bash
+sudo systemctl status mongod
+```
+
+2. Check MongoDB logs:
+```bash
+sudo journalctl -u mongod -n 50
+```
+
+3. Test MongoDB connection:
+```bash
+mongosh
+# Or if using older version:
+mongo
+```
+
+4. Verify MongoDB URI in `.env`:
+```bash
+cat /var/www/annual-sports-event-full/.env | grep MONGODB_URI
+```
+
+5. Check MongoDB authentication (if using remote MongoDB):
+```bash
+# Ensure credentials are correct in MONGODB_URI
+# Format: mongodb://username:password@host:port/database
+```
+
+#### Environment Variables Not Loading
+
+1. Verify `.env` file exists and has correct format:
+```bash
+cd /var/www/annual-sports-event-full
+cat .env
+```
+
+2. Check if `.env` file is in the correct location (project root):
+```bash
+ls -la .env
+```
+
+3. Ensure no syntax errors in `.env` file (no spaces around `=`):
+```bash
+# Correct: PORT=3001
+# Incorrect: PORT = 3001
+```
+
+4. Restart the service after changing `.env`:
+```bash
+sudo systemctl restart annual-sports-backend
+```
+
 ### Updating the Application
 
 When you need to update the application:
 
 1. Navigate to the project directory:
 ```bash
-cd /var/www/annual-sports-event-ui
+cd /var/www/annual-sports-event-full
 ```
 
 2. Pull the latest changes:
@@ -763,6 +1240,45 @@ sudo systemctl restart annual-sports-frontend
 sudo systemctl status annual-sports-frontend
 ```
 
+### Updating the Backend Application
+
+When you need to update the backend API server:
+
+1. Navigate to the project directory:
+```bash
+cd /var/www/annual-sports-event-full
+```
+
+2. Pull the latest changes:
+```bash
+git pull origin main  # or your branch name
+```
+
+3. Install any new dependencies:
+```bash
+npm install
+```
+
+4. Update `.env` if needed:
+```bash
+nano .env
+```
+
+5. Restart the service:
+```bash
+sudo systemctl restart annual-sports-backend
+```
+
+6. Verify the service is running:
+```bash
+sudo systemctl status annual-sports-backend
+```
+
+7. Check the logs to ensure everything started correctly:
+```bash
+sudo journalctl -u annual-sports-backend -n 50
+```
+
 ## Component Overview
 
 ### Main Components
@@ -775,10 +1291,14 @@ sudo systemctl status annual-sports-frontend
 ### Modal Components
 
 - **RegisterModal.jsx** - Handles player registration and event participation (team/individual)
+  - Shows total teams count for team event registration
+  - Shows total participants count for non-team event registration
+  - Displays "Already Participated" view with total count when user has already participated
 - **LoginModal.jsx** - User login form
 - **AddCaptainModal.jsx** - Admin interface for assigning captain roles
 - **RemoveCaptainModal.jsx** - Admin interface for removing captain roles
 - **TeamDetailsModal.jsx** - Displays team details and allows team management
+  - Shows total teams participated count for all users
 - **ParticipantDetailsModal.jsx** - Displays individual participant details
 - **PlayerListModal.jsx** - Admin interface for viewing and editing all players
 
@@ -824,12 +1344,12 @@ The application uses React hooks for state management:
 - MongoDB indexes are automatically created when the Player model is first loaded
 - Cache is automatically cleared on authentication failures
 - Request cancellation prevents state updates after component unmount
-- **Error Boundary** wraps the entire application to catch and handle React errors gracefully
-- **Logging utilities** are used throughout the codebase for production-ready error tracking
+- Error Boundary wraps the entire application to catch and handle React errors gracefully
+- Logging utilities are used throughout the codebase for production-ready error tracking
 - All console statements have been replaced with logger utilities for better production control
-- **Authentication persistence**: User authentication is preserved across page refreshes using JWT tokens stored in localStorage
-- **Optimized API calls**: `/api/me` endpoint fetches only current user data instead of all players, improving performance and reducing network traffic
-- **Modal UX**: Modals require explicit close action (X button or Cancel) - they don't close on outside click to prevent accidental closures
+- Authentication persistence: User authentication is preserved across page refreshes using JWT tokens stored in localStorage
+- Optimized API calls: `/api/me` endpoint fetches only current user data instead of all players, improving performance and reducing network traffic
+- Modal UX: Modals require explicit close action (X button or Cancel) - they don't close on outside click to prevent accidental closures
 
 ## Security Considerations
 

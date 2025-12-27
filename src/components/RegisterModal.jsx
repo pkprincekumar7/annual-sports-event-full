@@ -225,7 +225,18 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       })
 
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
+          // Try to get the error message from the response
+          let errorMessage = 'Error while saving. Please try again.'
+          try {
+            const errorData = await response.json()
+            errorMessage = errorData.error || errorData.message || errorMessage
+          } catch (e) {
+            // If response is not JSON, use status text
+            errorMessage = `HTTP ${response.status}: ${response.statusText}`
+          }
+          onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
+          setIsSubmitting(false)
+          return
         }
 
         const data = await response.json()
@@ -469,7 +480,18 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         })
 
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
+          // Try to get the error message from the response
+          let errorMessage = 'Error updating participation. Please try again.'
+          try {
+            const errorData = await response.json()
+            errorMessage = errorData.error || errorData.message || errorMessage
+          } catch (e) {
+            // If response is not JSON, use status text
+            errorMessage = `HTTP ${response.status}: ${response.statusText}`
+          }
+          onStatusPopup(`❌ ${errorMessage}`, 'error', 5000)
+          setIsSubmitting(false)
+          return // Don't proceed with closing modal or showing success
         }
 
         const data = await response.json()

@@ -29,7 +29,18 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        // Try to get the error message from the response
+        let errorMessage = 'Error while logging in. Please try again.'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorData.message || 'Invalid registration number or password.'
+        } catch (e) {
+          // If response is not JSON, use status text
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`
+        }
+        onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
+        setIsLoading(false)
+        return
       }
 
       const data = await response.json()

@@ -320,16 +320,6 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
           </div>
         )}
 
-        <div className="flex justify-center mt-6">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-6 py-2 rounded-full border border-[rgba(148,163,184,0.7)] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_10px_26px_rgba(15,23,42,0.9)]"
-          >
-            Close
-          </button>
-        </div>
-
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && participantToDelete && (
         <div className={`${embedded ? 'absolute' : 'fixed'} inset-0 bg-[rgba(0,0,0,0.75)] flex items-center justify-center z-[300]`}>

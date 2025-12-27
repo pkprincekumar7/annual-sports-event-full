@@ -11,6 +11,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   const [loadingTeams, setLoadingTeams] = useState(false)
   const [totalParticipants, setTotalParticipants] = useState(0)
   const [loadingParticipants, setLoadingParticipants] = useState(false)
+  const [justParticipated, setJustParticipated] = useState(false) // Track if user just participated
 
   const isTeam = selectedSport?.type === 'team'
   const playerCount = isTeam ? selectedSport?.players || 0 : 0
@@ -22,6 +23,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       setPlayers([])
       setTotalTeams(0)
       setTotalParticipants(0)
+      setJustParticipated(false) // Reset just participated state when modal closes
       return
     }
 
@@ -514,7 +516,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           onUserUpdate(updatedPlayer)
         }
 
-        onStatusPopup(`✅ Your registration for ${selectedSport.name.toUpperCase()} has been saved!`, 'success', 2500)
+        // Set just participated flag to show success message instead of "Already Participated"
+        setJustParticipated(true)
+        
+        onStatusPopup(`✅ Participated Successfully!`, 'success', 2500)
         setIsSubmitting(false)
 
         setTimeout(() => {
@@ -542,8 +547,8 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
   // Individual/Cultural Events - Confirmation Dialog or Already Participated View
   if (selectedSport && !isTeam) {
-    // If user has already participated, show view-only mode
-    if (hasAlreadyParticipated) {
+    // If user has already participated (and not just participated), show view-only mode
+    if (hasAlreadyParticipated && !justParticipated) {
     const content = (
       <aside className={`${embedded ? 'w-full' : 'max-w-[420px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative`}>
           {!embedded && (
@@ -570,16 +575,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
             <div className="text-[0.9rem] text-[#cbd5ff] mb-8 text-center">
               Total Players Participated: <span className="text-[#ffe66d] font-bold text-[1.1rem]">{loadingParticipants ? '...' : totalParticipants}</span>
-            </div>
-
-            <div className="flex justify-center mt-[0.8rem]">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-8 py-[9px] rounded-full border border-[rgba(148,163,184,0.7)] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_10px_26px_rgba(15,23,42,0.9)]"
-              >
-                Close
-              </button>
             </div>
           </aside>
       )

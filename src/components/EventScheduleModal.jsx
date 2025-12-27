@@ -60,9 +60,15 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
 
     // Fetch data when modal opens or sport changes
     const loadData = async () => {
-      await fetchMatches()
-      if (isAdmin) {
-        await fetchTeamsPlayers()
+      try {
+        await fetchMatches()
+        if (isAdmin) {
+          await fetchTeamsPlayers()
+        }
+      } catch (err) {
+        // Errors are already handled in fetchMatches and fetchTeamsPlayers
+        // This catch prevents unhandled promise rejection
+        logger.error('Error in loadData:', err)
       }
     }
 
@@ -888,7 +894,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                   Winner
                                 </button>
                               )}
-                              {isAdmin && match.status === 'completed' && match.winner && (
+                              {match.status === 'completed' && match.winner && (
                                 <span className={`px-2 py-1 rounded text-[0.75rem] font-bold ${
                                   match.winner === match.team_one
                                     ? 'bg-[rgba(34,197,94,0.8)] text-white'
@@ -916,7 +922,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                   Winner
                                 </button>
                               )}
-                              {isAdmin && match.status === 'completed' && match.winner && (
+                              {match.status === 'completed' && match.winner && (
                                 <span className={`px-2 py-1 rounded text-[0.75rem] font-bold ${
                                   match.winner === match.team_two
                                     ? 'bg-[rgba(34,197,94,0.8)] text-white'
@@ -952,7 +958,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                   Winner
                                 </button>
                               )}
-                              {isAdmin && match.status === 'completed' && match.winner && match.player_one && match.player_one.name && (
+                              {match.status === 'completed' && match.winner && match.player_one && match.player_one.name && (
                                 <span className={`px-2 py-1 rounded text-[0.75rem] font-bold ${
                                   match.winner === `${match.player_one.name} (${match.player_one.reg_number})`
                                     ? 'bg-[rgba(34,197,94,0.8)] text-white'
@@ -985,7 +991,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                   Winner
                                 </button>
                               )}
-                              {isAdmin && match.status === 'completed' && match.winner && match.player_two && match.player_two.name && (
+                              {match.status === 'completed' && match.winner && match.player_two && match.player_two.name && (
                                 <span className={`px-2 py-1 rounded text-[0.75rem] font-bold ${
                                   match.winner === `${match.player_two.name} (${match.player_two.reg_number})`
                                     ? 'bg-[rgba(34,197,94,0.8)] text-white'

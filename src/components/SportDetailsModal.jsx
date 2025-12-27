@@ -262,7 +262,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       if (isEnrolledInTeamEvent) {
         tabs.push({ id: 'view', label: 'View Team' })
       }
-      // Always show events
+      // Always show events (even if it's the only tab)
       tabs.push({ id: 'events', label: 'View Events' })
       return tabs
     } else {

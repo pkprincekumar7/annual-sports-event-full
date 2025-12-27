@@ -28,9 +28,13 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
         }),
       })
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
 
-      if (response.ok && data.success) {
+      if (data.success) {
         // Store JWT token in localStorage (user data is handled by App.jsx)
         if (data.token) {
           localStorage.setItem('authToken', data.token)

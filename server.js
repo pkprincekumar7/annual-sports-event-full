@@ -1603,6 +1603,118 @@ app.get('/api/teams/:sport', authenticateToken, async (req, res) => {
   }
 })
 
+// API endpoint to get all sports counts at once (teams and participants) - no admin required
+app.get('/api/sports-counts', authenticateToken, async (req, res) => {
+  try {
+    logger.api('Received request for all sports counts')
+
+    // Get all team sports counts
+    const teamSports = ['Cricket', 'Volleyball', 'Badminton', 'Table Tennis', 'Kabaddi', 'Relay 4×100 m', 'Relay 4×400 m']
+    const teamsCounts = {}
+
+    // Get all individual/cultural sports
+    const individualSports = [
+      'Carrom', 'Chess', 'Sprint 100 m', 'Sprint 200 m', 'Sprint 400 m',
+      'Long Jump', 'High Jump', 'Javelin', 'Shot Put', 'Discus Throw',
+      'Essay Writing', 'Story Writing', 'Group Discussion', 'Debate',
+      'Extempore', 'Quiz', 'Dumb Charades', 'Painting', 'Singing'
+    ]
+    const participantsCounts = {}
+
+    // Fetch teams counts for all team sports in parallel
+    const teamPromises = teamSports.map(async (sport) => {
+      try {
+        const playersInTeams = await Player.find({
+          reg_number: { $ne: 'admin' },
+          participated_in: {
+            $elemMatch: {
+              sport: sport,
+              team_name: { $exists: true, $ne: null }
+            }
+          }
+        }).select('-password').lean()
+
+        // Group by team name to count unique teams
+        const teamsSet = new Set()
+        for (const player of playersInTeams) {
+          const participation = player.participated_in.find(
+            p => p.sport === sport && p.team_name
+          )
+          if (participation && participation.team_name) {
+            teamsSet.add(participation.team_name)
+          }
+        }
+        return { sport, count: teamsSet.size }
+      } catch (error) {
+        logger.error(`Error getting teams count for ${sport}:`, error)
+        return { sport, count: 0 }
+      }
+    })
+
+    // Fetch participants counts for all individual/cultural sports in parallel
+    const participantPromises = individualSports.map(async (sport) => {
+      try {
+        const result = await Player.aggregate([
+          {
+            $match: {
+              reg_number: { $ne: 'admin' }
+            }
+          },
+          {
+            $unwind: '$participated_in'
+          },
+          {
+            $match: {
+              'participated_in.sport': sport,
+              $or: [
+                { 'participated_in.team_name': { $exists: false } },
+                { 'participated_in.team_name': null },
+                { 'participated_in.team_name': '' }
+              ]
+            }
+          },
+          {
+            $count: 'total'
+          }
+        ])
+        const count = result.length > 0 ? result[0].total : 0
+        return { sport, count }
+      } catch (error) {
+        logger.error(`Error getting participants count for ${sport}:`, error)
+        return { sport, count: 0 }
+      }
+    })
+
+    // Wait for all promises to resolve
+    const teamResults = await Promise.all(teamPromises)
+    const participantResults = await Promise.all(participantPromises)
+
+    // Build the counts objects
+    teamResults.forEach(({ sport, count }) => {
+      teamsCounts[sport] = count
+    })
+
+    participantResults.forEach(({ sport, count }) => {
+      participantsCounts[sport] = count
+    })
+
+    logger.api('All sports counts fetched successfully')
+
+    res.json({
+      success: true,
+      teams_counts: teamsCounts,
+      participants_counts: participantsCounts
+    })
+  } catch (error) {
+    logger.error('Error getting all sports counts:', error)
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get sports counts',
+      details: error.message
+    })
+  }
+})
+
 // API endpoint to get total participants count for a specific sport (non-team events) - no admin required
 app.get('/api/participants-count/:sport', authenticateToken, async (req, res) => {
   try {

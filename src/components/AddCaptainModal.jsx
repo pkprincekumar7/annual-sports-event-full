@@ -108,9 +108,13 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
         }),
       })
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
 
-      if (response.ok && data.success) {
+      if (data.success) {
         onStatusPopup(
           `✅ ${selectedPlayer.full_name} has been added as captain for ${sport}!`,
           'success',

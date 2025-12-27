@@ -224,9 +224,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         }),
       })
 
-      const data = await response.json()
-      
-      if (response.ok && data.success) {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const data = await response.json()
+        
+        if (data.success) {
         onStatusPopup('✅ Your registration has been saved!', 'success', 2500)
         form.reset()
         setIsSubmitting(false)
@@ -400,12 +404,14 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
               
               // Fetch updated player data (will use cache if available)
               const playerResponse = await fetchWithAuth('/api/players')
-              const playerData = await playerResponse.json()
-              if (playerData.success) {
-                const updatedPlayer = playerData.players.find(p => p.reg_number === loggedInUser.reg_number)
-                if (updatedPlayer) {
-                  const { password: _, ...playerWithoutPassword } = updatedPlayer
-                  onUserUpdate(playerWithoutPassword)
+              if (playerResponse.ok) {
+                const playerData = await playerResponse.json()
+                if (playerData.success) {
+                  const updatedPlayer = playerData.players.find(p => p.reg_number === loggedInUser.reg_number)
+                  if (updatedPlayer) {
+                    const { password: _, ...playerWithoutPassword } = updatedPlayer
+                    onUserUpdate(playerWithoutPassword)
+                  }
                 }
               }
             } catch (updateError) {
@@ -462,9 +468,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           }),
         })
 
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
         const data = await response.json()
 
-        if (!response.ok || !data.success) {
+        if (!data.success) {
           // Show error message to user
           const errorMessage = data.error || 'Error updating participation. Please try again.'
           onStatusPopup(`❌ ${errorMessage}`, 'error', 5000)

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { fetchWithAuth } from '../utils/api'
+import { useState, useEffect, useRef } from 'react'
+import { fetchWithAuth, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
 function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
@@ -10,14 +10,20 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
   const [editingPlayer, setEditingPlayer] = useState(null)
   const [editedData, setEditedData] = useState({})
   const [saving, setSaving] = useState(false)
+  const isRefreshingRef = useRef(false) // Use ref to track if we're refreshing after update
 
   // Function to fetch players (extracted for reuse)
-  const fetchPlayers = async (signal = null) => {
+  // showError: whether to show error popup (default: true for initial load, false for silent refresh)
+  const fetchPlayers = async (signal = null, showError = true) => {
     setLoading(true)
     try {
       const response = await fetchWithAuth('/api/players', {
         signal,
       })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
 
       const data = await response.json()
       if (data.success) {
@@ -27,13 +33,18 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
         )
         setPlayers(filteredPlayers)
         setFilteredPlayers(filteredPlayers)
+      } else {
+        throw new Error(data.error || 'Failed to fetch players')
       }
     } catch (err) {
       if (err.name === 'AbortError') return
       logger.error('Error fetching players:', err)
-      if (onStatusPopup) {
+      // Don't show error if we're in the middle of a refresh after update
+      if (showError && onStatusPopup && !isRefreshingRef.current) {
         onStatusPopup('❌ Error fetching players. Please try again.', 'error', 3000)
       }
+      // Re-throw error so caller can handle it if needed
+      throw err
     } finally {
       setLoading(false)
     }
@@ -56,7 +67,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
     return () => {
       abortController.abort()
     }
-  }, [isOpen, onStatusPopup])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]) // Removed onStatusPopup from dependencies to prevent re-fetching
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -134,14 +146,54 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
         body: JSON.stringify(editedData),
       })
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
 
-      if (response.ok && data.success) {
+      if (data.success) {
         if (onStatusPopup) {
           onStatusPopup('✅ Player details updated successfully!', 'success', 2500)
         }
-        // Refresh players list
-        await fetchPlayers()
+        // Refresh players list silently (don't show error if refresh fails)
+        // Set flag to prevent error popups during refresh
+        isRefreshingRef.current = true
+        
+        // Clear cache first to ensure we get fresh data
+        clearCache('/api/players')
+        
+        // Use a separate function to avoid showing loading state and errors
+        try {
+          const response = await fetchWithAuth('/api/players')
+          
+          if (!response.ok) {
+            // Response not OK, but don't show error - just log it
+            logger.warn('Refresh failed: response not OK', response.status)
+            isRefreshingRef.current = false
+            return
+          }
+
+          const refreshData = await response.json()
+          logger.api('Refresh response:', refreshData)
+          
+          if (refreshData && refreshData.success) {
+            const filteredPlayers = (refreshData.players || []).filter(
+              p => p.reg_number !== 'admin'
+            )
+            setPlayers(filteredPlayers)
+            setFilteredPlayers(filteredPlayers)
+            logger.api('Players list refreshed successfully')
+          } else {
+            // Data structure unexpected, but don't show error
+            logger.warn('Refresh: unexpected data structure', refreshData)
+          }
+        } catch (err) {
+          // Log error but don't show popup - the update was successful
+          logger.error('Error refreshing players list after update:', err)
+        } finally {
+          isRefreshingRef.current = false
+        }
         setEditingPlayer(null)
         setEditedData({})
       } else {

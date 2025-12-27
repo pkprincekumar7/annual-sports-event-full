@@ -249,9 +249,13 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
         }),
       })
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
 
-      if (response.ok && data.success) {
+      if (data.success) {
         if (onStatusPopup) {
           onStatusPopup(`✅ Player updated successfully!`, 'success', 2500)
         }
@@ -286,9 +290,13 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
         }),
       })
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
 
-      if (response.ok && data.success) {
+      if (data.success) {
         if (onStatusPopup) {
           onStatusPopup(`✅ Team "${teamName}" deleted successfully! ${data.deleted_count} player(s) removed.`, 'success', 3000)
         }

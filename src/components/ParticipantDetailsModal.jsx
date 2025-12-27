@@ -118,9 +118,13 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
         }),
       })
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
 
-      if (response.ok && data.success) {
+      if (data.success) {
         if (onStatusPopup) {
           onStatusPopup(
             `✅ ${participantToDelete.full_name}'s participation in ${sport} has been removed!`,

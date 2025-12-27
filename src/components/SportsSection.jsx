@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { fetchWithAuth } from '../utils/api'
+import { fetchWithAuth, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
 const sportsData = {
@@ -37,171 +37,13 @@ const sportsData = {
   ],
 }
 
-function SportCard({ sport, type, onSportClick, loggedInUser, isEnrolled }) {
+function SportCard({ sport, type, onSportClick, loggedInUser, isEnrolled, teamsCount, participantsCount }) {
   const isAdmin = loggedInUser?.reg_number === 'admin'
   const showEnrolled = !isAdmin && isEnrolled
-  const [teamsCount, setTeamsCount] = useState(-1) // -1 means not loaded yet, 0+ means loaded
-  const [participantsCount, setParticipantsCount] = useState(-1) // -1 means not loaded yet, 0+ means loaded
-  const abortControllerRef = useRef(null)
-  const fetchKeyRef = useRef(null) // Track sport.name + type to detect actual changes
-  const prevFetchKeyRef = useRef(null) // Track previous fetch key to detect actual changes
-
-  // Debug: Log state changes
-  useEffect(() => {
-    if (loggedInUser) {
-      logger.api(`SportCard ${sport.name} (${type}) - teamsCount: ${teamsCount}, participantsCount: ${participantsCount}`)
-    }
-  }, [teamsCount, participantsCount, sport.name, type, loggedInUser])
-
-  // Reset counts when user logs out
-  useEffect(() => {
-    if (!loggedInUser) {
-      setTeamsCount(-1)
-      setParticipantsCount(-1)
-      // Clear refs when user logs out
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort()
-        abortControllerRef.current = null
-      }
-      fetchKeyRef.current = null
-      prevFetchKeyRef.current = null
-    }
-  }, [loggedInUser])
-
-  // Fetch counts for logged-in users - only re-run when sport.name or type changes
-  useEffect(() => {
-    if (!loggedInUser) {
-      return
-    }
-
-    // Create a unique key for this fetch (sport + type)
-    const currentFetchKey = `${sport.name}-${type}`
-    const prevFetchKey = prevFetchKeyRef.current
-    
-    // Only abort previous request if sport.name or type actually changed
-    if (abortControllerRef.current && prevFetchKey && prevFetchKey !== currentFetchKey) {
-      logger.api(`Sport/type changed from ${prevFetchKey} to ${currentFetchKey}, aborting previous request`)
-      abortControllerRef.current.abort()
-      abortControllerRef.current = null
-      fetchKeyRef.current = null
-    }
-
-    // Don't fetch if we already have the data for this exact sport/type
-    if ((type === 'team' && teamsCount >= 0) || (type !== 'team' && participantsCount >= 0)) {
-      if (fetchKeyRef.current === currentFetchKey) {
-        logger.api(`Already have count for ${sport.name} (${type}), skipping fetch`)
-        // Update prevFetchKeyRef even if we skip fetch
-        prevFetchKeyRef.current = currentFetchKey
-        return
-      }
-    }
-
-    let isMounted = true
-    const abortController = new AbortController()
-    // Store the fetch key BEFORE updating refs, so cleanup can compare
-    const thisEffectFetchKey = currentFetchKey
-    abortControllerRef.current = abortController
-    fetchKeyRef.current = currentFetchKey
-    prevFetchKeyRef.current = currentFetchKey
-
-    const fetchCounts = async () => {
-      try {
-        if (type === 'team') {
-          // Fetch teams count for team events
-          const encodedSport = encodeURIComponent(sport.name)
-          logger.api(`Fetching teams count for ${sport.name}...`)
-          const response = await fetchWithAuth(`/api/teams/${encodedSport}`, {
-            signal: abortController.signal,
-          })
-          
-          if (!isMounted) {
-            logger.api(`Component unmounted during fetch for ${sport.name}`)
-            return
-          }
-
-          if (response.ok) {
-            const data = await response.json()
-            logger.api(`Teams count for ${sport.name}:`, data)
-            const count = data.total_teams !== undefined ? data.total_teams : (data.teams ? data.teams.length : 0)
-            logger.api(`Setting teamsCount to:`, count, 'for sport:', sport.name)
-            if (isMounted) {
-              setTeamsCount(count)
-            }
-          } else {
-            logger.warn(`Failed to fetch teams count for ${sport.name}:`, response.status)
-            if (isMounted) {
-              setTeamsCount(0)
-            }
-          }
-        } else {
-          // Fetch participants count for non-team events
-          const encodedSport = encodeURIComponent(sport.name)
-          logger.api(`Fetching participants count for ${sport.name}...`)
-          const response = await fetchWithAuth(`/api/participants-count/${encodedSport}`, {
-            signal: abortController.signal,
-          })
-          
-          if (!isMounted) {
-            logger.api(`Component unmounted during fetch for ${sport.name}`)
-            return
-          }
-
-          if (response.ok) {
-            const data = await response.json()
-            logger.api(`Participants count for ${sport.name}:`, data)
-            const count = data.total_participants !== undefined ? data.total_participants : 0
-            logger.api(`Setting participantsCount to:`, count, 'for sport:', sport.name)
-            if (isMounted) {
-              setParticipantsCount(count)
-            }
-          } else {
-            logger.warn(`Failed to fetch participants count for ${sport.name}:`, response.status)
-            if (isMounted) {
-              setParticipantsCount(0)
-            }
-          }
-        }
-      } catch (err) {
-        if (err.name === 'AbortError') {
-          logger.api(`Request aborted for ${sport.name} (${type})`)
-          return
-        }
-        if (!isMounted) {
-          return
-        }
-        logger.error('Error fetching counts:', err)
-        // Set to 0 on error so it still displays
-        if (isMounted) {
-          if (type === 'team') {
-            setTeamsCount(0)
-          } else {
-            setParticipantsCount(0)
-          }
-        }
-      }
-    }
-
-    fetchCounts()
-
-    return () => {
-      isMounted = false
-      // Only abort if this is still the current controller AND the fetch key actually changed
-      // Compare the fetch key from this effect run with what's stored in the ref
-      // If they're different, a new effect run started with a different sport/type - abort
-      if (abortControllerRef.current === abortController) {
-        const currentStoredKey = fetchKeyRef.current
-        // If stored key is different from this effect's key, sport/type changed
-        if (currentStoredKey && currentStoredKey !== thisEffectFetchKey) {
-          // A new effect run started with different sport/type - abort this one
-          logger.api(`Aborting request for ${sport.name} (${type}) - new fetch started for different sport/type (${currentStoredKey})`)
-          abortController.abort()
-        } else {
-          // Same fetch key - don't abort (loggedInUser change or unmount)
-          logger.api(`Not aborting request for ${sport.name} (${type}) - same fetch key (${thisEffectFetchKey})`)
-        }
-      }
-    }
-  }, [sport.name, type, loggedInUser]) // Need loggedInUser to trigger fetch when user logs in
+  
+  // Use props if provided, otherwise default to -1 (loading state)
+  const displayTeamsCount = teamsCount !== undefined ? teamsCount : -1
+  const displayParticipantsCount = participantsCount !== undefined ? participantsCount : -1
 
   // Debug: Log render state
   if (loggedInUser) {
@@ -231,9 +73,9 @@ function SportCard({ sport, type, onSportClick, loggedInUser, isEnrolled }) {
         {loggedInUser && (
           <div className="text-[0.8rem] mt-2 font-bold text-[#06b6d4] drop-shadow-[0_2px_8px_rgba(0,0,0,1)]" style={{ zIndex: 20 }}>
             {type === 'team' ? (
-              teamsCount < 0 ? 'Loading...' : `${teamsCount} Teams participated`
+              displayTeamsCount < 0 ? 'Loading...' : `${displayTeamsCount} Teams participated`
             ) : (
-              participantsCount < 0 ? 'Loading...' : `${participantsCount} Players participated`
+              displayParticipantsCount < 0 ? 'Loading...' : `${displayParticipantsCount} Players participated`
             )}
           </div>
         )}
@@ -243,6 +85,108 @@ function SportCard({ sport, type, onSportClick, loggedInUser, isEnrolled }) {
 }
 
 function SportsSection({ onSportClick, loggedInUser }) {
+  // State for all sports counts
+  const [sportsCounts, setSportsCounts] = useState({
+    teams_counts: {},
+    participants_counts: {}
+  })
+  const [loadingCounts, setLoadingCounts] = useState(false)
+  const prevLoggedInUserRef = useRef(null)
+  const hasFetchedRef = useRef(false)
+
+  // Fetch all sports counts once when user logs in
+  useEffect(() => {
+    const prevUser = prevLoggedInUserRef.current
+    const justLoggedIn = prevUser === null && loggedInUser !== null
+    
+    if (!loggedInUser) {
+      setSportsCounts({ teams_counts: {}, participants_counts: {} })
+      hasFetchedRef.current = false
+      prevLoggedInUserRef.current = null
+      return
+    }
+
+    // Only fetch if:
+    // 1. User just logged in (prev was null, now has user), OR
+    // 2. We haven't fetched yet (hasFetchedRef is false)
+    if (!justLoggedIn && hasFetchedRef.current) {
+      prevLoggedInUserRef.current = loggedInUser
+      return
+    }
+
+    // Clear any cached API responses to ensure fresh data
+    clearCache('/api/sports-counts')
+
+    let isMounted = true
+    const abortController = new AbortController()
+
+    const fetchAllCounts = async () => {
+      setLoadingCounts(true)
+      try {
+        logger.api('Fetching all sports counts from /api/sports-counts...')
+        const response = await fetchWithAuth('/api/sports-counts', {
+          signal: abortController.signal,
+        })
+
+        if (!isMounted) {
+          logger.api('Component unmounted, aborting fetch')
+          return
+        }
+
+        logger.api('Response status:', response.status, response.statusText)
+        
+        if (response.ok) {
+          const data = await response.json()
+          logger.api('All sports counts received:', data)
+          logger.api('Teams counts:', data.teams_counts)
+          logger.api('Participants counts:', data.participants_counts)
+          if (isMounted) {
+            setSportsCounts({
+              teams_counts: data.teams_counts || {},
+              participants_counts: data.participants_counts || {}
+            })
+            hasFetchedRef.current = true
+            prevLoggedInUserRef.current = loggedInUser
+            logger.api('State updated with sports counts')
+          }
+        } else {
+          const errorText = await response.text()
+          logger.warn('Failed to fetch all sports counts:', response.status, errorText)
+          if (isMounted) {
+            setSportsCounts({ teams_counts: {}, participants_counts: {} })
+          }
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          logger.api('Request for all sports counts aborted')
+          return
+        }
+        if (!isMounted) {
+          return
+        }
+        logger.error('Error fetching all sports counts:', err)
+        if (isMounted) {
+          setSportsCounts({ teams_counts: {}, participants_counts: {} })
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingCounts(false)
+        }
+      }
+    }
+
+    fetchAllCounts()
+
+    return () => {
+      isMounted = false
+      // Don't abort on loggedInUser change - let the request complete
+      // The isMounted check will prevent state updates if component unmounts
+      // Only abort if we're sure the component is unmounting (which we can't detect here)
+      // So we'll just let requests complete naturally
+      logger.api('Cleanup: marking as unmounted, but not aborting request to allow completion')
+    }
+  }, [loggedInUser])
+
   // Show Team Events if:
   // - User is not logged in (show all events)
   // - OR logged in user's reg_number is "admin" (admin - show all)
@@ -333,6 +277,8 @@ function SportsSection({ onSportClick, loggedInUser }) {
                 onSportClick={onSportClick}
                 loggedInUser={loggedInUser}
                 isEnrolled={isEnrolledInSport(sport.name, 'team')}
+                teamsCount={sportsCounts.teams_counts[sport.name]}
+                participantsCount={undefined}
               />
             ))}
           </div>
@@ -351,6 +297,8 @@ function SportsSection({ onSportClick, loggedInUser }) {
             onSportClick={onSportClick}
             loggedInUser={loggedInUser}
             isEnrolled={isEnrolledInSport(sport.name, 'individual')}
+            teamsCount={undefined}
+            participantsCount={sportsCounts.participants_counts[sport.name]}
           />
         ))}
       </div>
@@ -367,6 +315,8 @@ function SportsSection({ onSportClick, loggedInUser }) {
             onSportClick={onSportClick}
             loggedInUser={loggedInUser}
             isEnrolled={isEnrolledInSport(sport.name, 'individual')}
+            teamsCount={undefined}
+            participantsCount={sportsCounts.participants_counts[sport.name]}
           />
         ))}
       </div>

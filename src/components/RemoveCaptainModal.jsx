@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { fetchWithAuth } from '../utils/api'
+import { useState, useEffect, useRef } from 'react'
+import { fetchWithAuth, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
 function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
@@ -8,27 +8,40 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
   const [removing, setRemoving] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [captainToRemove, setCaptainToRemove] = useState(null)
+  const isRefreshingRef = useRef(false) // Track if we're refreshing after removal
 
   // Fetch captains by sport
   useEffect(() => {
     if (isOpen) {
       fetchWithAuth('/api/captains-by-sport')
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`)
+          }
+          return res.json()
+        })
         .then((data) => {
           if (data.success) {
             setCaptainsBySport(data.captainsBySport || {})
           } else {
             setCaptainsBySport({})
-            onStatusPopup(`❌ ${data.error || 'Error fetching captains. Please try again.'}`, 'error', 2500)
+            // Don't show error if we're refreshing after removal
+            if (!isRefreshingRef.current && onStatusPopup) {
+              onStatusPopup(`❌ ${data.error || 'Error fetching captains. Please try again.'}`, 'error', 2500)
+            }
           }
         })
         .catch((err) => {
           logger.error('Error fetching captains by sport:', err)
           setCaptainsBySport({})
-          onStatusPopup('❌ Error fetching captains. Please try again.', 'error', 2500)
+          // Don't show error if we're refreshing after removal
+          if (!isRefreshingRef.current && onStatusPopup) {
+            onStatusPopup('❌ Error fetching captains. Please try again.', 'error', 2500)
+          }
         })
     }
-  }, [isOpen, onStatusPopup])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]) // Removed onStatusPopup from dependencies
 
   // Reset state when modal closes
   useEffect(() => {
@@ -66,24 +79,43 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
         }),
       })
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
 
-      if (response.ok && data.success) {
+      if (data.success) {
         onStatusPopup(
           `✅ ${captainToRemove.captainName} has been removed as captain for ${captainToRemove.sport}!`,
           'success',
           3000
         )
-        // Refresh the captains list
+        // Refresh the captains list silently
+        isRefreshingRef.current = true
+        clearCache('/api/captains-by-sport')
+        
         fetchWithAuth('/api/captains-by-sport')
-          .then((res) => res.json())
+          .then((res) => {
+            if (!res.ok) {
+              throw new Error(`HTTP error! status: ${res.status}`)
+            }
+            return res.json()
+          })
           .then((data) => {
             if (data.success) {
               setCaptainsBySport(data.captainsBySport || {})
+            } else {
+              logger.warn('Failed to refresh captains list:', data.error)
+              // Don't show error popup here, just log it
             }
           })
           .catch((err) => {
             logger.error('Error refreshing captains:', err)
+            // Don't show error popup here, just log it - the removal was successful
+          })
+          .finally(() => {
+            isRefreshingRef.current = false
           })
         setCaptainToRemove(null)
       } else {

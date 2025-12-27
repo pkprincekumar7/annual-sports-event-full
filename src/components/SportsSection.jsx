@@ -1,3 +1,7 @@
+import { useState, useEffect, useRef } from 'react'
+import { fetchWithAuth } from '../utils/api'
+import logger from '../utils/logger'
+
 const sportsData = {
   team: [
     { name: 'Cricket', image: '/images/Cricket.jpg', text: 'College teams clash for the trophy.', players: 15 },
@@ -36,10 +40,177 @@ const sportsData = {
 function SportCard({ sport, type, onSportClick, loggedInUser, isEnrolled }) {
   const isAdmin = loggedInUser?.reg_number === 'admin'
   const showEnrolled = !isAdmin && isEnrolled
+  const [teamsCount, setTeamsCount] = useState(-1) // -1 means not loaded yet, 0+ means loaded
+  const [participantsCount, setParticipantsCount] = useState(-1) // -1 means not loaded yet, 0+ means loaded
+  const abortControllerRef = useRef(null)
+  const fetchKeyRef = useRef(null) // Track sport.name + type to detect actual changes
+  const prevFetchKeyRef = useRef(null) // Track previous fetch key to detect actual changes
+
+  // Debug: Log state changes
+  useEffect(() => {
+    if (loggedInUser) {
+      logger.api(`SportCard ${sport.name} (${type}) - teamsCount: ${teamsCount}, participantsCount: ${participantsCount}`)
+    }
+  }, [teamsCount, participantsCount, sport.name, type, loggedInUser])
+
+  // Reset counts when user logs out
+  useEffect(() => {
+    if (!loggedInUser) {
+      setTeamsCount(-1)
+      setParticipantsCount(-1)
+      // Clear refs when user logs out
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
+      fetchKeyRef.current = null
+      prevFetchKeyRef.current = null
+    }
+  }, [loggedInUser])
+
+  // Fetch counts for logged-in users - only re-run when sport.name or type changes
+  useEffect(() => {
+    if (!loggedInUser) {
+      return
+    }
+
+    // Create a unique key for this fetch (sport + type)
+    const currentFetchKey = `${sport.name}-${type}`
+    const prevFetchKey = prevFetchKeyRef.current
+    
+    // Only abort previous request if sport.name or type actually changed
+    if (abortControllerRef.current && prevFetchKey && prevFetchKey !== currentFetchKey) {
+      logger.api(`Sport/type changed from ${prevFetchKey} to ${currentFetchKey}, aborting previous request`)
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+      fetchKeyRef.current = null
+    }
+
+    // Don't fetch if we already have the data for this exact sport/type
+    if ((type === 'team' && teamsCount >= 0) || (type !== 'team' && participantsCount >= 0)) {
+      if (fetchKeyRef.current === currentFetchKey) {
+        logger.api(`Already have count for ${sport.name} (${type}), skipping fetch`)
+        // Update prevFetchKeyRef even if we skip fetch
+        prevFetchKeyRef.current = currentFetchKey
+        return
+      }
+    }
+
+    let isMounted = true
+    const abortController = new AbortController()
+    // Store the fetch key BEFORE updating refs, so cleanup can compare
+    const thisEffectFetchKey = currentFetchKey
+    abortControllerRef.current = abortController
+    fetchKeyRef.current = currentFetchKey
+    prevFetchKeyRef.current = currentFetchKey
+
+    const fetchCounts = async () => {
+      try {
+        if (type === 'team') {
+          // Fetch teams count for team events
+          const encodedSport = encodeURIComponent(sport.name)
+          logger.api(`Fetching teams count for ${sport.name}...`)
+          const response = await fetchWithAuth(`/api/teams/${encodedSport}`, {
+            signal: abortController.signal,
+          })
+          
+          if (!isMounted) {
+            logger.api(`Component unmounted during fetch for ${sport.name}`)
+            return
+          }
+
+          if (response.ok) {
+            const data = await response.json()
+            logger.api(`Teams count for ${sport.name}:`, data)
+            const count = data.total_teams !== undefined ? data.total_teams : (data.teams ? data.teams.length : 0)
+            logger.api(`Setting teamsCount to:`, count, 'for sport:', sport.name)
+            if (isMounted) {
+              setTeamsCount(count)
+            }
+          } else {
+            logger.warn(`Failed to fetch teams count for ${sport.name}:`, response.status)
+            if (isMounted) {
+              setTeamsCount(0)
+            }
+          }
+        } else {
+          // Fetch participants count for non-team events
+          const encodedSport = encodeURIComponent(sport.name)
+          logger.api(`Fetching participants count for ${sport.name}...`)
+          const response = await fetchWithAuth(`/api/participants-count/${encodedSport}`, {
+            signal: abortController.signal,
+          })
+          
+          if (!isMounted) {
+            logger.api(`Component unmounted during fetch for ${sport.name}`)
+            return
+          }
+
+          if (response.ok) {
+            const data = await response.json()
+            logger.api(`Participants count for ${sport.name}:`, data)
+            const count = data.total_participants !== undefined ? data.total_participants : 0
+            logger.api(`Setting participantsCount to:`, count, 'for sport:', sport.name)
+            if (isMounted) {
+              setParticipantsCount(count)
+            }
+          } else {
+            logger.warn(`Failed to fetch participants count for ${sport.name}:`, response.status)
+            if (isMounted) {
+              setParticipantsCount(0)
+            }
+          }
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          logger.api(`Request aborted for ${sport.name} (${type})`)
+          return
+        }
+        if (!isMounted) {
+          return
+        }
+        logger.error('Error fetching counts:', err)
+        // Set to 0 on error so it still displays
+        if (isMounted) {
+          if (type === 'team') {
+            setTeamsCount(0)
+          } else {
+            setParticipantsCount(0)
+          }
+        }
+      }
+    }
+
+    fetchCounts()
+
+    return () => {
+      isMounted = false
+      // Only abort if this is still the current controller AND the fetch key actually changed
+      // Compare the fetch key from this effect run with what's stored in the ref
+      // If they're different, a new effect run started with a different sport/type - abort
+      if (abortControllerRef.current === abortController) {
+        const currentStoredKey = fetchKeyRef.current
+        // If stored key is different from this effect's key, sport/type changed
+        if (currentStoredKey && currentStoredKey !== thisEffectFetchKey) {
+          // A new effect run started with different sport/type - abort this one
+          logger.api(`Aborting request for ${sport.name} (${type}) - new fetch started for different sport/type (${currentStoredKey})`)
+          abortController.abort()
+        } else {
+          // Same fetch key - don't abort (loggedInUser change or unmount)
+          logger.api(`Not aborting request for ${sport.name} (${type}) - same fetch key (${thisEffectFetchKey})`)
+        }
+      }
+    }
+  }, [sport.name, type, loggedInUser]) // Need loggedInUser to trigger fetch when user logs in
+
+  // Debug: Log render state
+  if (loggedInUser) {
+    logger.api(`Rendering SportCard ${sport.name} (${type}) - teamsCount: ${teamsCount}, participantsCount: ${participantsCount}`)
+  }
 
   return (
     <div
-      className="relative h-[170px] rounded-[18px] overflow-hidden shadow-[0_18px_40px_rgba(0,0,0,0.75)] cursor-pointer translate-y-0 transition-all duration-[0.25s] ease-in-out hover:-translate-y-2 hover:shadow-[0_26px_55px_rgba(0,0,0,0.9)]"
+      className="relative min-h-[170px] rounded-[18px] overflow-hidden shadow-[0_18px_40px_rgba(0,0,0,0.75)] cursor-pointer translate-y-0 transition-all duration-[0.25s] ease-in-out hover:-translate-y-2 hover:shadow-[0_26px_55px_rgba(0,0,0,0.9)]"
       style={{
         background: 'radial-gradient(circle at 0 0, #ffe66d 0, #7f1d1d 50%, #020617 100%)',
       }}
@@ -51,12 +222,21 @@ function SportCard({ sport, type, onSportClick, loggedInUser, isEnrolled }) {
       />
       {showEnrolled && (
         <div className="absolute top-2 right-2 px-3 py-1 rounded-full bg-[rgba(34,197,94,0.9)] text-white text-[0.75rem] font-bold uppercase tracking-[0.1em] shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-10">
-          Enrolled!
+          You are enrolled!
         </div>
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-[rgba(0,0,0,0.9)] to-[rgba(0,0,0,0.2)] flex flex-col justify-end p-[0.9rem] px-[1.1rem] text-[#f9fafb] drop-shadow-[0_3px_12px_rgba(0,0,0,0.9)]">
+      <div className="absolute inset-0 bg-gradient-to-t from-[rgba(0,0,0,0.9)] to-[rgba(0,0,0,0.2)] flex flex-col justify-end p-[0.9rem] px-[1.1rem] text-[#f9fafb] drop-shadow-[0_3px_12px_rgba(0,0,0,0.9)] z-10">
         <div className="text-[1.1rem] font-extrabold text-[#ffe66d] uppercase">{sport.name}</div>
         <div className="text-[0.85rem] mt-[0.15rem]">{sport.text}</div>
+        {loggedInUser && (
+          <div className="text-[0.8rem] mt-2 font-bold text-[#06b6d4] drop-shadow-[0_2px_8px_rgba(0,0,0,1)]" style={{ zIndex: 20 }}>
+            {type === 'team' ? (
+              teamsCount < 0 ? 'Loading...' : `${teamsCount} Teams participated`
+            ) : (
+              participantsCount < 0 ? 'Loading...' : `${participantsCount} Players participated`
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

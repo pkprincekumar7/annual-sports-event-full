@@ -3,10 +3,10 @@ import logger from './logger.js'
 
 // Cache configuration
 const CACHE_TTL = {
-  '/api/me': 30000, // 30 seconds for current user data
-  '/api/players': 30000, // 30 seconds for players list
-  '/api/sports': 300000, // 5 minutes for sports list (rarely changes)
-  default: 10000, // 10 seconds default
+  '/api/me': 5000, // 5 seconds for current user data
+  '/api/players': 5000, // 5 seconds for players list
+  '/api/sports': 5000, // 5 seconds for sports list
+  default: 5000, // 5 seconds default
 }
 
 // Request cache and deduplication

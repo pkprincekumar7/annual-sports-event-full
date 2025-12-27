@@ -37,39 +37,80 @@ const sportsData = {
   ],
 }
 
-function SportCard({ sport, type, onSportClick, loggedInUser, isEnrolled, teamsCount, participantsCount }) {
+function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUser, isEnrolled, isCaptain, canCreateOrViewTeam, teamsCount, participantsCount }) {
   const isAdmin = loggedInUser?.reg_number === 'admin'
-  const showEnrolled = !isAdmin && isEnrolled
   
   // Use props if provided, otherwise default to -1 (loading state)
   const displayTeamsCount = teamsCount !== undefined ? teamsCount : -1
   const displayParticipantsCount = participantsCount !== undefined ? participantsCount : -1
+
+  // Determine button text based on user type and enrollment status
+  const getButtonText = () => {
+    if (isAdmin) {
+      return type === 'team' ? 'View Teams' : 'View Participants'
+    }
+    
+    if (type === 'team') {
+      return isEnrolled ? 'View Team' : 'Create Team'
+    } else {
+      return isEnrolled ? 'View Enrollment' : 'Enroll Now'
+    }
+  }
+
+  // Check if primary button (Create Team/View Team) should be shown for team events
+  const shouldShowPrimaryButton = () => {
+    if (isAdmin) {
+      return true // Admin always sees primary button
+    }
+    
+    if (type === 'team') {
+      // canCreateOrViewTeam is passed as a prop (boolean), not a function
+      return canCreateOrViewTeam !== undefined ? canCreateOrViewTeam : true
+    }
+    
+    // For non-team events, always show primary button
+    return true
+  }
+
+  const handleButtonClick = (e) => {
+    e.stopPropagation() // Prevent any event bubbling
+    onSportClick({ name: sport.name, type, players: sport.players })
+  }
+
+  const handleEventScheduleClick = (e) => {
+    e.stopPropagation() // Prevent any event bubbling
+    if (onEventScheduleClick) {
+      onEventScheduleClick({ name: sport.name, type })
+    }
+  }
+
+  const handleCardClick = () => {
+    // Card is now clickable for all users
+    onSportClick({ name: sport.name, type, players: sport.players })
+  }
 
   // Debug: Log render state
   if (loggedInUser) {
     logger.api(`Rendering SportCard ${sport.name} (${type}) - teamsCount: ${teamsCount}, participantsCount: ${participantsCount}`)
   }
 
+  // Card is now clickable for all users
+  const cardClasses = "relative min-h-[170px] rounded-[18px] overflow-hidden shadow-[0_18px_40px_rgba(0,0,0,0.75)] cursor-pointer translate-y-0 transition-all duration-[0.25s] ease-in-out hover:-translate-y-2 hover:shadow-[0_26px_55px_rgba(0,0,0,0.9)]"
+
   return (
     <div
-      className="relative min-h-[170px] rounded-[18px] overflow-hidden shadow-[0_18px_40px_rgba(0,0,0,0.75)] cursor-pointer translate-y-0 transition-all duration-[0.25s] ease-in-out hover:-translate-y-2 hover:shadow-[0_26px_55px_rgba(0,0,0,0.9)]"
+      className={cardClasses}
       style={{
         background: 'radial-gradient(circle at 0 0, #ffe66d 0, #7f1d1d 50%, #020617 100%)',
       }}
-      onClick={() => onSportClick({ name: sport.name, type, players: sport.players })}
+      onClick={handleCardClick}
     >
       <div
         className="absolute inset-0 bg-cover bg-center opacity-90"
         style={{ backgroundImage: `url('${sport.image}')` }}
       />
-      {showEnrolled && (
-        <div className="absolute top-2 right-2 px-3 py-1 rounded-full bg-[rgba(34,197,94,0.9)] text-white text-[0.75rem] font-bold uppercase tracking-[0.1em] shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-10">
-          You are enrolled!
-        </div>
-      )}
       <div className="absolute inset-0 bg-gradient-to-t from-[rgba(0,0,0,0.9)] to-[rgba(0,0,0,0.2)] flex flex-col justify-end p-[0.9rem] px-[1.1rem] text-[#f9fafb] drop-shadow-[0_3px_12px_rgba(0,0,0,0.9)] z-10">
         <div className="text-[1.1rem] font-extrabold text-[#ffe66d] uppercase">{sport.name}</div>
-        <div className="text-[0.85rem] mt-[0.15rem]">{sport.text}</div>
         {loggedInUser && (
           <div className="text-[0.8rem] mt-2 font-bold text-[#06b6d4] drop-shadow-[0_2px_8px_rgba(0,0,0,1)]" style={{ zIndex: 20 }}>
             {type === 'team' ? (
@@ -84,7 +125,7 @@ function SportCard({ sport, type, onSportClick, loggedInUser, isEnrolled, teamsC
   )
 }
 
-function SportsSection({ onSportClick, loggedInUser }) {
+function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser }) {
   // State for all sports counts
   const [sportsCounts, setSportsCounts] = useState({
     teams_counts: {},
@@ -150,7 +191,9 @@ function SportsSection({ onSportClick, loggedInUser }) {
             logger.api('State updated with sports counts')
           }
         } else {
-          const errorText = await response.text()
+          // Clone response to read error text without consuming the original
+          const clonedResponse = response.clone()
+          const errorText = await clonedResponse.text().catch(() => 'Unable to read error text')
           logger.warn('Failed to fetch all sports counts:', response.status, errorText)
           if (isMounted) {
             setSportsCounts({ teams_counts: {}, participants_counts: {} })
@@ -202,39 +245,9 @@ function SportsSection({ onSportClick, loggedInUser }) {
   
   const showTeamEvents = !loggedInUser || isAdmin || hasCaptainRole || hasTeamParticipations
 
-  // Filter team sports based on captain_in or enrolled participations for non-admin users
-  const getTeamSportsToShow = () => {
-    if (!loggedInUser || isAdmin) {
-      // Show all team sports for non-logged-in users or admin
-      return sportsData.team
-    }
-    
-    // Collect all sports the user should see:
-    // 1. Sports where user is a captain (from captain_in)
-    // 2. Sports where user is enrolled as a participant (from participated_in with team_name)
-    const sportsToShow = new Set()
-    
-    // Add sports from captain_in
-    if (hasCaptainRole && Array.isArray(loggedInUser.captain_in)) {
-      loggedInUser.captain_in.forEach(sportName => {
-        sportsToShow.add(sportName)
-      })
-    }
-    
-    // Add sports from participated_in where user is enrolled (has team_name)
-    if (hasTeamParticipations && Array.isArray(loggedInUser.participated_in)) {
-      loggedInUser.participated_in.forEach(participation => {
-        if (participation.team_name) {
-          sportsToShow.add(participation.sport)
-        }
-      })
-    }
-    
-    // Filter team sports to only include those in the set
-    return sportsData.team.filter(sport => sportsToShow.has(sport.name))
-  }
-
-  const teamSportsToShow = getTeamSportsToShow()
+  // Show all team sports to non-admin logged-in users
+  // Previously filtered, but now showing all for non-admin users
+  const teamSportsToShow = sportsData.team
 
   // Helper function to check if user is enrolled in a sport
   const isEnrolledInSport = (sportName, sportType) => {
@@ -261,6 +274,33 @@ function SportsSection({ onSportClick, loggedInUser }) {
     return !participation.team_name
   }
 
+  // Helper function to check if user is a captain for a sport
+  const isCaptainForSport = (sportName) => {
+    if (!loggedInUser || isAdmin) {
+      return false
+    }
+
+    if (!loggedInUser.captain_in || !Array.isArray(loggedInUser.captain_in)) {
+      return false
+    }
+
+    return loggedInUser.captain_in.includes(sportName)
+  }
+
+  // Helper function to check if user can create or view a team for a sport
+  const canCreateOrViewTeam = (sportName) => {
+    if (isAdmin) {
+      return true // Admin can always view teams
+    }
+    
+    // User can create team if they are a captain and not enrolled
+    const isCaptain = isCaptainForSport(sportName)
+    const isEnrolled = isEnrolledInSport(sportName, 'team')
+    
+    // Can create if captain and not enrolled, or can view if enrolled
+    return (isCaptain && !isEnrolled) || isEnrolled
+  }
+
   return (
     <section id="sports" className="mt-[2.2rem]">
       {showTeamEvents && teamSportsToShow.length > 0 && (
@@ -275,8 +315,11 @@ function SportsSection({ onSportClick, loggedInUser }) {
                 sport={sport} 
                 type="team" 
                 onSportClick={onSportClick}
+                onEventScheduleClick={onEventScheduleClick}
                 loggedInUser={loggedInUser}
                 isEnrolled={isEnrolledInSport(sport.name, 'team')}
+                isCaptain={isCaptainForSport(sport.name)}
+                canCreateOrViewTeam={canCreateOrViewTeam(sport.name)}
                 teamsCount={sportsCounts.teams_counts[sport.name]}
                 participantsCount={undefined}
               />
@@ -295,6 +338,7 @@ function SportsSection({ onSportClick, loggedInUser }) {
             sport={sport} 
             type="individual" 
             onSportClick={onSportClick}
+            onEventScheduleClick={onEventScheduleClick}
             loggedInUser={loggedInUser}
             isEnrolled={isEnrolledInSport(sport.name, 'individual')}
             teamsCount={undefined}
@@ -313,6 +357,7 @@ function SportsSection({ onSportClick, loggedInUser }) {
             sport={sport} 
             type="individual" 
             onSportClick={onSportClick}
+            onEventScheduleClick={onEventScheduleClick}
             loggedInUser={loggedInUser}
             isEnrolled={isEnrolledInSport(sport.name, 'individual')}
             teamsCount={undefined}

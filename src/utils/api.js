@@ -104,7 +104,9 @@ export const fetchWithAuth = async (url, options = {}) => {
     // Check for pending request (deduplication)
     if (pendingRequests.has(cacheKey)) {
       // Wait for the pending request to complete
-      return pendingRequests.get(cacheKey)
+      // Wrap it to clone the response for this specific caller
+      // This ensures each caller gets their own independent clone
+      return pendingRequests.get(cacheKey).then(response => response.clone())
     }
   }
 
@@ -133,15 +135,16 @@ export const fetchWithAuth = async (url, options = {}) => {
           window.location.reload()
         }, 100)
       }
+      // Return original - will be cloned for each caller
       return response
     }
 
     // Cache successful GET responses
     if (cacheKey && response.ok && response.status === 200) {
       try {
-        // Clone response to read body without consuming it
-        const clonedResponse = response.clone()
-        const data = await clonedResponse.json()
+        // Clone response to read body without consuming the original
+        const clonedForCache = response.clone()
+        const data = await clonedForCache.json()
         
         requestCache.set(cacheKey, {
           data,
@@ -158,7 +161,13 @@ export const fetchWithAuth = async (url, options = {}) => {
       pendingRequests.delete(cacheKey)
     }
 
+    // Return original response - will be cloned for each caller in the outer .then()
     return response
+  }).then((response) => {
+    // Clone the response here to ensure each caller gets their own copy
+    // This is critical for deduplication - multiple callers waiting for the same request
+    // will each get an independent clone they can read
+    return response.clone()
   }).catch((error) => {
     // Remove from pending requests on error
     if (cacheKey) {
@@ -203,13 +212,19 @@ export const fetchCurrentUser = async () => {
     }
     
     if (response.ok) {
-      const data = await response.json()
-      if (data.success && data.player) {
-        // Backend returns 'player' for /api/me endpoint
-        const { password: _, ...userData } = data.player
-        return { user: userData, authError: false }
-      } else {
-        logger.warn('Unexpected response structure from /api/me:', data)
+      try {
+        const data = await response.json()
+        if (data.success && data.player) {
+          // Backend returns 'player' for /api/me endpoint
+          const { password: _, ...userData } = data.player
+          return { user: userData, authError: false }
+        } else {
+          logger.warn('Unexpected response structure from /api/me:', data)
+          return { user: null, authError: false }
+        }
+      } catch (jsonError) {
+        // If response body was already read, try to get error details from response
+        logger.error('Error parsing response JSON in fetchCurrentUser:', jsonError)
         return { user: null, authError: false }
       }
     }

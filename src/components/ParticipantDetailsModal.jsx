@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { fetchWithAuth } from '../utils/api'
 import logger from '../utils/logger'
 
-function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup }) {
+function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false }) {
   const [participants, setParticipants] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -10,6 +10,8 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [participantToDelete, setParticipantToDelete] = useState(null)
+  const currentSportRef = useRef(null)
+  const abortControllerRef = useRef(null)
 
   useEffect(() => {
     if (!isOpen || !sport) {
@@ -20,11 +22,29 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
       setShowDeleteConfirm(false)
       setParticipantToDelete(null)
       setDeleting(false)
+      currentSportRef.current = null
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
       return
+    }
+
+    // Only fetch if sport changed or we haven't fetched yet
+    if (currentSportRef.current === sport) {
+      return
+    }
+
+    currentSportRef.current = sport
+
+    // Abort previous request if it exists
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
     }
 
     let isMounted = true
     const abortController = new AbortController()
+    abortControllerRef.current = abortController
 
     const loadData = async () => {
       await fetchParticipantDetails(abortController.signal)
@@ -34,7 +54,13 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
 
     return () => {
       isMounted = false
-      abortController.abort()
+      // Only abort if sport changed
+      if (currentSportRef.current !== sport) {
+        abortController.abort()
+      }
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, sport])
@@ -48,6 +74,8 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
 
     setLoading(true)
     setError(null)
+    let isMounted = true
+    
     try {
       // URL encode the sport name to handle special characters
       const encodedSport = encodeURIComponent(sport)
@@ -56,36 +84,54 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
       
       const response = await fetchWithAuth(url, { signal })
       
+      if (signal?.aborted) {
+        isMounted = false
+        return
+      }
+      
       if (!response.ok) {
         // Try to get error message from response
         let errorMessage = 'Failed to fetch participant details'
         try {
-          const errorData = await response.json()
+          // Clone response to read error without consuming the original
+          const clonedResponse = response.clone()
+          const errorData = await clonedResponse.json()
           errorMessage = errorData.error || errorData.details || errorMessage
           logger.error('API Error:', errorData)
         } catch (e) {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`
           logger.error('Response parse error:', e)
         }
-        setError(errorMessage)
-        setLoading(false)
+        if (isMounted) {
+          setError(errorMessage)
+          setLoading(false)
+        }
         return
       }
 
       const data = await response.json()
       logger.api('Participant data received:', data)
 
-      if (data.success) {
-        setParticipants(data.participants || [])
-      } else {
-        setError(data.error || 'Failed to fetch participant details')
+      if (isMounted) {
+        if (data.success) {
+          setParticipants(data.participants || [])
+        } else {
+          setError(data.error || 'Failed to fetch participant details')
+        }
       }
     } catch (err) {
-      if (err.name === 'AbortError') return
+      if (err.name === 'AbortError') {
+        isMounted = false
+        return
+      }
       logger.error('Error fetching participant details:', err)
-      setError(`Error while fetching participant details: ${err.message || 'Please check your connection and try again.'}`)
+      if (isMounted) {
+        setError(`Error while fetching participant details: ${err.message || 'Please check your connection and try again.'}`)
+      }
     } finally {
-      setLoading(false)
+      if (isMounted) {
+        setLoading(false)
+      }
     }
   }
 
@@ -132,8 +178,8 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
             3000
           )
         }
-        // Refresh the participants list
-        await fetchParticipantDetails()
+        // Refresh the participants list (no signal needed for manual refresh)
+        await fetchParticipantDetails(null)
         setParticipantToDelete(null)
       } else {
         const errorMessage = data.error || 'Error removing participation. Please try again.'
@@ -162,11 +208,9 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
 
   if (!isOpen) return null
 
-  return (
-    <div
-      className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-    >
-      <aside className="max-w-[700px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
+  const content = (
+    <aside className={`${embedded ? 'w-full' : 'max-w-[700px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative ${embedded ? '' : 'max-h-[90vh]'} ${embedded ? '' : 'overflow-y-auto'}`}>
+      {!embedded && (
         <button
           type="button"
           className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer hover:text-[#ffe66d] transition-colors"
@@ -174,6 +218,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
         >
           ✕
         </button>
+      )}
 
         <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">
           Admin Panel
@@ -216,13 +261,13 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
                     key={participant.reg_number}
                     className="border border-[rgba(148,163,184,0.3)] rounded-[12px] bg-[rgba(15,23,42,0.6)] overflow-hidden"
                   >
-                    <div className="flex items-center">
+                    <div className="flex flex-col md:flex-row md:items-center">
                       <button
                         type="button"
                         onClick={() => toggleParticipant(participant.reg_number)}
                         className="flex-1 px-4 py-3 flex items-center justify-between hover:bg-[rgba(255,230,109,0.1)] transition-colors"
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                           <span className="text-[#ffe66d] text-lg">
                             {isExpanded ? '▼' : '▶'}
                           </span>
@@ -245,7 +290,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
                             handleDeleteClick(participant)
                           }}
                           disabled={deleting}
-                          className={`ml-2 mr-2 px-4 py-1.5 rounded-[8px] text-[0.8rem] font-semibold uppercase tracking-[0.05em] transition-all ${
+                          className={`self-start mt-2 mb-2 ml-4 md:mt-0 md:mb-0 md:ml-2 md:mr-2 md:self-auto px-4 py-1.5 rounded-[8px] text-[0.8rem] font-semibold uppercase tracking-[0.05em] transition-all ${
                             deleting
                               ? 'bg-[rgba(239,68,68,0.3)] text-[rgba(239,68,68,0.6)] cursor-not-allowed'
                               : 'bg-gradient-to-r from-[#ef4444] to-[#dc2626] text-white cursor-pointer hover:shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:-translate-y-0.5'
@@ -284,11 +329,10 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
             Close
           </button>
         </div>
-      </aside>
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && participantToDelete && (
-        <div className="fixed inset-0 bg-[rgba(0,0,0,0.75)] flex items-center justify-center z-[300]">
+        <div className={`${embedded ? 'absolute' : 'fixed'} inset-0 bg-[rgba(0,0,0,0.75)] flex items-center justify-center z-[300]`}>
           <div className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative">
             <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">
               Confirm Deletion
@@ -322,6 +366,18 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
           </div>
         </div>
       )}
+    </aside>
+  )
+
+  if (embedded) {
+    return content
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
+    >
+      {content}
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { fetchWithAuth, API_URL, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
-function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate }) {
+function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate, embedded = false }) {
   const [registrationCountdown, setRegistrationCountdown] = useState('')
   const [players, setPlayers] = useState([])
   const [selectedPlayers, setSelectedPlayers] = useState({})
@@ -228,7 +228,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           // Try to get the error message from the response
           let errorMessage = 'Error while saving. Please try again.'
           try {
-            const errorData = await response.json()
+            // Clone response to read error without consuming the original
+            const clonedResponse = response.clone()
+            const errorData = await clonedResponse.json()
             errorMessage = errorData.error || errorData.message || errorMessage
           } catch (e) {
             // If response is not JSON, use status text
@@ -483,7 +485,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           // Try to get the error message from the response
           let errorMessage = 'Error updating participation. Please try again.'
           try {
-            const errorData = await response.json()
+            // Clone response to read error without consuming the original
+            const clonedResponse = response.clone()
+            const errorData = await clonedResponse.json()
             errorMessage = errorData.error || errorData.message || errorMessage
           } catch (e) {
             // If response is not JSON, use status text
@@ -540,11 +544,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   if (selectedSport && !isTeam) {
     // If user has already participated, show view-only mode
     if (hasAlreadyParticipated) {
-      return (
-        <div
-          className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-        >
-          <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative">
+    const content = (
+      <aside className={`${embedded ? 'w-full' : 'max-w-[420px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative`}>
+          {!embedded && (
             <button
               type="button"
               className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer hover:text-[#ffe66d] transition-colors"
@@ -552,6 +554,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             >
               ✕
             </button>
+          )}
 
             <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Participation Status</div>
             <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
@@ -579,16 +582,23 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
               </button>
             </div>
           </aside>
+      )
+      
+      if (embedded) return content
+      
+      return (
+        <div
+          className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
+        >
+          {content}
         </div>
       )
     }
 
     // User hasn't participated yet - show confirmation dialog
-    return (
-      <div
-        className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-      >
-        <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative">
+    const confirmationContent = (
+      <aside className={`${embedded ? 'w-full' : 'max-w-[420px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative`}>
+        {!embedded && (
           <button
             type="button"
             className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer"
@@ -596,6 +606,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           >
             ✕
           </button>
+        )}
 
           <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
           <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
@@ -633,9 +644,18 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             </button>
           </div>
         </aside>
-      </div>
-    )
-  }
+      )
+      
+      if (embedded) return confirmationContent
+      
+      return (
+        <div
+          className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
+        >
+          {confirmationContent}
+        </div>
+      )
+    }
 
   // Team Events - Team Name + Player Dropdowns
   // Only show for logged-in users with captain_in (non-empty array)
@@ -646,11 +666,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       // Don't show form if user is not a captain
       return null
     }
-    return (
-      <div
-        className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-      >
-        <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
+    const teamContent = (
+      <aside className={`${embedded ? 'w-full' : 'max-w-[420px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative ${embedded ? '' : 'max-h-[90vh]'} ${embedded ? '' : 'overflow-y-auto'}`}>
+        {!embedded && (
           <button
             type="button"
             className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer"
@@ -658,11 +676,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           >
             ✕
           </button>
+        )}
 
-          <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
-          <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
-            Team Registration
-          </div>
+          <div className={embedded ? 'px-[1.4rem] py-[1.6rem]' : ''}>
+            <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
+            <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
+              Team Registration
+            </div>
           <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">PCE, Purnea • Umang – 2026 Sports Fest</div>
           <div className="my-1 mb-2 text-center text-[0.95rem] font-semibold text-[#ffe66d]">
             Sports Name: {selectedSport.name.toUpperCase()}
@@ -751,17 +771,25 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
               </button>
             </div>
           </form>
+          </div>
         </aside>
+    )
+    
+    if (embedded) return teamContent
+    
+    return (
+      <div
+        className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
+      >
+        {teamContent}
       </div>
     )
   }
 
   // General Registration - Full Form
-  return (
-    <div
-      className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-    >
-      <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
+  const generalContent = (
+    <aside className={`${embedded ? 'w-full' : 'max-w-[420px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative ${embedded ? '' : 'max-h-[90vh]'} ${embedded ? '' : 'overflow-y-auto'}`}>
+      {!embedded && (
         <button
           type="button"
           className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer"
@@ -769,11 +797,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         >
           ✕
         </button>
+      )}
 
-        <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
-        <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
-          Player Entry Form
-        </div>
+        <div className={embedded ? 'px-[1.4rem] py-[1.6rem]' : ''}>
+          <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
+          <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
+            Player Entry Form
+          </div>
         <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">PCE, Purnea • Umang – 2026 Sports Fest</div>
 
         {registrationCountdown && (
@@ -919,7 +949,17 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             </button>
           </div>
         </form>
+        </div>
       </aside>
+  )
+  
+  if (embedded) return generalContent
+  
+  return (
+    <div
+      className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
+    >
+      {generalContent}
     </div>
   )
 }

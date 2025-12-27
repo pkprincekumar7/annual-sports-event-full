@@ -5,6 +5,7 @@ import XLSX from 'xlsx'
 import jwt from 'jsonwebtoken'
 import connectDB from './config/database.js'
 import Player from './models/Player.js'
+import EventSchedule from './models/EventSchedule.js'
 import logger from './utils/logger.js'
 
 const app = express()
@@ -1790,7 +1791,7 @@ app.get('/api/participants/:sport', authenticateToken, requireAdmin, async (req,
     }
 
     // Query directly for players who have participated in this sport without team_name
-    // Use $elemMatch to match array elements where sport matches and team_name is null/doesn't exist
+    // Use $elemMatch to match array elements where sport matches and team_name is null/doesn't exist/empty
     // Optimized: exclude password field
     const players = await Player.find({
       reg_number: { $ne: 'admin' },
@@ -1799,7 +1800,8 @@ app.get('/api/participants/:sport', authenticateToken, requireAdmin, async (req,
           sport: sport,
           $or: [
             { team_name: { $exists: false } },
-            { team_name: null }
+            { team_name: null },
+            { team_name: '' }
           ]
         }
       }
@@ -2373,6 +2375,502 @@ app.get('/api/export-excel', authenticateToken, requireAdmin, async (req, res) =
     res.status(500).json({ 
       success: false, 
       error: 'Failed to export Excel file',
+      details: error.message 
+    })
+  }
+})
+
+// ==================== Event Schedule API Endpoints ====================
+
+// Get all matches for a sport
+app.get('/api/event-schedule/:sport', authenticateToken, async (req, res) => {
+  try {
+    const { sport } = req.params
+    const matches = await EventSchedule.find({ sport })
+      .sort({ match_number: 1 })
+      .lean()
+    
+    logger.api(`Fetched ${matches.length} matches for sport: ${sport}`)
+    res.json({ success: true, matches })
+  } catch (error) {
+    logger.error('Error fetching event schedule:', error)
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch event schedule',
+      details: error.message 
+    })
+  }
+})
+
+// Create a new match
+app.post('/api/event-schedule', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { match_type, sport, sport_type, team_one, team_two, player_one, player_two, match_date } = req.body
+    
+    // Validate required fields
+    if (!match_type || !sport || !sport_type || !match_date) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: match_type, sport, sport_type, match_date'
+      })
+    }
+    
+    // Declare player objects outside the if/else block for later use
+    let playerOneObj = null
+    let playerTwoObj = null
+    
+    // Validate team/player fields based on sport_type
+    if (sport_type === 'team') {
+      if (!team_one || !team_two) {
+        return res.status(400).json({
+          success: false,
+          error: 'team_one and team_two are required for team events'
+        })
+      }
+      // Validate that both teams are different
+      if (team_one === team_two) {
+        return res.status(400).json({
+          success: false,
+          error: 'team_one and team_two must be different'
+        })
+      }
+    } else {
+      if (!player_one || !player_two) {
+        return res.status(400).json({
+          success: false,
+          error: 'player_one and player_two are required for individual/cultural events'
+        })
+      }
+      // Validate that both players are different
+      if (player_one === player_two) {
+        return res.status(400).json({
+          success: false,
+          error: 'player_one and player_two must be different'
+        })
+      }
+      
+      // Validate that both players have the same gender and fetch their names
+      const player1 = await Player.findOne({ reg_number: player_one }).select('gender full_name').lean()
+      const player2 = await Player.findOne({ reg_number: player_two }).select('gender full_name').lean()
+      
+      if (!player1) {
+        return res.status(400).json({
+          success: false,
+          error: `Player with registration number ${player_one} not found`
+        })
+      }
+      if (!player2) {
+        return res.status(400).json({
+          success: false,
+          error: `Player with registration number ${player_two} not found`
+        })
+      }
+      
+      if (player1.gender !== player2.gender) {
+        return res.status(400).json({
+          success: false,
+          error: `Gender mismatch: Both players must have the same gender. Player one is ${player1.gender}, player two is ${player2.gender}.`
+        })
+      }
+      
+      // Prepare player objects with name and reg_number
+      playerOneObj = {
+        name: player1.full_name || '',
+        reg_number: player_one
+      }
+      playerTwoObj = {
+        name: player2.full_name || '',
+        reg_number: player_two
+      }
+    }
+    
+    // Validate match date - must be today or after today
+    const matchDateObj = new Date(match_date)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0) // Reset time to start of day for comparison
+    matchDateObj.setHours(0, 0, 0, 0)
+    
+    if (matchDateObj < today) {
+      return res.status(400).json({
+        success: false,
+        error: 'Match date must be today or a future date'
+      })
+    }
+    
+    // Get next match number for this sport
+    const lastMatch = await EventSchedule.findOne({ sport })
+      .sort({ match_number: -1 })
+      .lean()
+    
+    const match_number = lastMatch ? lastMatch.match_number + 1 : 1
+    
+    // Validate eligibility based on previous matches (per sport)
+    // For knockout matches: check if participant lost any previous completed match IN THIS SPORT
+    // - If a previous match is "completed" and participant is NOT the winner, they are disqualified
+    // - If previous match is "draw", "cancelled", or "scheduled", participant is still eligible
+    // - If previous match is "completed" and participant IS the winner, they are eligible
+    // - Lost matches in other sports do NOT affect eligibility
+    // For league matches: no eligibility check needed - losers can be added
+    
+    if (match_type === 'knockout') {
+      // Check previous matches for team_one/player_one (only for this sport)
+      const participantOne = sport_type === 'team' ? team_one : player_one
+      const previousMatchesOne = await EventSchedule.find({
+        sport, // Only check matches for the same sport
+        match_type: 'knockout',
+        $or: [
+          { team_one: participantOne },
+          { team_two: participantOne },
+          { 'player_one.reg_number': participantOne },
+          { 'player_two.reg_number': participantOne }
+        ]
+      }).lean()
+      
+      // Check if participant lost any completed match in this sport
+      for (const match of previousMatchesOne) {
+        const matchWinner = match.winner?.reg_number || match.winner
+        if (match.status === 'completed' && matchWinner && matchWinner !== participantOne) {
+          return res.status(400).json({
+            success: false,
+            error: `${participantOne} cannot be added to ${sport}. They lost a previous knockout match in ${sport} (Match #${match.match_number}).`
+          })
+        }
+      }
+      
+      // Check previous matches for team_two/player_two (only for this sport)
+      const participantTwo = sport_type === 'team' ? team_two : player_two
+      const previousMatchesTwo = await EventSchedule.find({
+        sport, // Only check matches for the same sport
+        match_type: 'knockout',
+        $or: [
+          { team_one: participantTwo },
+          { team_two: participantTwo },
+          { 'player_one.reg_number': participantTwo },
+          { 'player_two.reg_number': participantTwo }
+        ]
+      }).lean()
+      
+      // Check if participant lost any completed match in this sport
+      for (const match of previousMatchesTwo) {
+        const matchWinner = match.winner?.reg_number || match.winner
+        if (match.status === 'completed' && matchWinner && matchWinner !== participantTwo) {
+          return res.status(400).json({
+            success: false,
+            error: `${participantTwo} cannot be added to ${sport}. They lost a previous knockout match in ${sport} (Match #${match.match_number}).`
+          })
+        }
+      }
+    }
+    // For league matches, no eligibility check needed - losers can be added
+    
+    // Create new match
+    const matchData = {
+      match_number,
+      match_type,
+      sport,
+      sport_type,
+      match_date: new Date(match_date),
+      status: 'scheduled',
+    }
+    
+    // Add team or player data based on sport type
+    if (sport_type === 'team') {
+      matchData.team_one = team_one
+      matchData.team_two = team_two
+      matchData.player_one = null
+      matchData.player_two = null
+    } else {
+      matchData.player_one = playerOneObj
+      matchData.player_two = playerTwoObj
+      matchData.team_one = null
+      matchData.team_two = null
+    }
+    
+    const newMatch = new EventSchedule(matchData)
+    
+    await newMatch.save()
+    
+    logger.api(`Created new match #${match_number} for ${sport}`)
+    res.json({ 
+      success: true, 
+      match: newMatch,
+      message: `Match #${match_number} scheduled successfully` 
+    })
+  } catch (error) {
+    logger.error('Error creating event schedule:', error)
+    logger.error('Error stack:', error.stack)
+    logger.error('Error details:', JSON.stringify(error, null, 2))
+    
+    // Handle duplicate key error (match_number + sport)
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        error: 'Match number already exists for this sport'
+      })
+    }
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error',
+        details: error.message,
+        errors: error.errors
+      })
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to create event schedule',
+      details: error.message,
+      errorName: error.name
+    })
+  }
+})
+
+// Delete a match
+app.delete('/api/event-schedule/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params
+    
+    // First, find the match to check its status
+    const match = await EventSchedule.findById(id)
+    
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        error: 'Match not found'
+      })
+    }
+    
+    // Only allow deletion of scheduled matches
+    if (match.status !== 'scheduled') {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot delete match with status "${match.status}". Only scheduled matches can be deleted.`
+      })
+    }
+    
+    // Delete the match
+    await EventSchedule.findByIdAndDelete(id)
+    
+    logger.api(`Deleted match #${match.match_number} for ${match.sport}`)
+    res.json({ 
+      success: true, 
+      message: 'Match deleted successfully' 
+    })
+  } catch (error) {
+    logger.error('Error deleting event schedule:', error)
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to delete event schedule',
+      details: error.message 
+    })
+  }
+})
+
+// Update match winner and status
+app.put('/api/event-schedule/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params
+    const { winner, status } = req.body
+    
+    // First, find the match to validate
+    const match = await EventSchedule.findById(id)
+    
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        error: 'Match not found'
+      })
+    }
+    
+    // Check if match date is in the future
+    const matchDateObj = new Date(match.match_date)
+    const now = new Date()
+    matchDateObj.setHours(0, 0, 0, 0)
+    now.setHours(0, 0, 0, 0)
+    const isFutureMatch = matchDateObj > now
+    
+    const updateData = {}
+    
+    // Validate and set status
+    if (status !== undefined) {
+      // Prevent status updates for future matches
+      if (isFutureMatch) {
+        return res.status(400).json({
+          success: false,
+          error: 'Cannot update status for future matches. Please wait until the match date.'
+        })
+      }
+      if (!['completed', 'draw', 'cancelled', 'scheduled'].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid status. Must be one of: completed, draw, cancelled, scheduled'
+        })
+      }
+      updateData.status = status
+      
+      // If status is being changed from completed and winner exists, clear winner
+      if (match.status === 'completed' && status !== 'completed' && match.winner) {
+        updateData.winner = null
+      }
+    }
+    
+    // Validate and set winner
+    if (winner !== undefined) {
+      // Prevent winner selection for future matches
+      if (isFutureMatch) {
+        return res.status(400).json({
+          success: false,
+          error: 'Cannot declare winner for future matches. Please wait until the match date.'
+        })
+      }
+      
+      // Winner can only be set if status is completed
+      const targetStatus = status || match.status
+      if (targetStatus !== 'completed') {
+        return res.status(400).json({
+          success: false,
+          error: 'Winner can only be set when match status is "completed"'
+        })
+      }
+      
+      // Validate winner matches one of the teams/players
+      let isValidWinner = false
+      if (match.sport_type === 'team') {
+        isValidWinner = winner === match.team_one || winner === match.team_two
+      } else {
+        // For non-team events, winner should match player_one or player_two format
+        const playerOneName = match.player_one && match.player_one.name
+          ? `${match.player_one.name} (${match.player_one.reg_number})`
+          : null
+        const playerTwoName = match.player_two && match.player_two.name
+          ? `${match.player_two.name} (${match.player_two.reg_number})`
+          : null
+        isValidWinner = winner === playerOneName || winner === playerTwoName
+      }
+      
+      if (!isValidWinner) {
+        return res.status(400).json({
+          success: false,
+          error: 'Winner must be one of the participating teams/players'
+        })
+      }
+      
+      updateData.winner = winner
+      // Ensure status is completed when winner is set
+      if (!updateData.status) {
+        updateData.status = 'completed'
+      }
+    }
+    
+    // If winner is being cleared (set to null or empty), allow it
+    if (winner === null || winner === '') {
+      updateData.winner = null
+    }
+    
+    const updatedMatch = await EventSchedule.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    )
+    
+    if (!updatedMatch) {
+      return res.status(404).json({
+        success: false,
+        error: 'Match not found'
+      })
+    }
+    
+    logger.api(`Updated match #${updatedMatch.match_number} for ${updatedMatch.sport}`)
+    res.json({ 
+      success: true, 
+      match: updatedMatch,
+      message: 'Match updated successfully' 
+    })
+  } catch (error) {
+    logger.error('Error updating event schedule:', error)
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to update event schedule',
+      details: error.message 
+    })
+  }
+})
+
+// Get teams/players list for a sport (for dropdown in form)
+app.get('/api/event-schedule/:sport/teams-players', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { sport } = req.params
+    // Decode the sport name in case it's URL encoded
+    const decodedSport = decodeURIComponent(sport)
+    
+    logger.api(`Fetching teams/players for sport: ${decodedSport}`)
+    
+    // Get sport type from existing matches or determine from sport name
+    const existingMatch = await EventSchedule.findOne({ sport: decodedSport }).lean()
+    const sportType = existingMatch ? existingMatch.sport_type : 
+      (['Cricket', 'Volleyball', 'Badminton', 'Table Tennis', 'Kabaddi', 'Relay 4×100 m', 'Relay 4×400 m'].includes(decodedSport) ? 'team' : 'individual')
+    
+    logger.api(`Sport type determined as: ${sportType}`)
+    
+    if (sportType === 'team') {
+      // Get all unique team names for this sport
+      const players = await Player.find({
+        reg_number: { $ne: 'admin' },
+        'participated_in.sport': decodedSport,
+        'participated_in.team_name': { $exists: true, $ne: null, $ne: '' }
+      }).select('participated_in').lean()
+      
+      logger.api(`Found ${players.length} players with teams for ${decodedSport}`)
+      
+      const teamsSet = new Set()
+      players.forEach(player => {
+        if (player.participated_in && Array.isArray(player.participated_in)) {
+          const participation = player.participated_in.find(p => p.sport === decodedSport && p.team_name)
+          if (participation && participation.team_name) {
+            teamsSet.add(participation.team_name)
+          }
+        }
+      })
+      
+      const teamsArray = Array.from(teamsSet).sort()
+      logger.api(`Found ${teamsArray.length} unique teams:`, teamsArray)
+      res.json({ success: true, teams: teamsArray, players: [] })
+    } else {
+      // Get all players who participated in this sport (individual/cultural)
+      // Use $elemMatch to find players where participated_in has this sport with no team_name
+      const players = await Player.find({
+        reg_number: { $ne: 'admin' },
+        participated_in: {
+          $elemMatch: {
+            sport: decodedSport,
+            $or: [
+              { team_name: { $exists: false } },
+              { team_name: null },
+              { team_name: '' }
+            ]
+          }
+        }
+      }).select('reg_number full_name gender').lean()
+      
+      logger.api(`Found ${players.length} individual participants for ${decodedSport}`)
+      
+      const playersList = players.map(p => ({
+        reg_number: p.reg_number,
+        full_name: p.full_name,
+        gender: p.gender
+      }))
+      
+      logger.api(`Players list:`, playersList.map(p => `${p.full_name} (${p.reg_number})`))
+      res.json({ success: true, teams: [], players: playersList })
+    }
+  } catch (error) {
+    logger.error('Error fetching teams/players:', error)
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch teams/players',
       details: error.message 
     })
   }

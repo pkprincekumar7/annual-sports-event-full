@@ -112,7 +112,9 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
         // Try to get the error message from the response
         let errorMessage = 'Error adding captain. Please try again.'
         try {
-          const errorData = await response.json()
+          // Clone response to read error without consuming the original
+          const clonedResponse = response.clone()
+          const errorData = await clonedResponse.json()
           errorMessage = errorData.error || errorData.message || errorMessage
         } catch (e) {
           // If response is not JSON, use status text

@@ -94,6 +94,8 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
         // Refresh the captains list silently
         isRefreshingRef.current = true
         clearCache('/api/captains-by-sport')
+        clearCache('/api/players') // captain_in field changes
+        clearCache('/api/me') // In case current user is updated
         
         fetchWithAuth('/api/captains-by-sport')
           .then((res) => {

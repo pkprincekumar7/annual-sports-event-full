@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { fetchWithAuth, API_URL, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
-function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate }) {
+function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate, embedded = false }) {
   const [registrationCountdown, setRegistrationCountdown] = useState('')
   const [players, setPlayers] = useState([])
   const [selectedPlayers, setSelectedPlayers] = useState({})
@@ -11,119 +11,164 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   const [loadingTeams, setLoadingTeams] = useState(false)
   const [totalParticipants, setTotalParticipants] = useState(0)
   const [loadingParticipants, setLoadingParticipants] = useState(false)
+  const [justParticipated, setJustParticipated] = useState(false) // Track if user just participated
 
   const isTeam = selectedSport?.type === 'team'
   const playerCount = isTeam ? selectedSport?.players || 0 : 0
   const isGeneralRegistration = !selectedSport
+  const prevSportNameRef = useRef(null)
+  const isMountedRef = useRef(true)
 
-  // Fetch players list for team player dropdowns (with caching and cancellation)
+  // Fetch players list for team player dropdowns
   useEffect(() => {
     if (!isOpen) {
+      isMountedRef.current = false
       setPlayers([])
       setTotalTeams(0)
       setTotalParticipants(0)
+      setJustParticipated(false)
+      prevSportNameRef.current = null
       return
     }
 
-    if (!isTeam) {
-      // For non-team events, fetch participants count
-      let isMounted = true
-      const abortController = new AbortController()
+    const currentSportName = selectedSport?.name
+    const currentIsTeam = selectedSport?.type === 'team'
 
+    // Don't fetch if sport is not yet available
+    if (currentIsTeam && !currentSportName) {
+      return
+    }
+
+    // Check if sport name actually changed - if not, don't re-fetch
+    // But if players are empty, we should still fetch
+    const shouldFetch = currentSportName !== prevSportNameRef.current || 
+                       (currentIsTeam && players.length === 0 && prevSportNameRef.current !== null)
+    
+    if (!shouldFetch && prevSportNameRef.current !== null) {
+      logger.api('Skipping fetch - sport name unchanged and players already loaded')
+      return
+    }
+    
+    // Store current sport name before fetching
+    prevSportNameRef.current = currentSportName
+    isMountedRef.current = true
+
+    if (!currentIsTeam) {
+      // For non-team events, fetch participants count
       const fetchParticipantsCount = async () => {
-        if (!selectedSport?.name) return
+        if (!currentSportName) return
         
         setLoadingParticipants(true)
         try {
-          const encodedSport = encodeURIComponent(selectedSport.name)
-          const response = await fetchWithAuth(`/api/participants-count/${encodedSport}`, {
-            signal: abortController.signal,
-          })
+          const encodedSport = encodeURIComponent(currentSportName)
+          const response = await fetchWithAuth(`/api/participants-count/${encodedSport}`)
           
-          if (!isMounted) return
+          if (!isMountedRef.current) return
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+          }
 
           const data = await response.json()
-          if (data.success) {
+          if (data.success && isMountedRef.current) {
             setTotalParticipants(data.total_participants || 0)
+          } else if (isMountedRef.current) {
+            setTotalParticipants(0)
           }
         } catch (err) {
-          if (!isMounted || err.name === 'AbortError') return
+          if (!isMountedRef.current) return
           logger.error('Error fetching participants count:', err)
-          setTotalParticipants(0)
+          if (isMountedRef.current) {
+            setTotalParticipants(0)
+          }
         } finally {
-          if (isMounted) {
+          if (isMountedRef.current) {
             setLoadingParticipants(false)
           }
         }
       }
 
       fetchParticipantsCount()
+    } else {
+      // For team events, fetch players and teams
+      const fetchPlayers = async () => {
+        try {
+          logger.api('Starting to fetch players...')
+          const response = await fetchWithAuth('/api/players')
+          
+          logger.api('Players response received:', { ok: response.ok, status: response.status })
+          
+          if (!isMountedRef.current) {
+            logger.warn('Component unmounted, skipping players update')
+            return
+          }
 
-      return () => {
-        isMounted = false
-        abortController.abort()
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+          }
+
+          const data = await response.json()
+          logger.api('Players data parsed:', { success: data.success, playersCount: data.players?.length })
+          
+          if (data.success && isMountedRef.current) {
+            const playersList = data.players || []
+            logger.api(`Setting ${playersList.length} players in state`)
+            setPlayers(playersList)
+            logger.api('Players state updated')
+          } else if (isMountedRef.current) {
+            logger.warn('Failed to fetch players:', data.error)
+            setPlayers([])
+          }
+        } catch (err) {
+          if (!isMountedRef.current) return
+          logger.error('Error fetching players:', err)
+          if (isMountedRef.current) {
+            setPlayers([])
+          }
+        }
       }
-    }
 
-    // For team events
-
-    let isMounted = true
-    const abortController = new AbortController()
-
-    const fetchPlayers = async () => {
-      try {
-        const response = await fetchWithAuth('/api/players', {
-          signal: abortController.signal,
-        })
+      const fetchTotalTeams = async () => {
+        if (!currentSportName) return
         
-        if (!isMounted) return
+        setLoadingTeams(true)
+        try {
+          const encodedSport = encodeURIComponent(currentSportName)
+          const response = await fetchWithAuth(`/api/teams/${encodedSport}`)
+          
+          if (!isMountedRef.current) return
 
-        const data = await response.json()
-        if (data.success) {
-          setPlayers(data.players || [])
-        }
-      } catch (err) {
-        if (!isMounted || err.name === 'AbortError') return
-        logger.error('Error fetching players:', err)
-        setPlayers([])
-      }
-    }
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+          }
 
-    const fetchTotalTeams = async () => {
-      if (!selectedSport?.name) return
-      
-      setLoadingTeams(true)
-      try {
-        const encodedSport = encodeURIComponent(selectedSport.name)
-        const response = await fetchWithAuth(`/api/teams/${encodedSport}`, {
-          signal: abortController.signal,
-        })
-        
-        if (!isMounted) return
-
-        const data = await response.json()
-        if (data.success) {
-          setTotalTeams(data.total_teams || 0)
-        }
-      } catch (err) {
-        if (!isMounted || err.name === 'AbortError') return
-        logger.error('Error fetching total teams:', err)
-        setTotalTeams(0)
-      } finally {
-        if (isMounted) {
-          setLoadingTeams(false)
+          const data = await response.json()
+          if (data.success && isMountedRef.current) {
+            setTotalTeams(data.total_teams || 0)
+          } else if (isMountedRef.current) {
+            setTotalTeams(0)
+          }
+        } catch (err) {
+          if (!isMountedRef.current) return
+          logger.error('Error fetching total teams:', err)
+          if (isMountedRef.current) {
+            setTotalTeams(0)
+          }
+        } finally {
+          if (isMountedRef.current) {
+            setLoadingTeams(false)
+          }
         }
       }
-    }
 
-    fetchPlayers()
-    fetchTotalTeams()
+      fetchPlayers()
+      fetchTotalTeams()
+    }
 
     return () => {
-      isMounted = false
-      abortController.abort()
+      isMountedRef.current = false
     }
-  }, [isOpen, isTeam, selectedSport])
+  }, [isOpen, selectedSport?.name, selectedSport?.type])
 
   // Reset selected players when modal opens/closes or sport changes
   useEffect(() => {
@@ -228,7 +273,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           // Try to get the error message from the response
           let errorMessage = 'Error while saving. Please try again.'
           try {
-            const errorData = await response.json()
+            // Clone response to read error without consuming the original
+            const clonedResponse = response.clone()
+            const errorData = await clonedResponse.json()
             errorMessage = errorData.error || errorData.message || errorMessage
           } catch (e) {
             // If response is not JSON, use status text
@@ -242,6 +289,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         const data = await response.json()
         
         if (data.success) {
+        // Clear cache to ensure new player appears in player lists
+        clearCache('/api/players')
+        
         onStatusPopup('✅ Your registration has been saved!', 'success', 2500)
         form.reset()
         setIsSubmitting(false)
@@ -404,16 +454,22 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             return // Don't proceed with closing modal
           }
 
+        // Clear caches to ensure UI reflects the new team enrollment
+        const encodedSport = encodeURIComponent(selectedSport.name)
+        clearCache(`/api/teams/${encodedSport}`)
+        clearCache(`/api/participants-count/${encodedSport}`)
+        clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
+        clearCache('/api/players')
+        clearCache('/api/me') // Current user's participation data changes
+        clearCache('/api/sports-counts') // Team count changes
+          
           // Update logged-in user data if they are one of the players
           // Use the updated player data from the response if available
           if (loggedInUser && playerRegNumbers.includes(loggedInUser.reg_number) && onUserUpdate) {
             // The participation response should include updated player data
             // If not, we can fetch it, but with cache it's fast
             try {
-              // Clear cache to get fresh data
-              clearCache('/api/players')
-              
-              // Fetch updated player data (will use cache if available)
+              // Fetch updated player data (cache already cleared above)
               const playerResponse = await fetchWithAuth('/api/players')
               if (playerResponse.ok) {
                 const playerData = await playerResponse.json()
@@ -443,9 +499,11 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       form.reset()
       setSelectedPlayers({})
       setIsSubmitting(false)
+      
+      // Close the popup immediately after successful team creation
       setTimeout(() => {
         onClose()
-      }, 2500)
+      }, 500) // Reduced delay to close faster
     } catch (err) {
       logger.error('Error while submitting team registration:', err)
       onStatusPopup('❌ Error while submitting. Please try again.', 'error', 2500)
@@ -483,7 +541,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           // Try to get the error message from the response
           let errorMessage = 'Error updating participation. Please try again.'
           try {
-            const errorData = await response.json()
+            // Clone response to read error without consuming the original
+            const clonedResponse = response.clone()
+            const errorData = await clonedResponse.json()
             errorMessage = errorData.error || errorData.message || errorMessage
           } catch (e) {
             // If response is not JSON, use status text
@@ -504,18 +564,31 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           return // Don't proceed with closing modal or showing success
         }
 
+        // Clear caches to ensure UI reflects the new participant enrollment
+        const encodedSport = encodeURIComponent(selectedSport.name)
+        clearCache(`/api/participants/${encodedSport}`)
+        clearCache(`/api/participants-count/${encodedSport}`)
+        clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
+        clearCache('/api/players')
+        clearCache('/api/me') // Current user's participation data changes
+        clearCache('/api/sports-counts') // Participant count changes
+
         // Update logged-in user data with latest information
         if (data.player && onUserUpdate) {
           const { password: _, ...updatedPlayer } = data.player
           onUserUpdate(updatedPlayer)
         }
 
-        onStatusPopup(`✅ Your registration for ${selectedSport.name.toUpperCase()} has been saved!`, 'success', 2500)
+        // Set just participated flag to show success message instead of "Already Participated"
+        setJustParticipated(true)
+        
+        onStatusPopup(`✅ Participated Successfully!`, 'success', 2500)
         setIsSubmitting(false)
 
+        // Close the popup immediately after successful participation
         setTimeout(() => {
           onClose()
-        }, 2500)
+        }, 500) // Reduced delay to close faster
       } catch (participationError) {
         logger.error('Error updating participation:', participationError)
         onStatusPopup('❌ Error updating participation. Please try again.', 'error', 4000)
@@ -538,13 +611,11 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
   // Individual/Cultural Events - Confirmation Dialog or Already Participated View
   if (selectedSport && !isTeam) {
-    // If user has already participated, show view-only mode
-    if (hasAlreadyParticipated) {
-      return (
-        <div
-          className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-        >
-          <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative">
+    // If user has already participated (and not just participated), show view-only mode
+    if (hasAlreadyParticipated && !justParticipated) {
+    const content = (
+      <aside className={`${embedded ? 'w-full' : 'max-w-[420px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative`}>
+          {!embedded && (
             <button
               type="button"
               className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer hover:text-[#ffe66d] transition-colors"
@@ -552,6 +623,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             >
               ✕
             </button>
+          )}
 
             <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Participation Status</div>
             <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
@@ -568,27 +640,24 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             <div className="text-[0.9rem] text-[#cbd5ff] mb-8 text-center">
               Total Players Participated: <span className="text-[#ffe66d] font-bold text-[1.1rem]">{loadingParticipants ? '...' : totalParticipants}</span>
             </div>
-
-            <div className="flex justify-center mt-[0.8rem]">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-8 py-[9px] rounded-full border border-[rgba(148,163,184,0.7)] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_10px_26px_rgba(15,23,42,0.9)]"
-              >
-                Close
-              </button>
-            </div>
           </aside>
+      )
+      
+      if (embedded) return content
+      
+      return (
+        <div
+          className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
+        >
+          {content}
         </div>
       )
     }
 
     // User hasn't participated yet - show confirmation dialog
-    return (
-      <div
-        className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-      >
-        <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative">
+    const confirmationContent = (
+      <aside className={`${embedded ? 'w-full' : 'max-w-[420px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative`}>
+        {!embedded && (
           <button
             type="button"
             className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer"
@@ -596,12 +665,18 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           >
             ✕
           </button>
+        )}
 
-          <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
-          <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
-            {selectedSport.name.toUpperCase()}
-          </div>
-          <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">PCE, Purnea • Umang – 2026 Sports Fest</div>
+            <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
+            <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
+              {selectedSport.name.toUpperCase()}
+            </div>
+            <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">PCE, Purnea • Umang – 2026 Sports Fest</div>
+            {players.length > 0 && (
+              <div className="text-[0.75rem] text-center text-[#94a3b8] mb-2">
+                {players.length} player{players.length !== 1 ? 's' : ''} available
+              </div>
+            )}
           <div className="text-[0.9rem] text-[#cbd5ff] mb-4 text-center">
             Total Players Participated: <span className="text-[#ffe66d] font-bold">{loadingParticipants ? '...' : totalParticipants}</span>
           </div>
@@ -633,9 +708,18 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             </button>
           </div>
         </aside>
-      </div>
-    )
-  }
+      )
+      
+      if (embedded) return confirmationContent
+      
+      return (
+        <div
+          className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
+        >
+          {confirmationContent}
+        </div>
+      )
+    }
 
   // Team Events - Team Name + Player Dropdowns
   // Only show for logged-in users with captain_in (non-empty array)
@@ -646,11 +730,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       // Don't show form if user is not a captain
       return null
     }
-    return (
-      <div
-        className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-      >
-        <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
+    const teamContent = (
+      <aside className={`${embedded ? 'w-full' : 'max-w-[420px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative ${embedded ? '' : 'max-h-[90vh]'} ${embedded ? '' : 'overflow-y-auto'}`}>
+        {!embedded && (
           <button
             type="button"
             className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer"
@@ -658,11 +740,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           >
             ✕
           </button>
+        )}
 
-          <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
-          <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
-            Team Registration
-          </div>
+          <div className={embedded ? 'px-[1.4rem] py-[1.6rem]' : ''}>
+            <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
+            <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
+              Team Registration
+            </div>
           <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">PCE, Purnea • Umang – 2026 Sports Fest</div>
           <div className="my-1 mb-2 text-center text-[0.95rem] font-semibold text-[#ffe66d]">
             Sports Name: {selectedSport.name.toUpperCase()}
@@ -709,18 +793,94 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                     className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none transition-all duration-[0.15s] ease-in-out focus:border-[#ffe66d] focus:shadow-[0_0_0_1px_rgba(255,230,109,0.55),0_0_16px_rgba(248,250,252,0.2)] focus:-translate-y-[1px]"
                   >
                     <option value="">Select Player</option>
-                    {players
-                      .filter((player) => 
-                        player.reg_number !== 'admin' && 
-                        player.gender === loggedInUser?.gender &&
-                        player.year === loggedInUser?.year &&
-                        (player.reg_number === selectedPlayers[index] || !otherSelectedRegNumbers.includes(player.reg_number))
-                      )
-                      .map((player) => (
-                        <option key={player.reg_number} value={player.reg_number}>
-                          {player.full_name} ({player.reg_number})
-                        </option>
-                      ))}
+                    {players.length === 0 ? (
+                      <option value="" disabled>Loading players...</option>
+                    ) : (
+                      (() => {
+                        // Check if logged-in user is a captain for this sport
+                        const isLoggedInUserCaptain = loggedInUser?.captain_in && 
+                          Array.isArray(loggedInUser.captain_in) && 
+                          loggedInUser.captain_in.includes(selectedSport?.name)
+                        
+                        // Count how many captains are already selected
+                        const selectedCaptainsCount = Object.values(selectedPlayers)
+                          .filter(regNum => {
+                            const player = players.find(p => p.reg_number === regNum)
+                            return player && player.captain_in && 
+                                   Array.isArray(player.captain_in) && 
+                                   player.captain_in.includes(selectedSport?.name)
+                          }).length
+                        
+                        const filteredPlayers = players.filter((player) => {
+                          // Basic filters
+                          if (player.reg_number === 'admin') return false
+                          if (player.gender !== loggedInUser?.gender) return false
+                          if (player.year !== loggedInUser?.year) return false
+                          
+                          // Allow currently selected player to remain in list
+                          if (player.reg_number === selectedPlayers[index]) return true
+                          
+                          // Exclude if already selected in another dropdown
+                          if (otherSelectedRegNumbers.includes(player.reg_number)) return false
+                          
+                          // Check if player is already in a team for this sport
+                          if (player.participated_in && Array.isArray(player.participated_in)) {
+                            const existingParticipation = player.participated_in.find(
+                              p => p.sport === selectedSport?.name && p.team_name
+                            )
+                            if (existingParticipation) {
+                              // Player is already in a team for this sport
+                              return false
+                            }
+                          }
+                          
+                          // Check if player is a captain for this sport
+                          const isPlayerCaptain = player.captain_in && 
+                            Array.isArray(player.captain_in) && 
+                            player.captain_in.includes(selectedSport?.name)
+                          
+                          if (isPlayerCaptain) {
+                            // If this is the logged-in user (who is creating the team), allow them
+                            if (player.reg_number === loggedInUser?.reg_number && index === 1) {
+                              return true
+                            }
+                            
+                            // If a captain is already selected, don't show other captains
+                            // (team can only have one captain)
+                            if (selectedCaptainsCount > 0) {
+                              return false
+                            }
+                            
+                            // Check if this captain has already created a team for this sport
+                            if (player.participated_in && Array.isArray(player.participated_in)) {
+                              const captainTeamParticipation = player.participated_in.find(
+                                p => p.sport === selectedSport?.name && p.team_name
+                              )
+                              if (captainTeamParticipation) {
+                                // Captain has already created a team
+                                return false
+                              }
+                            }
+                          }
+                          
+                          return true
+                        })
+                        
+                        if (index === 1 && filteredPlayers.length === 0 && players.length > 0) {
+                          logger.warn('No players available after filtering:', {
+                            totalPlayers: players.length,
+                            userGender: loggedInUser?.gender,
+                            userYear: loggedInUser?.year,
+                            filteredCount: filteredPlayers.length
+                          })
+                        }
+                        return filteredPlayers.map((player) => (
+                          <option key={player.reg_number} value={player.reg_number}>
+                            {player.full_name} ({player.reg_number})
+                          </option>
+                        ))
+                      })()
+                    )}
                   </select>
                 </div>
               )
@@ -751,17 +911,25 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
               </button>
             </div>
           </form>
+          </div>
         </aside>
+    )
+    
+    if (embedded) return teamContent
+    
+    return (
+      <div
+        className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
+      >
+        {teamContent}
       </div>
     )
   }
 
   // General Registration - Full Form
-  return (
-    <div
-      className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-    >
-      <aside className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
+  const generalContent = (
+    <aside className={`${embedded ? 'w-full' : 'max-w-[420px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative ${embedded ? '' : 'max-h-[90vh]'} ${embedded ? '' : 'overflow-y-auto'}`}>
+      {!embedded && (
         <button
           type="button"
           className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer"
@@ -769,11 +937,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         >
           ✕
         </button>
+      )}
 
-        <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
-        <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
-          Player Entry Form
-        </div>
+        <div className={embedded ? 'px-[1.4rem] py-[1.6rem]' : ''}>
+          <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
+          <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
+            Player Entry Form
+          </div>
         <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">PCE, Purnea • Umang – 2026 Sports Fest</div>
 
         {registrationCountdown && (
@@ -919,7 +1089,17 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             </button>
           </div>
         </form>
+        </div>
       </aside>
+  )
+  
+  if (embedded) return generalContent
+  
+  return (
+    <div
+      className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
+    >
+      {generalContent}
     </div>
   )
 }

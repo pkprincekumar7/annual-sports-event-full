@@ -131,12 +131,14 @@ Create a `.env` file in the root directory to set these values. For production b
 │   │   ├── Navbar.jsx
 │   │   ├── Hero.jsx
 │   │   ├── SportsSection.jsx
+│   │   ├── SportDetailsModal.jsx  # Unified modal for sport details (tabs)
 │   │   ├── RegisterModal.jsx
 │   │   ├── LoginModal.jsx
 │   │   ├── AddCaptainModal.jsx
 │   │   ├── RemoveCaptainModal.jsx
 │   │   ├── TeamDetailsModal.jsx
 │   │   ├── ParticipantDetailsModal.jsx
+│   │   ├── EventScheduleModal.jsx  # Event schedule management
 │   │   ├── PlayerListModal.jsx
 │   │   ├── AboutSection.jsx
 │   │   ├── Footer.jsx
@@ -153,7 +155,8 @@ Create a `.env` file in the root directory to set these values. For production b
 ├── config/
 │   └── database.js      # MongoDB connection configuration
 ├── models/
-│   └── Player.js        # Player Mongoose model with indexes
+│   ├── Player.js        # Player Mongoose model with indexes
+│   └── EventSchedule.js  # Event schedule Mongoose model
 ├── utils/
 │   └── logger.js        # Backend logging utility
 ├── server.js            # Express.js backend server
@@ -176,15 +179,23 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Captain assignment and team management
 - ✅ Team and individual event registration
 - ✅ Participation tracking and limits
-- ✅ Total teams/participants count display - Shows total teams participated for team events and total players participated for non-team events
+- ✅ Total teams/participants count display - Shows total teams participated for team events and total players participated for non-team events on sports cards (logged-in users only)
 - ✅ Already participated view - Shows popup with participation status and total count when user has already participated
+- ✅ Unified sport details modal - Single modal with tabs for all sport-related actions (View Teams/Participants, Create Team/Enroll, View Events)
+- ✅ Event schedule management - Admin can create, view, update, and delete matches; users can view scheduled matches
+- ✅ Match scheduling - Support for league and knockout match types with automatic match number generation
+- ✅ Match status updates - Admin can update match status (scheduled, completed, draw, cancelled) with future date validation
+- ✅ Winner/Loser selection - Admin can declare winners for completed matches with automatic loser assignment
+- ✅ Future date restrictions - Status updates and winner selection are blocked for future-dated matches (both frontend and backend validation)
 - ✅ Status popups for success/error messages
 - ✅ Loading states for all API operations
 - ✅ Form validation with proper error handling
 - ✅ User data fetched from server (not stored in localStorage)
 - ✅ All original styling preserved with Tailwind CSS
-- ✅ Request caching and deduplication - Reduces API calls and improves performance
+- ✅ Request caching and deduplication - Reduces API calls and improves performance (5 second TTL for all endpoints)
 - ✅ Request cancellation - Prevents race conditions and memory leaks
+- ✅ Response cloning - All error responses are cloned to prevent "body stream already read" errors
+- ✅ Memory leak prevention - isMounted checks prevent state updates after component unmount
 - ✅ Error Boundary - Catches React errors and displays user-friendly error UI
 - ✅ Production-ready logging - Environment-aware logging utility (debug logs only in development)
 - ✅ Persistent authentication - User stays logged in after page refresh (token-based)
@@ -204,6 +215,12 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Password exclusion - Passwords never sent in API responses
 - ✅ Production-ready logging - Environment-aware logging utility (debug logs only in development)
 - ✅ Optimized user endpoint - `/api/me` endpoint for fetching current user (more efficient than fetching all players)
+- ✅ Bulk sports counts endpoint - `/api/sports-counts` fetches all team and participant counts in a single request
+- ✅ Event schedule management - Full CRUD operations for match scheduling with automatic match number generation per sport
+- ✅ Match eligibility validation - Automatic validation for knockout matches (only winners can proceed)
+- ✅ Match status and winner management - Update match status and declare winners with comprehensive validation
+- ✅ Future date validation - Prevents status updates and winner selection for future-dated matches (both frontend and backend)
+- ✅ EventSchedule model - Database model for storing match schedules with support for team and individual events
 
 ## API Integration
 
@@ -250,6 +267,20 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
 - `GET /api/participants/:sport` - Get participants for a specific sport (admin only)
 - `GET /api/participants-count/:sport` - Get total participants count for a specific sport (requires authentication, no admin required)
 
+#### Sports Counts (Bulk)
+- `GET /api/sports-counts` - Get all teams and participants counts for all sports in a single request (requires authentication, optimized bulk endpoint)
+
+#### Event Schedule Management
+- `GET /api/event-schedule/:sport` - Get all matches for a specific sport (requires authentication)
+- `GET /api/event-schedule/:sport/teams-players` - Get teams/players list for match scheduling dropdowns (admin only)
+- `POST /api/event-schedule` - Create a new match (admin only, auto-generates match number per sport)
+- `PUT /api/event-schedule/:id` - Update match winner and status (admin only)
+  - Status updates: Can update status to 'completed', 'draw', 'cancelled', or 'scheduled'
+  - Winner selection: Can declare winner for completed matches (automatically marks other participant as loser)
+  - Future date validation: Status updates and winner selection are blocked for future-dated matches
+  - Winner validation: Winner must be one of the participating teams/players
+- `DELETE /api/event-schedule/:id` - Delete a match (admin only, only if status is 'scheduled', allowed for future matches)
+
 #### Data Export
 - `GET /api/export-excel` - Export players data to Excel (admin only)
 
@@ -295,13 +326,12 @@ The application uses utility functions in `src/utils/api.js`:
 ### Performance Optimizations
 
 #### Frontend API Caching
-- **Request Caching**: GET requests are cached with configurable TTL
-  - Players list: 30 seconds
-  - Sports list: 5 minutes
-  - Default: 10 seconds
+- **Request Caching**: GET requests are cached with configurable TTL (all set to 5 seconds)
+  - All endpoints: 5 seconds TTL for consistent behavior
 - **Request Deduplication**: Identical concurrent requests share the same promise
 - **Request Cancellation**: All API calls support AbortController for cancellation
 - **Cache Invalidation**: Automatic cache clearing on authentication failures
+- **Response Cloning**: All responses are cloned to prevent "body stream already read" errors when multiple consumers read the same response
 
 #### Backend MongoDB Optimizations
 - **Database Indexes**: Optimized indexes on frequently queried fields
@@ -1290,16 +1320,36 @@ sudo journalctl -u annual-sports-backend -n 50
 
 ### Modal Components
 
+- **SportDetailsModal.jsx** - Unified modal for sport details with tabbed interface
+  - Shows different tabs based on user role (admin/non-admin) and event type (team/individual)
+  - Tabs: View Teams/Participants, Create Team/Enroll, View Events
+  - Embeds other modals as content (RegisterModal, TeamDetailsModal, ParticipantDetailsModal, EventScheduleModal)
 - **RegisterModal.jsx** - Handles player registration and event participation (team/individual)
   - Shows total teams count for team event registration
   - Shows total participants count for non-team event registration
   - Displays "Already Participated" view with total count when user has already participated
+  - Can be embedded in SportDetailsModal
 - **LoginModal.jsx** - User login form
 - **AddCaptainModal.jsx** - Admin interface for assigning captain roles
 - **RemoveCaptainModal.jsx** - Admin interface for removing captain roles
 - **TeamDetailsModal.jsx** - Displays team details and allows team management
   - Shows total teams participated count for all users
+  - Can be embedded in SportDetailsModal
 - **ParticipantDetailsModal.jsx** - Displays individual participant details
+  - Can be embedded in SportDetailsModal
+- **EventScheduleModal.jsx** - Event schedule management interface
+  - Admin: Create, view, update, and delete matches
+    - Create matches with league or knockout type
+    - Update match status (scheduled, completed, draw, cancelled) - only for non-future matches
+    - Declare winners for completed matches - automatically marks other participant as loser
+    - Remove matches (only scheduled matches, including future matches)
+  - Users: View scheduled matches with full details
+  - Supports league and knockout match types
+  - Auto-generates match numbers per sport
+  - Validates match eligibility (knockout matches only allow winners to proceed)
+  - Future date validation: Status dropdown and winner buttons hidden for future matches
+  - Winner/Loser badges: Visual indicators for completed matches with declared winners
+  - Can be embedded in SportDetailsModal
 - **PlayerListModal.jsx** - Admin interface for viewing and editing all players
 
 ### Utility Components
@@ -1321,10 +1371,13 @@ The application uses React hooks for state management:
 ## Performance Features
 
 ### Frontend Optimizations
-- **Request Caching**: Reduces redundant API calls by caching GET requests
+- **Request Caching**: Reduces redundant API calls by caching GET requests (5 second TTL)
 - **Request Deduplication**: Prevents multiple identical requests from executing simultaneously
 - **Request Cancellation**: All API calls support cancellation to prevent memory leaks
+- **Response Cloning**: All responses are cloned to allow multiple consumers without "body stream already read" errors
+- **Memory Leak Prevention**: isMounted checks prevent state updates after component unmount
 - **Optimized User Fetching**: Uses `fetchCurrentUser()` helper with dedicated `/api/me` endpoint (fetches only current user, not all players)
+- **Bulk Counts Fetching**: Uses `/api/sports-counts` to fetch all team and participant counts in a single request
 
 ### Backend Optimizations
 - **MongoDB Indexes**: Strategic indexes on frequently queried fields
@@ -1344,12 +1397,23 @@ The application uses React hooks for state management:
 - MongoDB indexes are automatically created when the Player model is first loaded
 - Cache is automatically cleared on authentication failures
 - Request cancellation prevents state updates after component unmount
+- Response cloning prevents "body stream already read" errors when multiple components consume the same response
+- Memory leak prevention: All async state updates check isMounted before updating state
 - Error Boundary wraps the entire application to catch and handle React errors gracefully
 - Logging utilities are used throughout the codebase for production-ready error tracking
 - All console statements have been replaced with logger utilities for better production control
 - Authentication persistence: User authentication is preserved across page refreshes using JWT tokens stored in localStorage
 - Optimized API calls: `/api/me` endpoint fetches only current user data instead of all players, improving performance and reducing network traffic
+- Bulk counts API: `/api/sports-counts` fetches all team and participant counts in a single request, reducing API calls
 - Modal UX: Modals require explicit close action (X button or Cancel) - they don't close on outside click to prevent accidental closures
+- Event Schedule: Match numbers are auto-generated per sport (e.g., Cricket: 1, 2, 3; Volleyball: 1, 2, 3)
+- Match Eligibility: Knockout matches automatically validate that only winners can proceed to next matches (per sport)
+- Match Deletion: Only matches with 'scheduled' status can be deleted by admin (including future matches)
+- Match Status Updates: Status can only be updated for matches that are not in the future (both frontend and backend validation)
+- Winner Selection: Winners can only be declared for completed matches that are not in the future (both frontend and backend validation)
+- Winner/Loser Assignment: When a winner is selected, the other participant is automatically marked as loser (irreversible action)
+- Remove Button: Available for all scheduled matches (including future matches) to allow cancellation/rescheduling
+- Status Dropdown: Only visible for scheduled matches that are not in the future
 
 ## Security Considerations
 

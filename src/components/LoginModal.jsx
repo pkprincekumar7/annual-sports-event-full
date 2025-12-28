@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { API_URL } from '../utils/api'
+import { API_URL, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
 function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
@@ -46,6 +46,12 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
       const data = await response.json()
 
       if (data.success) {
+        // Clear caches to ensure fresh data after login
+        clearCache('/api/me')
+        clearCache('/api/players')
+        clearCache('/api/sports-counts')
+        clearCache('/api/captains-by-sport')
+        
         // Store JWT token in localStorage (user data is handled by App.jsx)
         if (data.token) {
           localStorage.setItem('authToken', data.token)

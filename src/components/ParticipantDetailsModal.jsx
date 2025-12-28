@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { fetchWithAuth } from '../utils/api'
+import { fetchWithAuth, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
 function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false }) {
@@ -178,6 +178,20 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
             3000
           )
         }
+        // Clear cache before refreshing to ensure we get fresh data
+        const encodedSport = encodeURIComponent(sport)
+        clearCache(`/api/participants/${encodedSport}`)
+        clearCache(`/api/participants-count/${encodedSport}`)
+        clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
+        clearCache('/api/players') // Player participation data changes
+        clearCache('/api/me') // If this was the logged-in user
+        clearCache('/api/sports-counts') // Participant count changes
+        // Remove deleted participant from expanded participants if it was expanded
+        setExpandedParticipants(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(participantToDelete.reg_number)
+          return newSet
+        })
         // Refresh the participants list (no signal needed for manual refresh)
         await fetchParticipantDetails(null)
         setParticipantToDelete(null)

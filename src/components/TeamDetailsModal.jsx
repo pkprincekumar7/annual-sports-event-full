@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { fetchWithAuth } from '../utils/api'
+import { fetchWithAuth, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
 function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false }) {
@@ -91,18 +91,28 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
 
   const fetchPlayers = async (signal) => {
     try {
-      const response = await fetchWithAuth('/api/players', { signal })
+      const response = await fetchWithAuth('/api/players', signal ? { signal } : {})
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
       if (data.success) {
         // Filter out admin user
         const filteredPlayers = (data.players || []).filter(
           p => p.reg_number !== 'admin'
         )
+        logger.api(`Fetched ${filteredPlayers.length} players for team replacement`)
         setPlayers(filteredPlayers)
+      } else {
+        logger.warn('Failed to fetch players:', data.error)
+        setPlayers([])
       }
     } catch (err) {
       if (err.name === 'AbortError') return
       logger.error('Error fetching players:', err)
+      setPlayers([])
     }
   }
 
@@ -209,9 +219,21 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
     setExpandedTeams(newExpanded)
   }
 
-  const handleEditPlayer = (teamName, regNumber) => {
+  const handleEditPlayer = async (teamName, regNumber) => {
     setEditingPlayer({ team_name: teamName, old_reg_number: regNumber })
     setSelectedReplacementPlayer('')
+    
+    // Ensure players are loaded when opening edit mode
+    if (isAdmin && players.length === 0) {
+      try {
+        await fetchPlayers(null)
+      } catch (err) {
+        logger.error('Error fetching players for replacement:', err)
+        if (onStatusPopup) {
+          onStatusPopup('❌ Error loading players list. Please try again.', 'error', 3000)
+        }
+      }
+    }
   }
 
   const handleCancelEdit = () => {
@@ -303,6 +325,11 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
         if (onStatusPopup) {
           onStatusPopup(`✅ Player updated successfully!`, 'success', 2500)
         }
+        // Clear cache before refreshing to ensure we get fresh data
+        const encodedSport = encodeURIComponent(sport)
+        clearCache(`/api/teams/${encodedSport}`)
+        clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
+        clearCache('/api/players') // Player data may have changed
         // Refresh team data (no signal needed for manual refresh)
         await fetchTeamDetails(null)
         setEditingPlayer(null)
@@ -344,6 +371,19 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
         if (onStatusPopup) {
           onStatusPopup(`✅ Team "${teamName}" deleted successfully! ${data.deleted_count} player(s) removed.`, 'success', 3000)
         }
+        // Clear cache before refreshing to ensure we get fresh data
+        const encodedSport = encodeURIComponent(sport)
+        clearCache(`/api/teams/${encodedSport}`)
+        clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
+        clearCache('/api/players') // Player participation data changes
+        clearCache('/api/me') // If any logged-in user was in this team
+        clearCache('/api/sports-counts') // Team count changes
+        // Remove deleted team from expanded teams if it was expanded
+        setExpandedTeams(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(teamName)
+          return newSet
+        })
         // Refresh team data (no signal needed for manual refresh)
         await fetchTeamDetails(null)
         setShowDeleteConfirm(false)
@@ -552,18 +592,22 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                       className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none transition-all duration-[0.15s] ease-in-out focus:border-[#ffe66d] focus:shadow-[0_0_0_1px_rgba(255,230,109,0.55),0_0_16px_rgba(248,250,252,0.2)] focus:-translate-y-[1px]"
                                     >
                                       <option value="">Select Player</option>
-                                      {players
-                                        .filter((player) => 
-                                          player.reg_number !== 'admin' && 
-                                          player.gender === teamGender &&
-                                          player.year === teamYear &&
-                                          (player.reg_number === selectedReplacementPlayer || !otherSelectedRegNumbers.includes(player.reg_number))
-                                        )
-                                        .map((player) => (
-                                          <option key={player.reg_number} value={player.reg_number}>
-                                            {player.full_name} ({player.reg_number})
-                                          </option>
-                                        ))}
+                                      {players.length === 0 ? (
+                                        <option value="" disabled>Loading players...</option>
+                                      ) : (
+                                        players
+                                          .filter((player) => 
+                                            player.reg_number !== 'admin' && 
+                                            player.gender === teamGender &&
+                                            player.year === teamYear &&
+                                            (player.reg_number === selectedReplacementPlayer || !otherSelectedRegNumbers.includes(player.reg_number))
+                                          )
+                                          .map((player) => (
+                                            <option key={player.reg_number} value={player.reg_number}>
+                                              {player.full_name} ({player.reg_number})
+                                            </option>
+                                          ))
+                                      )}
                                     </select>
                                   </div>
                                   <div className="flex gap-2">

@@ -2223,14 +2223,29 @@ app.put('/api/update-player', authenticateToken, requireAdmin, async (req, res) 
       })
     }
 
-    // Update player fields (preserve password, participated_in, and captain_in)
+    // Check if gender or year is being changed (not allowed)
+    if (player.gender !== gender) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Gender cannot be modified. Please keep the original gender value.' 
+      })
+    }
+
+    if (player.year !== year) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Year cannot be modified. Please keep the original year value.' 
+      })
+    }
+
+    // Update only allowed player fields (gender and year are read-only)
     player.full_name = full_name
-    player.gender = gender
+    // gender and year are preserved from original player (cannot be changed)
     player.department_branch = department_branch
-    player.year = year
+    // year is preserved from original player (cannot be changed)
     player.mobile_number = mobile_number
     player.email_id = email_id
-    // password, participated_in, and captain_in are preserved automatically
+    // password, participated_in, captain_in, gender, and year are preserved automatically
 
     await player.save()
 

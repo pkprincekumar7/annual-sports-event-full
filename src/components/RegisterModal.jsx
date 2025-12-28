@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { fetchWithAuth, API_URL, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
@@ -16,116 +16,159 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   const isTeam = selectedSport?.type === 'team'
   const playerCount = isTeam ? selectedSport?.players || 0 : 0
   const isGeneralRegistration = !selectedSport
+  const prevSportNameRef = useRef(null)
+  const isMountedRef = useRef(true)
 
-  // Fetch players list for team player dropdowns (with caching and cancellation)
+  // Fetch players list for team player dropdowns
   useEffect(() => {
     if (!isOpen) {
+      isMountedRef.current = false
       setPlayers([])
       setTotalTeams(0)
       setTotalParticipants(0)
-      setJustParticipated(false) // Reset just participated state when modal closes
+      setJustParticipated(false)
+      prevSportNameRef.current = null
       return
     }
 
-    if (!isTeam) {
-      // For non-team events, fetch participants count
-      let isMounted = true
-      const abortController = new AbortController()
+    const currentSportName = selectedSport?.name
+    const currentIsTeam = selectedSport?.type === 'team'
 
+    // Don't fetch if sport is not yet available
+    if (currentIsTeam && !currentSportName) {
+      return
+    }
+
+    // Check if sport name actually changed - if not, don't re-fetch
+    // But if players are empty, we should still fetch
+    const shouldFetch = currentSportName !== prevSportNameRef.current || 
+                       (currentIsTeam && players.length === 0 && prevSportNameRef.current !== null)
+    
+    if (!shouldFetch && prevSportNameRef.current !== null) {
+      logger.api('Skipping fetch - sport name unchanged and players already loaded')
+      return
+    }
+    
+    // Store current sport name before fetching
+    prevSportNameRef.current = currentSportName
+    isMountedRef.current = true
+
+    if (!currentIsTeam) {
+      // For non-team events, fetch participants count
       const fetchParticipantsCount = async () => {
-        if (!selectedSport?.name) return
+        if (!currentSportName) return
         
         setLoadingParticipants(true)
         try {
-          const encodedSport = encodeURIComponent(selectedSport.name)
-          const response = await fetchWithAuth(`/api/participants-count/${encodedSport}`, {
-            signal: abortController.signal,
-          })
+          const encodedSport = encodeURIComponent(currentSportName)
+          const response = await fetchWithAuth(`/api/participants-count/${encodedSport}`)
           
-          if (!isMounted) return
+          if (!isMountedRef.current) return
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+          }
 
           const data = await response.json()
-          if (data.success) {
+          if (data.success && isMountedRef.current) {
             setTotalParticipants(data.total_participants || 0)
+          } else if (isMountedRef.current) {
+            setTotalParticipants(0)
           }
         } catch (err) {
-          if (!isMounted || err.name === 'AbortError') return
+          if (!isMountedRef.current) return
           logger.error('Error fetching participants count:', err)
-          setTotalParticipants(0)
+          if (isMountedRef.current) {
+            setTotalParticipants(0)
+          }
         } finally {
-          if (isMounted) {
+          if (isMountedRef.current) {
             setLoadingParticipants(false)
           }
         }
       }
 
       fetchParticipantsCount()
+    } else {
+      // For team events, fetch players and teams
+      const fetchPlayers = async () => {
+        try {
+          logger.api('Starting to fetch players...')
+          const response = await fetchWithAuth('/api/players')
+          
+          logger.api('Players response received:', { ok: response.ok, status: response.status })
+          
+          if (!isMountedRef.current) {
+            logger.warn('Component unmounted, skipping players update')
+            return
+          }
 
-      return () => {
-        isMounted = false
-        abortController.abort()
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+          }
+
+          const data = await response.json()
+          logger.api('Players data parsed:', { success: data.success, playersCount: data.players?.length })
+          
+          if (data.success && isMountedRef.current) {
+            const playersList = data.players || []
+            logger.api(`Setting ${playersList.length} players in state`)
+            setPlayers(playersList)
+            logger.api('Players state updated')
+          } else if (isMountedRef.current) {
+            logger.warn('Failed to fetch players:', data.error)
+            setPlayers([])
+          }
+        } catch (err) {
+          if (!isMountedRef.current) return
+          logger.error('Error fetching players:', err)
+          if (isMountedRef.current) {
+            setPlayers([])
+          }
+        }
       }
-    }
 
-    // For team events
-
-    let isMounted = true
-    const abortController = new AbortController()
-
-    const fetchPlayers = async () => {
-      try {
-        const response = await fetchWithAuth('/api/players', {
-          signal: abortController.signal,
-        })
+      const fetchTotalTeams = async () => {
+        if (!currentSportName) return
         
-        if (!isMounted) return
+        setLoadingTeams(true)
+        try {
+          const encodedSport = encodeURIComponent(currentSportName)
+          const response = await fetchWithAuth(`/api/teams/${encodedSport}`)
+          
+          if (!isMountedRef.current) return
 
-        const data = await response.json()
-        if (data.success) {
-          setPlayers(data.players || [])
-        }
-      } catch (err) {
-        if (!isMounted || err.name === 'AbortError') return
-        logger.error('Error fetching players:', err)
-        setPlayers([])
-      }
-    }
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+          }
 
-    const fetchTotalTeams = async () => {
-      if (!selectedSport?.name) return
-      
-      setLoadingTeams(true)
-      try {
-        const encodedSport = encodeURIComponent(selectedSport.name)
-        const response = await fetchWithAuth(`/api/teams/${encodedSport}`, {
-          signal: abortController.signal,
-        })
-        
-        if (!isMounted) return
-
-        const data = await response.json()
-        if (data.success) {
-          setTotalTeams(data.total_teams || 0)
-        }
-      } catch (err) {
-        if (!isMounted || err.name === 'AbortError') return
-        logger.error('Error fetching total teams:', err)
-        setTotalTeams(0)
-      } finally {
-        if (isMounted) {
-          setLoadingTeams(false)
+          const data = await response.json()
+          if (data.success && isMountedRef.current) {
+            setTotalTeams(data.total_teams || 0)
+          } else if (isMountedRef.current) {
+            setTotalTeams(0)
+          }
+        } catch (err) {
+          if (!isMountedRef.current) return
+          logger.error('Error fetching total teams:', err)
+          if (isMountedRef.current) {
+            setTotalTeams(0)
+          }
+        } finally {
+          if (isMountedRef.current) {
+            setLoadingTeams(false)
+          }
         }
       }
-    }
 
-    fetchPlayers()
-    fetchTotalTeams()
+      fetchPlayers()
+      fetchTotalTeams()
+    }
 
     return () => {
-      isMounted = false
-      abortController.abort()
+      isMountedRef.current = false
     }
-  }, [isOpen, isTeam, selectedSport])
+  }, [isOpen, selectedSport?.name, selectedSport?.type])
 
   // Reset selected players when modal opens/closes or sport changes
   useEffect(() => {
@@ -246,6 +289,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         const data = await response.json()
         
         if (data.success) {
+        // Clear cache to ensure new player appears in player lists
+        clearCache('/api/players')
+        
         onStatusPopup('✅ Your registration has been saved!', 'success', 2500)
         form.reset()
         setIsSubmitting(false)
@@ -408,16 +454,22 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             return // Don't proceed with closing modal
           }
 
+        // Clear caches to ensure UI reflects the new team enrollment
+        const encodedSport = encodeURIComponent(selectedSport.name)
+        clearCache(`/api/teams/${encodedSport}`)
+        clearCache(`/api/participants-count/${encodedSport}`)
+        clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
+        clearCache('/api/players')
+        clearCache('/api/me') // Current user's participation data changes
+        clearCache('/api/sports-counts') // Team count changes
+          
           // Update logged-in user data if they are one of the players
           // Use the updated player data from the response if available
           if (loggedInUser && playerRegNumbers.includes(loggedInUser.reg_number) && onUserUpdate) {
             // The participation response should include updated player data
             // If not, we can fetch it, but with cache it's fast
             try {
-              // Clear cache to get fresh data
-              clearCache('/api/players')
-              
-              // Fetch updated player data (will use cache if available)
+              // Fetch updated player data (cache already cleared above)
               const playerResponse = await fetchWithAuth('/api/players')
               if (playerResponse.ok) {
                 const playerData = await playerResponse.json()
@@ -447,9 +499,11 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       form.reset()
       setSelectedPlayers({})
       setIsSubmitting(false)
+      
+      // Close the popup immediately after successful team creation
       setTimeout(() => {
         onClose()
-      }, 2500)
+      }, 500) // Reduced delay to close faster
     } catch (err) {
       logger.error('Error while submitting team registration:', err)
       onStatusPopup('❌ Error while submitting. Please try again.', 'error', 2500)
@@ -510,6 +564,15 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           return // Don't proceed with closing modal or showing success
         }
 
+        // Clear caches to ensure UI reflects the new participant enrollment
+        const encodedSport = encodeURIComponent(selectedSport.name)
+        clearCache(`/api/participants/${encodedSport}`)
+        clearCache(`/api/participants-count/${encodedSport}`)
+        clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
+        clearCache('/api/players')
+        clearCache('/api/me') // Current user's participation data changes
+        clearCache('/api/sports-counts') // Participant count changes
+
         // Update logged-in user data with latest information
         if (data.player && onUserUpdate) {
           const { password: _, ...updatedPlayer } = data.player
@@ -522,9 +585,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         onStatusPopup(`✅ Participated Successfully!`, 'success', 2500)
         setIsSubmitting(false)
 
+        // Close the popup immediately after successful participation
         setTimeout(() => {
           onClose()
-        }, 2500)
+        }, 500) // Reduced delay to close faster
       } catch (participationError) {
         logger.error('Error updating participation:', participationError)
         onStatusPopup('❌ Error updating participation. Please try again.', 'error', 4000)
@@ -603,11 +667,16 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           </button>
         )}
 
-          <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
-          <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
-            {selectedSport.name.toUpperCase()}
-          </div>
-          <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">PCE, Purnea • Umang – 2026 Sports Fest</div>
+            <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">Official Registration</div>
+            <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
+              {selectedSport.name.toUpperCase()}
+            </div>
+            <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">PCE, Purnea • Umang – 2026 Sports Fest</div>
+            {players.length > 0 && (
+              <div className="text-[0.75rem] text-center text-[#94a3b8] mb-2">
+                {players.length} player{players.length !== 1 ? 's' : ''} available
+              </div>
+            )}
           <div className="text-[0.9rem] text-[#cbd5ff] mb-4 text-center">
             Total Players Participated: <span className="text-[#ffe66d] font-bold">{loadingParticipants ? '...' : totalParticipants}</span>
           </div>
@@ -724,18 +793,94 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                     className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none transition-all duration-[0.15s] ease-in-out focus:border-[#ffe66d] focus:shadow-[0_0_0_1px_rgba(255,230,109,0.55),0_0_16px_rgba(248,250,252,0.2)] focus:-translate-y-[1px]"
                   >
                     <option value="">Select Player</option>
-                    {players
-                      .filter((player) => 
-                        player.reg_number !== 'admin' && 
-                        player.gender === loggedInUser?.gender &&
-                        player.year === loggedInUser?.year &&
-                        (player.reg_number === selectedPlayers[index] || !otherSelectedRegNumbers.includes(player.reg_number))
-                      )
-                      .map((player) => (
-                        <option key={player.reg_number} value={player.reg_number}>
-                          {player.full_name} ({player.reg_number})
-                        </option>
-                      ))}
+                    {players.length === 0 ? (
+                      <option value="" disabled>Loading players...</option>
+                    ) : (
+                      (() => {
+                        // Check if logged-in user is a captain for this sport
+                        const isLoggedInUserCaptain = loggedInUser?.captain_in && 
+                          Array.isArray(loggedInUser.captain_in) && 
+                          loggedInUser.captain_in.includes(selectedSport?.name)
+                        
+                        // Count how many captains are already selected
+                        const selectedCaptainsCount = Object.values(selectedPlayers)
+                          .filter(regNum => {
+                            const player = players.find(p => p.reg_number === regNum)
+                            return player && player.captain_in && 
+                                   Array.isArray(player.captain_in) && 
+                                   player.captain_in.includes(selectedSport?.name)
+                          }).length
+                        
+                        const filteredPlayers = players.filter((player) => {
+                          // Basic filters
+                          if (player.reg_number === 'admin') return false
+                          if (player.gender !== loggedInUser?.gender) return false
+                          if (player.year !== loggedInUser?.year) return false
+                          
+                          // Allow currently selected player to remain in list
+                          if (player.reg_number === selectedPlayers[index]) return true
+                          
+                          // Exclude if already selected in another dropdown
+                          if (otherSelectedRegNumbers.includes(player.reg_number)) return false
+                          
+                          // Check if player is already in a team for this sport
+                          if (player.participated_in && Array.isArray(player.participated_in)) {
+                            const existingParticipation = player.participated_in.find(
+                              p => p.sport === selectedSport?.name && p.team_name
+                            )
+                            if (existingParticipation) {
+                              // Player is already in a team for this sport
+                              return false
+                            }
+                          }
+                          
+                          // Check if player is a captain for this sport
+                          const isPlayerCaptain = player.captain_in && 
+                            Array.isArray(player.captain_in) && 
+                            player.captain_in.includes(selectedSport?.name)
+                          
+                          if (isPlayerCaptain) {
+                            // If this is the logged-in user (who is creating the team), allow them
+                            if (player.reg_number === loggedInUser?.reg_number && index === 1) {
+                              return true
+                            }
+                            
+                            // If a captain is already selected, don't show other captains
+                            // (team can only have one captain)
+                            if (selectedCaptainsCount > 0) {
+                              return false
+                            }
+                            
+                            // Check if this captain has already created a team for this sport
+                            if (player.participated_in && Array.isArray(player.participated_in)) {
+                              const captainTeamParticipation = player.participated_in.find(
+                                p => p.sport === selectedSport?.name && p.team_name
+                              )
+                              if (captainTeamParticipation) {
+                                // Captain has already created a team
+                                return false
+                              }
+                            }
+                          }
+                          
+                          return true
+                        })
+                        
+                        if (index === 1 && filteredPlayers.length === 0 && players.length > 0) {
+                          logger.warn('No players available after filtering:', {
+                            totalPlayers: players.length,
+                            userGender: loggedInUser?.gender,
+                            userYear: loggedInUser?.year,
+                            filteredCount: filteredPlayers.length
+                          })
+                        }
+                        return filteredPlayers.map((player) => (
+                          <option key={player.reg_number} value={player.reg_number}>
+                            {player.full_name} ({player.reg_number})
+                          </option>
+                        ))
+                      })()
+                    )}
                   </select>
                 </div>
               )

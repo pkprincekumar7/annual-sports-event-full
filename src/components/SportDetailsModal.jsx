@@ -18,6 +18,9 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       hasSetInitialTabRef.current = false
       lastSportRef.current = null
       initialTabSetRef.current = false
+    } else {
+      // Reset initial tab flag when modal opens to ensure fresh tab selection
+      initialTabSetRef.current = false
     }
   }, [isOpen])
   
@@ -30,6 +33,8 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
     if (sportChanged) {
       initialTabSetRef.current = false
       lastSportRef.current = selectedSport.name
+      // Reset activeTab when sport changes to ensure fresh tab selection
+      setActiveTab(null)
     }
     
     // If we've already set the initial tab for this sport, don't do it again
@@ -85,10 +90,17 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       availableTabs.push({ id: 'events', label: 'View Events' })
     }
     
-    // Set active tab synchronously if not set
+    // Set active tab synchronously - always set to first non-events tab when sport changes
+    // Skip 'events' tab if it's the only tab (since it's disabled)
     if (availableTabs.length > 0) {
-      const firstTab = availableTabs[0].id
-      if (!activeTab || !availableTabs.find(t => t.id === activeTab)) {
+      // Find first non-events tab, or use first tab if events is the only one
+      const firstNonEventsTab = availableTabs.find(t => t.id !== 'events')
+      const firstTab = firstNonEventsTab ? firstNonEventsTab.id : availableTabs[0].id
+      
+      // Always set the tab when sport changes to ensure first non-events tab is selected
+      // Also set if current tab is not in available tabs or if we haven't set initial tab yet
+      if (sportChanged || !activeTab || !availableTabs.find(t => t.id === activeTab)) {
+        // Sport changed or no valid tab - always set to first non-events tab
         initialTabSetRef.current = true
         hasSetInitialTabRef.current = true
         setActiveTab(firstTab)
@@ -137,7 +149,10 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
           <RegisterModal
             key="create"
             isOpen={true}
-            onClose={() => {}}
+            onClose={() => {
+              // After successful team creation, close the parent modal
+              onClose()
+            }}
             selectedSport={selectedSport}
             onStatusPopup={onStatusPopup}
             loggedInUser={loggedInUser}
@@ -220,7 +235,10 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
           <RegisterModal
             key="enroll"
             isOpen={true}
-            onClose={onClose}
+            onClose={() => {
+              // After successful individual participation, close the parent modal
+              onClose()
+            }}
             selectedSport={selectedSport}
             onStatusPopup={onStatusPopup}
             loggedInUser={loggedInUser}
@@ -280,6 +298,12 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
 
   const availableTabs = getAvailableTabs()
 
+  // Don't show popup if "View Events" is the only tab (since it's disabled)
+  const isOnlyEventsTab = availableTabs.length === 1 && availableTabs[0].id === 'events'
+  if (isOnlyEventsTab) {
+    return null
+  }
+
   if (!isOpen || !selectedSport) return null
 
   const handleClose = (e) => {
@@ -311,22 +335,29 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
         </div>
 
         {/* Tabs */}
-        {availableTabs.length > 1 && (
+        {availableTabs.length > 0 && (
           <div className="px-6 py-3 border-b border-[rgba(255,255,255,0.1)] flex gap-2">
-            {availableTabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 rounded-lg text-[0.85rem] font-bold transition-all duration-200 ${
-                  activeTab === tab.id
-                    ? 'bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.3)]'
-                    : 'bg-[rgba(255,255,255,0.05)] text-[#cbd5ff] hover:bg-[rgba(255,255,255,0.1)] border border-transparent'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            {availableTabs.map((tab) => {
+              const isEventsTab = tab.id === 'events'
+              const isDisabled = isEventsTab // Disable View Events tab (functionality preserved for future use)
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => !isDisabled && setActiveTab(tab.id)}
+                  disabled={isDisabled}
+                  className={`px-4 py-2 rounded-lg text-[0.85rem] font-bold transition-all duration-200 ${
+                    isDisabled
+                      ? 'bg-[rgba(148,163,184,0.1)] text-[rgba(148,163,184,0.5)] border border-transparent cursor-not-allowed opacity-50'
+                      : activeTab === tab.id
+                      ? 'bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.3)]'
+                      : 'bg-[rgba(255,255,255,0.05)] text-[#cbd5ff] hover:bg-[rgba(255,255,255,0.1)] border border-transparent'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
           </div>
         )}
 

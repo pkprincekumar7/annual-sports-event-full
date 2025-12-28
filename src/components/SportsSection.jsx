@@ -44,6 +44,16 @@ function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUs
   const displayTeamsCount = teamsCount !== undefined ? teamsCount : -1
   const displayParticipantsCount = participantsCount !== undefined ? participantsCount : -1
 
+  // Check if user is enrolled (as individual, team member, or captain) - for non-admin users only
+  // For team events: enrolled if they are a team member (has team_name in participation)
+  // For individual events: enrolled only if they have participated
+  // Note: Being a captain alone doesn't mean enrolled - they must be part of a team
+  const isUserEnrolled = !isAdmin && isEnrolled === true
+
+  // Check if user can create team (for team events only)
+  // User can create team if they are a captain but NOT enrolled
+  const canCreateTeam = !isAdmin && type === 'team' && isCaptain === true && !isEnrolled
+
   // Determine button text based on user type and enrollment status
   const getButtonText = () => {
     if (isAdmin) {
@@ -109,6 +119,17 @@ function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUs
         className="absolute inset-0 bg-cover bg-center opacity-90"
         style={{ backgroundImage: `url('${sport.image}')` }}
       />
+      {/* Badges - positioned at top right corner */}
+      {isUserEnrolled && (
+        <div className="absolute top-3 right-3 z-20 px-2 py-0.5 rounded-md bg-gradient-to-r from-[#22c55e] to-[#16a34a] text-white text-[0.7rem] font-bold uppercase tracking-[0.1em] shadow-[0_2px_8px_rgba(34,197,94,0.5)] animate-pulse">
+          Enrolled!
+        </div>
+      )}
+      {canCreateTeam && (
+        <div className="absolute top-3 right-3 z-20 px-2 py-0.5 rounded-md bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-white text-[0.7rem] font-bold uppercase tracking-[0.1em] shadow-[0_2px_8px_rgba(59,130,246,0.5)] animate-pulse">
+          Create Team
+        </div>
+      )}
       <div className="absolute inset-0 bg-gradient-to-t from-[rgba(0,0,0,0.9)] to-[rgba(0,0,0,0.2)] flex flex-col justify-end p-[0.9rem] px-[1.1rem] text-[#f9fafb] drop-shadow-[0_3px_12px_rgba(0,0,0,0.9)] z-10">
         <div className="text-[1.1rem] font-extrabold text-[#ffe66d] uppercase">{sport.name}</div>
         {loggedInUser && (
@@ -230,20 +251,12 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser }) {
     }
   }, [loggedInUser])
 
-  // Show Team Events if:
-  // - User is not logged in (show all events)
-  // - OR logged in user's reg_number is "admin" (admin - show all)
-  // - OR logged in user has non-empty captain_in array (show only sports in captain_in)
-  // - OR logged in user is enrolled in team events (has participated_in with team_name)
+  // Show Team Events to all users (logged in or not)
+  // All logged-in players should be able to see all sports cards
   const isAdmin = loggedInUser?.reg_number === 'admin'
-  const hasCaptainRole = loggedInUser?.captain_in && Array.isArray(loggedInUser.captain_in) && loggedInUser.captain_in.length > 0
   
-  // Check if user is enrolled in any team events
-  const hasTeamParticipations = loggedInUser?.participated_in && 
-    Array.isArray(loggedInUser.participated_in) &&
-    loggedInUser.participated_in.some(p => p.team_name)
-  
-  const showTeamEvents = !loggedInUser || isAdmin || hasCaptainRole || hasTeamParticipations
+  // Show team events to everyone - no restrictions
+  const showTeamEvents = true
 
   // Show all team sports to non-admin logged-in users
   // Previously filtered, but now showing all for non-admin users
@@ -341,6 +354,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser }) {
             onEventScheduleClick={onEventScheduleClick}
             loggedInUser={loggedInUser}
             isEnrolled={isEnrolledInSport(sport.name, 'individual')}
+            isCaptain={false}
             teamsCount={undefined}
             participantsCount={sportsCounts.participants_counts[sport.name]}
           />
@@ -360,6 +374,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser }) {
             onEventScheduleClick={onEventScheduleClick}
             loggedInUser={loggedInUser}
             isEnrolled={isEnrolledInSport(sport.name, 'individual')}
+            isCaptain={false}
             teamsCount={undefined}
             participantsCount={sportsCounts.participants_counts[sport.name]}
           />

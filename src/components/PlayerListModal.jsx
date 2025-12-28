@@ -319,7 +319,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
                           <select
                             value={editedData.gender || ''}
                             onChange={(e) => handleFieldChange('gender', e.target.value)}
-                            className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none focus:border-[#ffe66d]"
+                            disabled={true}
+                            className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none focus:border-[#ffe66d] opacity-50 cursor-not-allowed"
                           >
                             <option value="">Select</option>
                             <option>Male</option>
@@ -354,7 +355,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
                           <select
                             value={editedData.year || ''}
                             onChange={(e) => handleFieldChange('year', e.target.value)}
-                            className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none focus:border-[#ffe66d]"
+                            disabled={true}
+                            className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none focus:border-[#ffe66d] opacity-50 cursor-not-allowed"
                           >
                             <option value="">Select</option>
                             <option>1st Year (2025)</option>

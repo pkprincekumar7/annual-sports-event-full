@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { fetchWithAuth } from '../utils/api'
+import { fetchWithAuth, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
 function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
@@ -30,6 +30,14 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
 
         if (!isMounted) return
 
+        // Check if responses are OK before parsing JSON
+        if (!playersRes.ok) {
+          throw new Error(`HTTP error! status: ${playersRes.status} for /api/players`)
+        }
+        if (!sportsRes.ok) {
+          throw new Error(`HTTP error! status: ${sportsRes.status} for /api/sports`)
+        }
+
         const [playersData, sportsData] = await Promise.all([
           playersRes.json(),
           sportsRes.json(),
@@ -40,10 +48,14 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
             (p) => p.reg_number !== 'admin'
           )
           setPlayers(filteredPlayers)
+        } else {
+          logger.warn('Failed to fetch players:', playersData.error)
         }
 
         if (sportsData.success) {
           setSports(sportsData.sports || [])
+        } else {
+          logger.warn('Failed to fetch sports:', sportsData.error)
         }
       } catch (err) {
         if (!isMounted || err.name === 'AbortError') return
@@ -128,6 +140,12 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
       const data = await response.json()
 
       if (data.success) {
+        // Clear caches to ensure UI reflects the new captain assignment
+        clearCache('/api/captains-by-sport')
+        clearCache('/api/players') // captain_in field changes
+        clearCache('/api/me') // In case current user is updated
+        // Note: No need to clear team/participant caches as captain assignment doesn't affect them directly
+        
         onStatusPopup(
           `✅ ${selectedPlayer.full_name} has been added as captain for ${sport}!`,
           'success',

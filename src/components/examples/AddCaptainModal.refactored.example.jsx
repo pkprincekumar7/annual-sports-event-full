@@ -1,18 +1,26 @@
-import { useState, useEffect } from 'react'
-import { Modal, Button, Input, EmptyState } from './ui'
-import { useApi } from '../hooks'
-import { fetchWithAuth, clearCache } from '../utils/api'
-import logger from '../utils/logger'
+/**
+ * EXAMPLE: Refactored AddCaptainModal using reusable components
+ * This demonstrates significant code reduction
+ * 
+ * This is an EXAMPLE file - shows the pattern for refactoring
+ */
 
-function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
+import { useState, useEffect } from 'react'
+import { Modal, Button, Input } from '../ui'
+import { useApi, useModal } from '../../hooks'
+import { fetchWithAuth, clearCache } from '../../utils/api'
+
+function AddCaptainModalRefactored({ isOpen, onClose, onStatusPopup }) {
   const [players, setPlayers] = useState([])
+  const [sports, setSports] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedPlayer, setSelectedPlayer] = useState(null)
   const [selectedSport, setSelectedSport] = useState('')
-  const [sports, setSports] = useState([])
-  const { loading, execute } = useApi()
+  
+  const { loading, error, execute } = useApi()
+  const confirmModal = useModal()
 
-  // Fetch players list and sports (with cancellation)
+  // Fetch data
   useEffect(() => {
     if (!isOpen) {
       setPlayers([])
@@ -20,80 +28,38 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
       return
     }
 
-    let isMounted = true
-    const abortController = new AbortController()
-
     const fetchData = async () => {
       try {
-        // Fetch both in parallel
         const [playersRes, sportsRes] = await Promise.all([
-          fetchWithAuth('/api/players', { signal: abortController.signal }),
-          fetchWithAuth('/api/sports', { signal: abortController.signal }),
+          fetchWithAuth('/api/players'),
+          fetchWithAuth('/api/sports'),
         ])
 
-        if (!isMounted) return
-
-        // Check if responses are OK before parsing JSON
-        if (!playersRes.ok) {
-          throw new Error(`HTTP error! status: ${playersRes.status} for /api/players`)
-        }
-        if (!sportsRes.ok) {
-          throw new Error(`HTTP error! status: ${sportsRes.status} for /api/sports`)
+        if (playersRes.ok) {
+          const playersData = await playersRes.json()
+          if (playersData.success) {
+            setPlayers((playersData.players || []).filter(p => p.reg_number !== 'admin'))
+          }
         }
 
-        const [playersData, sportsData] = await Promise.all([
-          playersRes.json(),
-          sportsRes.json(),
-        ])
-
-        if (playersData.success) {
-          const filteredPlayers = (playersData.players || []).filter(
-            (p) => p.reg_number !== 'admin'
-          )
-          setPlayers(filteredPlayers)
-        } else {
-          logger.warn('Failed to fetch players:', playersData.error)
-        }
-
-        if (sportsData.success) {
+        if (sportsRes.ok) {
+          const sportsData = await sportsRes.json()
+          if (sportsData.success) {
           setSports(sportsData.sports || [])
-        } else {
-          logger.warn('Failed to fetch sports:', sportsData.error)
+          }
         }
       } catch (err) {
-        if (!isMounted || err.name === 'AbortError') return
-        logger.error('Error fetching data:', err)
-        setPlayers([])
-        setSports([])
+        // Error handling
       }
     }
 
     fetchData()
-
-    return () => {
-      isMounted = false
-      abortController.abort()
-    }
   }, [isOpen])
 
-  // Reset state when modal closes
-  useEffect(() => {
-    if (!isOpen) {
-      setSearchQuery('')
-      setSelectedPlayer(null)
-      setSelectedSport('')
-    }
-  }, [isOpen])
-
-  // Filter players based on search query
   const filteredPlayers = players.filter((player) =>
     player.reg_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
     player.full_name.toLowerCase().includes(searchQuery.toLowerCase())
   )
-
-  const handlePlayerSelect = (player) => {
-    setSelectedPlayer(player)
-  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -103,7 +69,7 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
       return
     }
 
-    if (!selectedSport.trim()) {
+    if (!selectedSport) {
       onStatusPopup('❌ Please select a sport.', 'error', 2500)
       return
     }
@@ -114,17 +80,13 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
           method: 'POST',
           body: JSON.stringify({
             reg_number: selectedPlayer.reg_number,
-            sport: selectedSport.trim(),
+            sport: selectedSport,
           }),
         }),
         {
-          onSuccess: (data) => {
-            // Clear caches to ensure UI reflects the new captain assignment
+          onSuccess: () => {
             clearCache('/api/captains-by-sport')
-            clearCache('/api/players') // captain_in field changes
-            clearCache('/api/me') // In case current user is updated
-            // Note: No need to clear team/participant caches as captain assignment doesn't affect them directly
-            
+            clearCache('/api/players')
             onStatusPopup(
               `✅ ${selectedPlayer.full_name} has been added as captain for ${selectedSport}!`,
               'success',
@@ -135,17 +97,10 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
             setSelectedSport('')
             onClose()
           },
-          onError: (err) => {
-            const errorMessage = err.message || 'Error adding captain. Please try again.'
-            onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
-          },
         }
       )
     } catch (err) {
-      // This catch handles cases where execute throws before onError is called
-      logger.error('Error adding captain:', err)
-      const errorMessage = err.message || 'Error adding captain. Please try again.'
-      onStatusPopup(`❌ ${errorMessage}`, 'error', 2500)
+      onStatusPopup(`❌ ${err.message || 'Error adding captain.'}`, 'error', 3000)
     }
   }
 
@@ -175,7 +130,7 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
                 filteredPlayers.map((player) => (
                   <div
                     key={player.reg_number}
-                    onClick={() => handlePlayerSelect(player)}
+                    onClick={() => setSelectedPlayer(player)}
                     className={`px-[10px] py-2 cursor-pointer transition-all ${
                       selectedPlayer?.reg_number === player.reg_number
                         ? 'bg-[rgba(255,230,109,0.2)] border-l-2 border-[#ffe66d]'
@@ -189,10 +144,14 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
                   </div>
                 ))
               ) : (
-                <EmptyState message="No players found" className="px-[10px] py-4 text-[0.9rem]" />
+                <div className="px-[10px] py-4 text-center text-[#cbd5ff] text-[0.9rem]">
+                  No players found
+                </div>
               )
             ) : (
-              <EmptyState message="Type to search for a player" className="px-[10px] py-4 text-[0.9rem]" />
+              <div className="px-[10px] py-4 text-center text-[#cbd5ff] text-[0.9rem]">
+                Type to search for a player
+              </div>
             )}
           </div>
           {selectedPlayer && (
@@ -212,7 +171,7 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
           value={selectedSport}
           onChange={(e) => setSelectedSport(e.target.value)}
           required
-          options={sports.map((sport) => ({ value: sport, label: sport }))}
+          options={sports.map(sport => ({ value: sport, label: sport }))}
         />
 
         <div className="flex gap-[0.6rem] mt-[0.8rem]">
@@ -222,7 +181,7 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
             loading={loading}
             fullWidth
           >
-            {loading ? 'Adding...' : 'Submit'}
+            Submit
           </Button>
           <Button
             type="button"
@@ -239,5 +198,5 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
   )
 }
 
-export default AddCaptainModal
+export default AddCaptainModalRefactored
 

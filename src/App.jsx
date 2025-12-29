@@ -228,11 +228,8 @@ function App() {
 
   const handleCloseLoginModal = () => {
     setIsLoginModalOpen(false)
-    // Clear selected sport if user closes login modal without logging in
-    // (selectedSport will be preserved if login is successful)
-    if (!loginSuccessRef.current) {
-      setSelectedSport(null)
-    }
+    // Clear selected sport when login modal is closed
+    setSelectedSport(null)
     loginSuccessRef.current = false // Reset the flag
   }
 
@@ -247,13 +244,10 @@ function App() {
     }
     // Set flag to indicate login was successful
     loginSuccessRef.current = true
-    // If there was a selected sport before login, open registration modal after login
-    if (selectedSport) {
-      setIsLoginModalOpen(false)
-      setTimeout(() => {
-        setIsModalOpen(true)
-      }, 100)
-    }
+    // Close login modal - user can click on sport again if they want to view it
+    setIsLoginModalOpen(false)
+    // Clear selected sport - let user choose what to do after login
+    setSelectedSport(null)
   }
 
   // Function to refresh user data from server (optimized with cache)

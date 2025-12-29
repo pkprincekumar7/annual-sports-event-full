@@ -1,29 +1,33 @@
 // Logging utility for backend (Node.js)
-// In production, only errors are logged. In development, all logs are shown.
+// In production, only errors are logged. In development, verbose logs can be disabled.
 
 const isDevelopment = process.env.NODE_ENV !== 'production'
 
+// Set ENABLE_VERBOSE_LOGS=true in .env to enable verbose API/debug logs in development
+// Default: verbose logs disabled to reduce console noise
+const enableVerboseLogs = isDevelopment && process.env.ENABLE_VERBOSE_LOGS === 'true'
+
 const logger = {
   /**
-   * Log debug information (only in development)
+   * Log debug information (only in development, and only if verbose logs enabled)
    */
   debug: (...args) => {
-    if (isDevelopment) {
+    if (isDevelopment && enableVerboseLogs) {
       console.log('[DEBUG]', ...args)
     }
   },
 
   /**
-   * Log informational messages (only in development)
+   * Log informational messages (only in development, and only if verbose logs enabled)
    */
   info: (...args) => {
-    if (isDevelopment) {
+    if (isDevelopment && enableVerboseLogs) {
       console.info('[INFO]', ...args)
     }
   },
 
   /**
-   * Log warnings (only in development)
+   * Log warnings (always logged in development)
    */
   warn: (...args) => {
     if (isDevelopment) {
@@ -46,10 +50,11 @@ const logger = {
   },
 
   /**
-   * Log API-related debug information (only in development)
+   * Log API-related debug information (only in development, and only if verbose logs enabled)
+   * Use sparingly - these can be very verbose
    */
   api: (...args) => {
-    if (isDevelopment) {
+    if (isDevelopment && enableVerboseLogs) {
       console.log('[API]', ...args)
     }
   },

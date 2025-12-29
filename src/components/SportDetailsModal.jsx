@@ -3,6 +3,7 @@ import TeamDetailsModal from './TeamDetailsModal'
 import RegisterModal from './RegisterModal'
 import ParticipantDetailsModal from './ParticipantDetailsModal'
 import EventScheduleModal from './EventScheduleModal'
+import { CULTURAL_SPORTS } from '../constants/app'
 
 function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onStatusPopup, onUserUpdate, onEventScheduleClick }) {
   const [activeTab, setActiveTab] = useState(null)
@@ -27,6 +28,13 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
   // Set initial active tab when modal opens or sport changes
   useEffect(() => {
     if (!isOpen || !selectedSport) return
+    
+    // Wait for loggedInUser to be available before determining tabs
+    // This prevents Events tab from showing when user data is still loading
+    if (loggedInUser === undefined) {
+      // User data is still loading, don't set tab yet
+      return
+    }
     
     // Only set initial tab once per sport, or if sport changes
     const sportChanged = lastSportRef.current !== selectedSport.name
@@ -107,7 +115,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, selectedSport?.name])
+  }, [isOpen, selectedSport?.name, loggedInUser])
 
   // Compute values needed for useMemo (must be before useMemo hook)
   const isAdmin = loggedInUser?.reg_number === 'admin'
@@ -131,11 +139,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
     loggedInUser.participated_in.some(p => p.sport === selectedSport?.name && !p.team_name)
 
   // Determine sport type for EventScheduleModal
-  const culturalSports = [
-    'Essay Writing', 'Story Writing', 'Group Discussion', 'Debate',
-    'Extempore', 'Quiz', 'Dumb Charades', 'Painting', 'Singing'
-  ]
-  const isCultural = selectedSport && culturalSports.includes(selectedSport.name)
+  const isCultural = selectedSport && CULTURAL_SPORTS.includes(selectedSport.name)
   const sportType = isTeam ? 'team' : (isCultural ? 'cultural' : 'individual')
 
   // Memoize tab content to prevent unnecessary remounts
@@ -147,7 +151,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       case 'create':
         return (
           <RegisterModal
-            key="create"
+            key={`create-${selectedSport.name}`}
             isOpen={true}
             onClose={() => {
               // After successful team creation, close the parent modal
@@ -178,7 +182,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
           // For individual events, show registration modal in view mode
           return (
             <RegisterModal
-              key="view-individual"
+              key={`view-individual-${selectedSport.name}`}
               isOpen={true}
               onClose={onClose}
               selectedSport={selectedSport}
@@ -233,7 +237,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       case 'enroll':
         return (
           <RegisterModal
-            key="enroll"
+            key={`enroll-${selectedSport.name}`}
             isOpen={true}
             onClose={() => {
               // After successful individual participation, close the parent modal

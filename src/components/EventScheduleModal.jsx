@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Modal, Button, Input, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
+import { useApi, useModal } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import logger from '../utils/logger'
+import { EVENT_INFO } from '../constants/app'
 
 function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, onStatusPopup, embedded = false }) {
   const [matches, setMatches] = useState([])
@@ -8,7 +11,6 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const [expandedMatches, setExpandedMatches] = useState(new Set())
   const [showAddForm, setShowAddForm] = useState(false)
   const [deletingMatchId, setDeletingMatchId] = useState(null)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   
   // Form state
   const [matchType, setMatchType] = useState('league')
@@ -17,16 +19,18 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const [playerOne, setPlayerOne] = useState('')
   const [playerTwo, setPlayerTwo] = useState('')
   const [matchDate, setMatchDate] = useState('')
-  const [submitting, setSubmitting] = useState(false)
   const [teamsList, setTeamsList] = useState([])
   const [playersList, setPlayersList] = useState([])
   const [allPlayersList, setAllPlayersList] = useState([]) // Store all players for gender filtering
   const [loadingOptions, setLoadingOptions] = useState(false)
   const [updatingMatchId, setUpdatingMatchId] = useState(null) // Track which match is being updated
-  const [updatingStatus, setUpdatingStatus] = useState(false) // Track status update in progress
-  const [updatingWinner, setUpdatingWinner] = useState(false) // Track winner update in progress
   
   const isAdmin = loggedInUser?.reg_number === 'admin'
+  const { loading: submitting, execute: executeSubmit } = useApi()
+  const { loading: updatingStatus, execute: executeStatusUpdate } = useApi()
+  const { loading: updatingWinner, execute: executeWinnerUpdate } = useApi()
+  const { loading: deleting, execute: executeDelete } = useApi()
+  const deleteConfirmModal = useModal(false)
 
   // Helper function to check if match date is in the future
   const isMatchInFuture = (matchDate) => {
@@ -45,7 +49,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       setExpandedMatches(new Set())
       setShowAddForm(false)
       setDeletingMatchId(null)
-      setShowDeleteConfirm(false)
+      deleteConfirmModal.close()
       setTeamOne('')
       setTeamTwo('')
       setPlayerOne('')
@@ -53,8 +57,6 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       setMatchDate('')
       setAllPlayersList([])
       setUpdatingMatchId(null)
-      setUpdatingStatus(false)
-      setUpdatingWinner(false)
       return
     }
 
@@ -111,7 +113,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       }
     } catch (err) {
       if (err.name === 'AbortError') {
-        logger.api('Request aborted for fetchMatches')
+        // Request aborted
         return
       }
       logger.error('Error fetching matches:', err)
@@ -127,7 +129,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
     setLoadingOptions(true)
     try {
       const encodedSport = encodeURIComponent(sport)
-      logger.api(`Fetching teams/players for sport: ${sport} (encoded: ${encodedSport})`)
+      // Fetching teams/players for sport
       const response = await fetchWithAuth(`/api/event-schedule/${encodedSport}/teams-players`)
       
       if (!response.ok) {
@@ -139,7 +141,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       }
       
       const data = await response.json()
-      logger.api('Teams/players response:', data)
+      // Teams/players response received
       if (data.success) {
         setTeamsList(data.teams || [])
         // Store all players for gender filtering
@@ -151,8 +153,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
           setAllPlayersList([])
           setPlayersList([])
         }
-        logger.api(`Set teams list (${(data.teams || []).length} items):`, data.teams)
-        logger.api(`Set players list (${(data.players || []).length} items):`, data.players)
+        // Teams and players lists set
       } else {
         logger.warn('Failed to fetch teams/players:', data.error)
         setTeamsList([])
@@ -214,7 +215,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
 
   const handleDeleteClick = (matchId) => {
     setDeletingMatchId(matchId)
-    setShowDeleteConfirm(true)
+    deleteConfirmModal.open()
   }
 
   const handleStatusChange = async (matchId, newStatus) => {
@@ -231,45 +232,40 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       return
     }
 
-    setUpdatingStatus(true)
     setUpdatingMatchId(matchId)
     
     try {
-      const response = await fetchWithAuth(`/api/event-schedule/${matchId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ status: newStatus }),
-      })
-
-      if (!response.ok) {
-        const clonedResponse = response.clone()
-        const errorText = await clonedResponse.text().catch(() => 'Unable to read error text')
-        logger.error(`HTTP error! status: ${response.status}, response: ${errorText}`)
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.success) {
-        if (onStatusPopup) {
-          onStatusPopup(`✅ Match status updated to ${newStatus}!`, 'success', 2500)
+      await executeStatusUpdate(
+        () => fetchWithAuth(`/api/event-schedule/${matchId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: newStatus }),
+        }),
+        {
+          onSuccess: (data) => {
+            if (onStatusPopup) {
+              onStatusPopup(`✅ Match status updated to ${newStatus}!`, 'success', 2500)
+            }
+            // Clear cache and refresh matches
+            const encodedSport = encodeURIComponent(sport)
+            clearCache(`/api/event-schedule/${encodedSport}`)
+            fetchMatches()
+            setUpdatingMatchId(null)
+          },
+          onError: (err) => {
+            const errorMessage = err.message || 'Error updating match status. Please try again.'
+            if (onStatusPopup) {
+              onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
+            }
+            setUpdatingMatchId(null)
+          },
         }
-        // Clear cache and refresh matches
-        const encodedSport = encodeURIComponent(sport)
-        clearCache(`/api/event-schedule/${encodedSport}`)
-        fetchMatches()
-      } else {
-        const errorMessage = data.error || 'Error updating match status. Please try again.'
-        if (onStatusPopup) {
-          onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
-        }
-      }
+      )
     } catch (err) {
+      // This catch handles cases where execute throws before onError is called
       logger.error('Error updating match status:', err)
       if (onStatusPopup) {
         onStatusPopup('❌ Error updating match status. Please try again.', 'error', 2500)
       }
-    } finally {
-      setUpdatingStatus(false)
       setUpdatingMatchId(null)
     }
   }
@@ -288,48 +284,43 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       return
     }
 
-    setUpdatingWinner(true)
     setUpdatingMatchId(matchId)
     
     try {
-      const response = await fetchWithAuth(`/api/event-schedule/${matchId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ 
-          winner: winnerName,
-          status: 'completed' // Ensure status is completed when winner is set
+      await executeWinnerUpdate(
+        () => fetchWithAuth(`/api/event-schedule/${matchId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ 
+            winner: winnerName,
+            status: 'completed' // Ensure status is completed when winner is set
+          }),
         }),
-      })
-
-      if (!response.ok) {
-        const clonedResponse = response.clone()
-        const errorText = await clonedResponse.text().catch(() => 'Unable to read error text')
-        logger.error(`HTTP error! status: ${response.status}, response: ${errorText}`)
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.success) {
-        if (onStatusPopup) {
-          onStatusPopup(`✅ Winner updated successfully!`, 'success', 2500)
+        {
+          onSuccess: (data) => {
+            if (onStatusPopup) {
+              onStatusPopup(`✅ Winner updated successfully!`, 'success', 2500)
+            }
+            // Clear cache and refresh matches
+            const encodedSport = encodeURIComponent(sport)
+            clearCache(`/api/event-schedule/${encodedSport}`)
+            fetchMatches()
+            setUpdatingMatchId(null)
+          },
+          onError: (err) => {
+            const errorMessage = err.message || 'Error updating winner. Please try again.'
+            if (onStatusPopup) {
+              onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
+            }
+            setUpdatingMatchId(null)
+          },
         }
-        // Clear cache and refresh matches
-        const encodedSport = encodeURIComponent(sport)
-        clearCache(`/api/event-schedule/${encodedSport}`)
-        fetchMatches()
-      } else {
-        const errorMessage = data.error || 'Error updating winner. Please try again.'
-        if (onStatusPopup) {
-          onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
-        }
-      }
+      )
     } catch (err) {
+      // This catch handles cases where execute throws before onError is called
       logger.error('Error updating winner:', err)
       if (onStatusPopup) {
         onStatusPopup('❌ Error updating winner. Please try again.', 'error', 2500)
       }
-    } finally {
-      setUpdatingWinner(false)
       setUpdatingMatchId(null)
     }
   }
@@ -337,47 +328,45 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const handleConfirmDelete = async () => {
     if (!deletingMatchId) return
 
+    deleteConfirmModal.close()
+    
     try {
-      const response = await fetchWithAuth(`/api/event-schedule/${deletingMatchId}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        // Clone response to read error text without consuming the original
-        const clonedResponse = response.clone()
-        const errorText = await clonedResponse.text().catch(() => 'Unable to read error text')
-        logger.error(`HTTP error! status: ${response.status}, response: ${errorText}`)
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.success) {
-        if (onStatusPopup) {
-          onStatusPopup('✅ Match deleted successfully!', 'success', 2500)
+      await executeDelete(
+        () => fetchWithAuth(`/api/event-schedule/${deletingMatchId}`, {
+          method: 'DELETE',
+        }),
+        {
+          onSuccess: (data) => {
+            if (onStatusPopup) {
+              onStatusPopup('✅ Match deleted successfully!', 'success', 2500)
+            }
+            // Clear cache for event-schedule endpoint to ensure fresh data
+            const encodedSport = encodeURIComponent(sport)
+            clearCache(`/api/event-schedule/${encodedSport}`)
+            fetchMatches()
+            setDeletingMatchId(null)
+          },
+          onError: (err) => {
+            const errorMessage = err.message || 'Error deleting match. Please try again.'
+            if (onStatusPopup) {
+              onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
+            }
+            setDeletingMatchId(null)
+          },
         }
-        // Clear cache for event-schedule endpoint to ensure fresh data
-        const encodedSport = encodeURIComponent(sport)
-        clearCache(`/api/event-schedule/${encodedSport}`)
-        fetchMatches()
-        setDeletingMatchId(null)
-        setShowDeleteConfirm(false)
-      } else {
-        const errorMessage = data.error || 'Error deleting match. Please try again.'
-        if (onStatusPopup) {
-          onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
-        }
-      }
+      )
     } catch (err) {
+      // This catch handles cases where execute throws before onError is called
       logger.error('Error deleting match:', err)
       if (onStatusPopup) {
         onStatusPopup('❌ Error deleting match. Please try again.', 'error', 2500)
       }
+      setDeletingMatchId(null)
     }
   }
 
   const handleCancelDelete = () => {
-    setShowDeleteConfirm(false)
+    deleteConfirmModal.close()
     setDeletingMatchId(null)
   }
 
@@ -456,61 +445,53 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       }
     }
 
-    setSubmitting(true)
     try {
-      const response = await fetchWithAuth('/api/event-schedule', {
-        method: 'POST',
-        body: JSON.stringify({
-          match_type: matchType,
-          sport: sport,
-          sport_type: sportType,
-          team_one: sportType === 'team' ? teamOne : null,
-          team_two: sportType === 'team' ? teamTwo : null,
-          player_one: sportType !== 'team' ? playerOne : null,
-          player_two: sportType !== 'team' ? playerTwo : null,
-          match_date: matchDate,
+      await executeSubmit(
+        () => fetchWithAuth('/api/event-schedule', {
+          method: 'POST',
+          body: JSON.stringify({
+            match_type: matchType,
+            sport: sport,
+            sport_type: sportType,
+            team_one: sportType === 'team' ? teamOne : null,
+            team_two: sportType === 'team' ? teamTwo : null,
+            player_one: sportType !== 'team' ? playerOne : null,
+            player_two: sportType !== 'team' ? playerTwo : null,
+            match_date: matchDate,
+          }),
         }),
-      })
-
-      if (!response.ok) {
-        // Clone response to read error text without consuming the original
-        const clonedResponse = response.clone()
-        const errorText = await clonedResponse.text().catch(() => 'Unable to read error text')
-        logger.error(`HTTP error! status: ${response.status}, response: ${errorText}`)
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.success) {
-        if (onStatusPopup) {
-          onStatusPopup(`✅ ${data.message || 'Match scheduled successfully!'}`, 'success', 2500)
+        {
+          onSuccess: (data) => {
+            if (onStatusPopup) {
+              onStatusPopup(`✅ ${data.message || 'Match scheduled successfully!'}`, 'success', 2500)
+            }
+            setShowAddForm(false)
+            // Clear cache for event-schedule endpoint to ensure fresh data
+            const encodedSport = encodeURIComponent(sport)
+            clearCache(`/api/event-schedule/${encodedSport}`)
+            fetchMatches()
+            // Reset form
+            setMatchType('league')
+            setTeamOne('')
+            setTeamTwo('')
+            setPlayerOne('')
+            setPlayerTwo('')
+            setMatchDate('')
+          },
+          onError: (err) => {
+            const errorMessage = err.message || 'Error scheduling match. Please try again.'
+            if (onStatusPopup) {
+              onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
+            }
+          },
         }
-        setShowAddForm(false)
-        // Clear cache for event-schedule endpoint to ensure fresh data
-        const encodedSport = encodeURIComponent(sport)
-        clearCache(`/api/event-schedule/${encodedSport}`)
-        fetchMatches()
-        // Reset form
-        setMatchType('league')
-        setTeamOne('')
-        setTeamTwo('')
-        setPlayerOne('')
-        setPlayerTwo('')
-        setMatchDate('')
-      } else {
-        const errorMessage = data.error || 'Error scheduling match. Please try again.'
-        if (onStatusPopup) {
-          onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
-        }
-      }
+      )
     } catch (err) {
+      // This catch handles cases where execute throws before onError is called
       logger.error('Error scheduling match:', err)
       if (onStatusPopup) {
         onStatusPopup('❌ Error scheduling match. Please try again.', 'error', 2500)
       }
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -537,40 +518,26 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
     })
   }
 
-  if (!isOpen) return null
-
-  const content = (
-    <div className={`${embedded ? 'w-full' : 'max-w-[900px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative ${embedded ? '' : 'max-h-[90vh]'} ${embedded ? '' : 'overflow-y-auto'}`}>
-      {!embedded && (
-        <button
-          type="button"
-          className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer hover:text-[#ffe66d] transition-colors"
-          onClick={onClose}
-        >
-          ✕
-        </button>
-      )}
-
-      <div className={embedded ? 'px-[1.4rem] py-[1.6rem]' : ''}>
-        <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">
-          {isAdmin ? 'Admin Panel' : 'Event Schedule'}
-        </div>
-        <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
-          {sport} - Event Schedule
-        </div>
-        <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">
-          PCE, Purnea • Umang – 2026 Sports Fest
-        </div>
-
+  return (
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={`${sport} - Event Schedule`}
+        subtitle={EVENT_INFO.fullName}
+        embedded={embedded}
+        maxWidth="max-w-[900px]"
+      >
         {isAdmin && !showAddForm && (
           <div className="mb-4 flex justify-center">
-            <button
+            <Button
               type="button"
               onClick={handleAddMatch}
-              className="px-4 py-2 bg-[rgba(34,197,94,0.9)] hover:bg-[rgba(34,197,94,1)] text-white text-[0.85rem] font-bold rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
+              variant="success"
+              className="px-4 py-2 text-[0.85rem] font-bold rounded-lg"
             >
               Add Match
-            </button>
+            </Button>
           </div>
         )}
 
@@ -578,176 +545,163 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
           <div className="mb-6 p-4 bg-[rgba(255,255,255,0.05)] rounded-lg border border-[rgba(255,255,255,0.1)]">
             <div className="text-[0.9rem] font-bold text-[#ffe66d] mb-3">Schedule New Match</div>
             <form onSubmit={handleSubmitMatch}>
-              <div className="mb-3">
-                <label className="block text-[0.78rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                  Match Type
-                </label>
-                <select
-                  value={matchType}
-                  onChange={(e) => setMatchType(e.target.value)}
-                  className="w-full px-3 py-2 bg-[rgba(255,255,255,0.1)] border border-[rgba(255,255,255,0.2)] rounded-lg text-[#e5e7eb] focus:outline-none focus:border-[#ffe66d]"
-                  required
-                >
-                  <option value="league">League</option>
-                  <option value="knockout">Knockout</option>
-                </select>
-              </div>
+              <Input
+                label="Match Type"
+                type="select"
+                value={matchType}
+                onChange={(e) => setMatchType(e.target.value)}
+                required
+                options={[
+                  { value: 'league', label: 'League' },
+                  { value: 'knockout', label: 'Knockout' },
+                ]}
+                className="mb-3"
+              />
 
               {sportType === 'team' ? (
                 <>
-                  <div className="mb-3">
-                    <label className="block text-[0.78rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                      Team One
-                    </label>
-                    <select
-                      value={teamOne}
-                      onChange={(e) => {
-                        setTeamOne(e.target.value)
-                        // Reset team two if same team selected
-                        if (e.target.value === teamTwo) {
-                          setTeamTwo('')
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-[rgba(255,255,255,0.1)] border border-[rgba(255,255,255,0.2)] rounded-lg text-[#e5e7eb] focus:outline-none focus:border-[#ffe66d]"
-                      required
-                      disabled={loadingOptions}
-                    >
-                      <option value="">Select Team</option>
-                      {teamsList.filter(team => team !== teamTwo).map((team) => (
-                        <option key={team} value={team}>
-                          {team}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="mb-3">
-                    <label className="block text-[0.78rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                      Team Two
-                    </label>
-                    <select
-                      value={teamTwo}
-                      onChange={(e) => {
-                        setTeamTwo(e.target.value)
-                        // Reset team one if same team selected
-                        if (e.target.value === teamOne) {
-                          setTeamOne('')
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-[rgba(255,255,255,0.1)] border border-[rgba(255,255,255,0.2)] rounded-lg text-[#e5e7eb] focus:outline-none focus:border-[#ffe66d]"
-                      required
-                      disabled={loadingOptions}
-                    >
-                      <option value="">Select Team</option>
-                      {teamsList.filter(team => team !== teamOne).map((team) => (
-                        <option key={team} value={team}>
-                          {team}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <Input
+                    label="Team One"
+                    type="select"
+                    value={teamOne}
+                    onChange={(e) => {
+                      setTeamOne(e.target.value)
+                      // Reset team two if same team selected
+                      if (e.target.value === teamTwo) {
+                        setTeamTwo('')
+                      }
+                    }}
+                    required
+                    disabled={loadingOptions}
+                    options={[
+                      { value: '', label: 'Select Team' },
+                      ...teamsList.filter(team => team !== teamTwo).map((team) => ({
+                        value: team,
+                        label: team
+                      }))
+                    ]}
+                    className="mb-3"
+                  />
+                  <Input
+                    label="Team Two"
+                    type="select"
+                    value={teamTwo}
+                    onChange={(e) => {
+                      setTeamTwo(e.target.value)
+                      // Reset team one if same team selected
+                      if (e.target.value === teamOne) {
+                        setTeamOne('')
+                      }
+                    }}
+                    required
+                    disabled={loadingOptions}
+                    options={[
+                      { value: '', label: 'Select Team' },
+                      ...teamsList.filter(team => team !== teamOne).map((team) => ({
+                        value: team,
+                        label: team
+                      }))
+                    ]}
+                    className="mb-3"
+                  />
                 </>
               ) : (
                 <>
-                  <div className="mb-3">
-                    <label className="block text-[0.78rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                      Player One
-                    </label>
-                    <select
-                      value={playerOne}
-                      onChange={(e) => {
-                        const newPlayerOne = e.target.value
-                        setPlayerOne(newPlayerOne)
-                        // Reset player two if same player selected
-                        if (newPlayerOne === playerTwo) {
-                          setPlayerTwo('')
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-[rgba(255,255,255,0.1)] border border-[rgba(255,255,255,0.2)] rounded-lg text-[#e5e7eb] focus:outline-none focus:border-[#ffe66d]"
-                      required
-                      disabled={loadingOptions}
-                    >
-                      <option value="">Select Player</option>
-                      {(() => {
-                        // If player two is selected first, use playersList (filtered by gender)
-                        if (playerTwo && !playerOne) {
-                          return playersList
+                  <Input
+                    label="Player One"
+                    type="select"
+                    value={playerOne}
+                    onChange={(e) => {
+                      const newPlayerOne = e.target.value
+                      setPlayerOne(newPlayerOne)
+                      // Reset player two if same player selected
+                      if (newPlayerOne === playerTwo) {
+                        setPlayerTwo('')
+                      }
+                    }}
+                    required
+                    disabled={loadingOptions}
+                    options={(() => {
+                      const baseOptions = [{ value: '', label: 'Select Player' }]
+                      // If player two is selected first, use playersList (filtered by gender)
+                      if (playerTwo && !playerOne) {
+                        return [
+                          ...baseOptions,
+                          ...playersList
                             .filter(player => player.reg_number !== playerTwo)
-                            .map((player) => (
-                              <option key={player.reg_number} value={player.reg_number}>
-                                {player.full_name} ({player.reg_number})
-                              </option>
-                            ))
-                        }
-                        // Otherwise, show all players except player two
-                        return allPlayersList
+                            .map((player) => ({
+                              value: player.reg_number,
+                              label: `${player.full_name} (${player.reg_number})`
+                            }))
+                        ]
+                      }
+                      // Otherwise, show all players except player two
+                      return [
+                        ...baseOptions,
+                        ...allPlayersList
                           .filter(player => player.reg_number !== playerTwo)
-                          .map((player) => (
-                            <option key={player.reg_number} value={player.reg_number}>
-                              {player.full_name} ({player.reg_number})
-                            </option>
-                          ))
-                      })()}
-                    </select>
-                  </div>
-                  <div className="mb-3">
-                    <label className="block text-[0.78rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                      Player Two
-                    </label>
-                    <select
-                      value={playerTwo}
-                      onChange={(e) => {
-                        setPlayerTwo(e.target.value)
-                        // Reset player one if same player selected
-                        if (e.target.value === playerOne) {
-                          setPlayerOne('')
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-[rgba(255,255,255,0.1)] border border-[rgba(255,255,255,0.2)] rounded-lg text-[#e5e7eb] focus:outline-none focus:border-[#ffe66d]"
-                      required
-                      disabled={loadingOptions}
-                    >
-                      <option value="">Select Player</option>
-                      {playersList
+                          .map((player) => ({
+                            value: player.reg_number,
+                            label: `${player.full_name} (${player.reg_number})`
+                          }))
+                      ]
+                    })()}
+                    className="mb-3"
+                  />
+                  <Input
+                    label="Player Two"
+                    type="select"
+                    value={playerTwo}
+                    onChange={(e) => {
+                      setPlayerTwo(e.target.value)
+                      // Reset player one if same player selected
+                      if (e.target.value === playerOne) {
+                        setPlayerOne('')
+                      }
+                    }}
+                    required
+                    disabled={loadingOptions}
+                    options={[
+                      { value: '', label: 'Select Player' },
+                      ...playersList
                         .filter(player => player.reg_number !== playerOne)
-                        .map((player) => (
-                        <option key={player.reg_number} value={player.reg_number}>
-                          {player.full_name} ({player.reg_number})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                        .map((player) => ({
+                          value: player.reg_number,
+                          label: `${player.full_name} (${player.reg_number})`
+                        }))
+                    ]}
+                    className="mb-3"
+                  />
                 </>
               )}
 
-              <div className="mb-4">
-                <label className="block text-[0.78rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                  Match Date & Time
-                </label>
-                <input
-                  type="datetime-local"
-                  value={matchDate}
-                  onChange={(e) => {
-                    setMatchDate(e.target.value)
-                    // Use setTimeout to blur after the value is set, which closes the date picker
-                    setTimeout(() => {
-                      e.target.blur()
-                    }, 100)
-                  }}
-                  min={new Date().toISOString().slice(0, 16)}
-                  className="w-full px-3 py-2 bg-[rgba(255,255,255,0.1)] border border-[rgba(255,255,255,0.2)] rounded-lg text-[#e5e7eb] focus:outline-none focus:border-[#ffe66d]"
-                  required
-                />
-              </div>
+              <Input
+                label="Match Date & Time"
+                type="datetime-local"
+                value={matchDate}
+                onChange={(e) => {
+                  setMatchDate(e.target.value)
+                  // Use setTimeout to blur after the value is set, which closes the date picker
+                  setTimeout(() => {
+                    e.target.blur()
+                  }, 100)
+                }}
+                min={new Date().toISOString().slice(0, 16)}
+                required
+                className="mb-4"
+              />
 
               <div className="flex gap-3">
-                <button
+                <Button
                   type="submit"
                   disabled={submitting}
-                  className="flex-1 px-2 py-2 bg-[rgba(34,197,94,0.9)] hover:bg-[rgba(34,197,94,1)] text-white text-[0.85rem] font-bold rounded-lg transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  loading={submitting}
+                  variant="success"
+                  className="flex-1 px-2 py-2 text-[0.85rem] font-bold rounded-lg"
                 >
                   {submitting ? 'Scheduling...' : 'Schedule'}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={() => {
                     setShowAddForm(false)
@@ -758,19 +712,20 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                     setPlayerTwo('')
                     setMatchDate('')
                   }}
-                  className="px-4 py-2 bg-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.2)] text-[#e5e7eb] text-[0.85rem] font-bold rounded-lg transition-all duration-200"
+                  variant="secondary"
+                  className="px-4 py-2 text-[0.85rem] font-bold rounded-lg"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </form>
           </div>
         )}
 
         {loading ? (
-          <div className="text-center text-[#e5e7eb] py-8">Loading matches...</div>
+          <LoadingSpinner message="Loading matches..." />
         ) : matches.length === 0 ? (
-          <div className="text-center text-[#e5e7eb] py-8">No matches scheduled yet.</div>
+          <EmptyState message="No matches scheduled yet." className="py-8" />
         ) : (
           <div className="space-y-2">
             {matches.map((match) => {
@@ -808,19 +763,21 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                         <>
                           {match.status === 'scheduled' && (
                             <>
-                              <button
+                              <Button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   handleDeleteClick(match._id)
                                 }}
                                 disabled={updatingStatus || updatingWinner}
-                                className="px-2 py-1.5 rounded-[8px] text-[0.8rem] font-semibold uppercase tracking-[0.05em] transition-all bg-gradient-to-r from-[#ef4444] to-[#dc2626] text-white cursor-pointer hover:shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                variant="danger"
+                                className="px-2 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em] rounded-[8px]"
                               >
                                 Remove
-                              </button>
+                              </Button>
                               {!isMatchInFuture(match.match_date) && (
-                                <select
+                                <Input
+                                  type="select"
                                   value={match.status || 'scheduled'}
                                   onChange={(e) => {
                                     e.stopPropagation()
@@ -828,14 +785,15 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                   }}
                                   disabled={updatingStatus || updatingMatchId === match._id}
                                   onClick={(e) => e.stopPropagation()}
-                                  className="px-2 py-1.5 rounded-[8px] text-[0.8rem] font-semibold uppercase tracking-[0.05em] bg-[rgba(59,130,246,0.8)] hover:bg-[rgba(59,130,246,1)] text-white cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="Update Result"
-                                >
-                                  <option value="scheduled">Scheduled</option>
-                                  <option value="completed">Completed</option>
-                                  <option value="draw">Draw</option>
-                                  <option value="cancelled">Cancelled</option>
-                                </select>
+                                  options={[
+                                    { value: 'scheduled', label: 'Scheduled' },
+                                    { value: 'completed', label: 'Completed' },
+                                    { value: 'draw', label: 'Draw' },
+                                    { value: 'cancelled', label: 'Cancelled' },
+                                  ]}
+                                  className="px-2 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em] rounded-[8px] bg-[rgba(59,130,246,0.8)] hover:bg-[rgba(59,130,246,1)] text-white"
+                                />
                               )}
                             </>
                           )}
@@ -882,17 +840,18 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                 <span className="text-[#e5e7eb]">{match.team_one || 'N/A'}</span>
                               </div>
                               {isAdmin && match.status === 'completed' && !match.winner && !isMatchInFuture(match.match_date) && (
-                                <button
+                                <Button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     handleWinnerSelect(match._id, match.team_one)
                                   }}
                                   disabled={updatingWinner || updatingMatchId === match._id}
-                                  className="px-2 py-1 rounded text-[0.75rem] font-bold bg-[rgba(34,197,94,0.8)] hover:bg-[rgba(34,197,94,1)] text-white transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  variant="success"
+                                  className="px-2 py-1 text-[0.75rem] font-bold rounded"
                                 >
                                   Winner
-                                </button>
+                                </Button>
                               )}
                               {match.status === 'completed' && match.winner && (
                                 <span className={`px-2 py-1 rounded text-[0.75rem] font-bold ${
@@ -945,7 +904,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                 </span>
                               </div>
                               {isAdmin && match.status === 'completed' && !match.winner && match.player_one && match.player_one.name && !isMatchInFuture(match.match_date) && (
-                                <button
+                                <Button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation()
@@ -953,10 +912,11 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                     handleWinnerSelect(match._id, winnerName)
                                   }}
                                   disabled={updatingWinner || updatingMatchId === match._id}
-                                  className="px-2 py-1 rounded text-[0.75rem] font-bold bg-[rgba(34,197,94,0.8)] hover:bg-[rgba(34,197,94,1)] text-white transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  variant="success"
+                                  className="px-2 py-1 text-[0.75rem] font-bold rounded"
                                 >
                                   Winner
-                                </button>
+                                </Button>
                               )}
                               {match.status === 'completed' && match.winner && match.player_one && match.player_one.name && (
                                 <span className={`px-2 py-1 rounded text-[0.75rem] font-bold ${
@@ -1018,46 +978,22 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
           </div>
         )}
 
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 bg-[rgba(0,0,0,0.8)] flex items-center justify-center z-[300]">
-            <div className="bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] p-6 border border-[rgba(255,255,255,0.12)] max-w-[400px] w-full mx-4">
-              <div className="text-[1.1rem] font-bold text-[#ffe66d] mb-3 text-center">
-                Confirm Delete
-              </div>
-              <div className="text-[0.9rem] text-[#e5e7eb] mb-4 text-center">
-                Are you sure you want to delete this match? This action cannot be undone.
-              </div>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={handleConfirmDelete}
-                  className="flex-1 px-2 py-2 bg-[rgba(239,68,68,0.8)] hover:bg-[rgba(239,68,68,1)] text-white text-[0.85rem] font-bold rounded-lg transition-all duration-200"
-                >
-                  Delete
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancelDelete}
-                  className="flex-1 px-4 py-2 bg-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.2)] text-[#e5e7eb] text-[0.85rem] font-bold rounded-lg transition-all duration-200"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
+      </Modal>
 
-  if (embedded) {
-    return content
-  }
-
-  return (
-    <div className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4">
-      {content}
-    </div>
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={deleteConfirmModal.isOpen && deletingMatchId !== null}
+        onClose={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+        title="Confirm Delete"
+        message="Are you sure you want to delete this match? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        loading={deleting}
+        embedded={embedded}
+      />
+    </>
   )
 }
 

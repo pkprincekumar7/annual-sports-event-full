@@ -62,7 +62,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                        (!currentIsTeam && (prevSportNameRef.current === null || totalParticipants === 0 && !loadingParticipants))
     
     if (!shouldFetch && prevSportNameRef.current !== null) {
-      logger.api('Skipping fetch - sport name unchanged and data already loaded')
+      // Skipping fetch - sport name unchanged and data already loaded
       // For non-team events, ensure loading state is reset if we're skipping fetch
       if (!currentIsTeam && loadingParticipants) {
         setLoadingParticipants(false)
@@ -86,11 +86,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         setLoadingParticipants(true)
         try {
           const encodedSport = encodeURIComponent(currentSportName)
-          logger.api(`Fetching participants count for: ${currentSportName}`)
           const response = await fetchWithAuth(`/api/participants-count/${encodedSport}`)
           
           if (!isMountedRef.current) {
-            logger.api('Component unmounted, aborting participants count fetch')
             return
           }
 
@@ -101,11 +99,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           }
 
           const data = await response.json()
-          logger.api(`Participants count response:`, data)
           
           if (data.success && isMountedRef.current) {
             const count = data.total_participants || 0
-            logger.api(`Setting participants count to: ${count}`)
             setTotalParticipants(count)
           } else if (isMountedRef.current) {
             logger.warn('Failed to fetch participants count:', data.error)
@@ -113,7 +109,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           }
         } catch (err) {
           if (!isMountedRef.current) {
-            logger.api('Component unmounted during participants count fetch error')
             return
           }
           logger.error('Error fetching participants count:', err)
@@ -122,7 +117,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           }
         } finally {
           if (isMountedRef.current) {
-            logger.api('Setting loadingParticipants to false')
             setLoadingParticipants(false)
           }
         }
@@ -133,10 +127,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       // For team events, fetch players and teams
       const fetchPlayers = async () => {
         try {
-          logger.api('Starting to fetch players...')
           const response = await fetchWithAuth('/api/players')
-          
-          logger.api('Players response received:', { ok: response.ok, status: response.status })
           
           if (!isMountedRef.current) {
             logger.warn('Component unmounted, skipping players update')
@@ -148,13 +139,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           }
 
           const data = await response.json()
-          logger.api('Players data parsed:', { success: data.success, playersCount: data.players?.length })
           
           if (data.success && isMountedRef.current) {
             const playersList = data.players || []
-            logger.api(`Setting ${playersList.length} players in state`)
             setPlayers(playersList)
-            logger.api('Players state updated')
           } else if (isMountedRef.current) {
             logger.warn('Failed to fetch players:', data.error)
             setPlayers([])

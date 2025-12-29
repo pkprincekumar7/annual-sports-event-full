@@ -113,7 +113,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       }
     } catch (err) {
       if (err.name === 'AbortError') {
-        logger.api('Request aborted for fetchMatches')
+        // Request aborted
         return
       }
       logger.error('Error fetching matches:', err)
@@ -129,7 +129,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
     setLoadingOptions(true)
     try {
       const encodedSport = encodeURIComponent(sport)
-      logger.api(`Fetching teams/players for sport: ${sport} (encoded: ${encodedSport})`)
+      // Fetching teams/players for sport
       const response = await fetchWithAuth(`/api/event-schedule/${encodedSport}/teams-players`)
       
       if (!response.ok) {
@@ -141,7 +141,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       }
       
       const data = await response.json()
-      logger.api('Teams/players response:', data)
+      // Teams/players response received
       if (data.success) {
         setTeamsList(data.teams || [])
         // Store all players for gender filtering
@@ -153,8 +153,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
           setAllPlayersList([])
           setPlayersList([])
         }
-        logger.api(`Set teams list (${(data.teams || []).length} items):`, data.teams)
-        logger.api(`Set players list (${(data.players || []).length} items):`, data.players)
+        // Teams and players lists set
       } else {
         logger.warn('Failed to fetch teams/players:', data.error)
         setTeamsList([])

@@ -107,7 +107,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
         const filteredPlayers = (data.players || []).filter(
           p => p.reg_number !== 'admin'
         )
-        logger.api(`Fetched ${filteredPlayers.length} players for team replacement`)
+        // Fetched players for team replacement
         setPlayers(filteredPlayers)
       } else {
         logger.warn('Failed to fetch players:', data.error)
@@ -135,7 +135,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
       // URL encode the sport name to handle special characters like ×
       const encodedSport = encodeURIComponent(sport)
       const url = `/api/teams/${encodedSport}`
-      logger.api('Fetching teams for sport:', sport, 'URL:', url)
+      // Fetching teams for sport
       
       const response = await fetchWithAuth(url, signal ? { signal } : {})
       
@@ -165,7 +165,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
       }
 
       const data = await response.json()
-      logger.api('Team data received:', data)
+        // Team data received
 
       if (isMounted) {
         if (data.success) {

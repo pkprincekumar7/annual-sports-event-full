@@ -178,7 +178,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
                   )
                   setPlayers(filteredPlayers)
                   setFilteredPlayers(filteredPlayers)
-                  logger.api('Players list refreshed successfully')
+                  // Players list refreshed successfully
                 } else {
                   // Data structure unexpected, but don't show error
                   logger.warn('Refresh: unexpected data structure', refreshData)

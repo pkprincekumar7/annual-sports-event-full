@@ -99,10 +99,10 @@ function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUs
     onSportClick({ name: sport.name, type, players: sport.players })
   }
 
-  // Debug: Log render state
-  if (loggedInUser) {
-    logger.api(`Rendering SportCard ${sport.name} (${type}) - teamsCount: ${teamsCount}, participantsCount: ${participantsCount}`)
-  }
+  // Debug: Log render state (disabled by default - enable via localStorage.setItem('enableVerboseLogs', 'true'))
+  // if (loggedInUser) {
+  //   logger.api(`Rendering SportCard ${sport.name} (${type}) - teamsCount: ${teamsCount}, participantsCount: ${participantsCount}`)
+  // }
 
   // Card is now clickable for all users
   const cardClasses = "relative min-h-[170px] rounded-[18px] overflow-hidden shadow-[0_18px_40px_rgba(0,0,0,0.75)] cursor-pointer translate-y-0 transition-all duration-[0.25s] ease-in-out hover:-translate-y-2 hover:shadow-[0_26px_55px_rgba(0,0,0,0.9)]"
@@ -185,23 +185,21 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser }) {
     const fetchAllCounts = async () => {
       setLoadingCounts(true)
       try {
-        logger.api('Fetching all sports counts from /api/sports-counts...')
+        // Fetching all sports counts
         const response = await fetchWithAuth('/api/sports-counts', {
           signal: abortController.signal,
         })
 
         if (!isMounted) {
-          logger.api('Component unmounted, aborting fetch')
+          // Component unmounted, aborting fetch
           return
         }
 
-        logger.api('Response status:', response.status, response.statusText)
+        // Response received
         
         if (response.ok) {
           const data = await response.json()
-          logger.api('All sports counts received:', data)
-          logger.api('Teams counts:', data.teams_counts)
-          logger.api('Participants counts:', data.participants_counts)
+          // Sports counts received
           if (isMounted) {
             setSportsCounts({
               teams_counts: data.teams_counts || {},
@@ -209,7 +207,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser }) {
             })
             hasFetchedRef.current = true
             prevLoggedInUserRef.current = loggedInUser
-            logger.api('State updated with sports counts')
+            // State updated with sports counts
           }
         } else {
           // Clone response to read error text without consuming the original
@@ -222,7 +220,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser }) {
         }
       } catch (err) {
         if (err.name === 'AbortError') {
-          logger.api('Request for all sports counts aborted')
+          // Request aborted
           return
         }
         if (!isMounted) {
@@ -247,7 +245,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser }) {
       // The isMounted check will prevent state updates if component unmounts
       // Only abort if we're sure the component is unmounting (which we can't detect here)
       // So we'll just let requests complete naturally
-      logger.api('Cleanup: marking as unmounted, but not aborting request to allow completion')
+      // Cleanup: marking as unmounted
     }
   }, [loggedInUser])
 

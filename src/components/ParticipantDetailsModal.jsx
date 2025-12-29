@@ -82,7 +82,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
       // URL encode the sport name to handle special characters
       const encodedSport = encodeURIComponent(sport)
       const url = `/api/participants/${encodedSport}`
-      logger.api('Fetching participants for sport:', sport, 'URL:', url)
+      // Fetching participants for sport
       
       const response = await fetchWithAuth(url, { signal })
       
@@ -112,7 +112,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
       }
 
       const data = await response.json()
-      logger.api('Participant data received:', data)
+      // Participant data received
 
       if (isMounted) {
         if (data.success) {

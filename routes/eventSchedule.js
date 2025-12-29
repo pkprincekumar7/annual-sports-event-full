@@ -24,7 +24,7 @@ router.get(
     const { sport } = req.params
     const matches = await EventSchedule.find({ sport }).sort({ match_number: 1 }).lean()
 
-    logger.api(`Fetched ${matches.length} matches for sport: ${sport}`)
+    // Matches fetched successfully
     return sendSuccessResponse(res, { matches })
   })
 )
@@ -194,7 +194,7 @@ router.post(
 
     await newMatch.save()
 
-    logger.api(`Created new match #${match_number} for ${sport}`)
+    // Match created successfully
     return sendSuccessResponse(res, { match: newMatch }, `Match #${match_number} scheduled successfully`)
   })
 )
@@ -300,7 +300,7 @@ router.put(
       return handleNotFoundError(res, 'Match')
     }
 
-    logger.api(`Updated match #${updatedMatch.match_number} for ${updatedMatch.sport}`)
+    // Match updated successfully
     return sendSuccessResponse(res, { match: updatedMatch }, 'Match updated successfully')
   })
 )
@@ -335,7 +335,7 @@ router.delete(
     // Delete the match
     await EventSchedule.findByIdAndDelete(id)
 
-    logger.api(`Deleted match #${match.match_number} for ${match.sport}`)
+    // Match deleted successfully
     return sendSuccessResponse(res, {}, 'Match deleted successfully')
   })
 )
@@ -353,7 +353,7 @@ router.get(
     // Decode the sport name in case it's URL encoded
     const decodedSport = decodeURIComponent(sport)
 
-    logger.api(`Fetching teams/players for sport: ${decodedSport}`)
+    // Fetching teams/players for sport
 
     // Get sport type from existing matches or determine from sport name
     const existingMatch = await EventSchedule.findOne({ sport: decodedSport }).lean()
@@ -363,7 +363,7 @@ router.get(
         ? 'team'
         : 'individual'
 
-    logger.api(`Sport type determined as: ${sportType}`)
+    // Sport type determined
 
     if (sportType === 'team') {
       // Get all unique team names for this sport
@@ -375,7 +375,7 @@ router.get(
         .select('participated_in')
         .lean()
 
-      logger.api(`Found ${players.length} players with teams for ${decodedSport}`)
+      // Found players with teams
 
       const teamsSet = new Set()
       players.forEach((player) => {
@@ -388,7 +388,7 @@ router.get(
       })
 
       const teamsArray = Array.from(teamsSet).sort()
-      logger.api(`Found ${teamsArray.length} unique teams:`, teamsArray)
+      // Found unique teams
       return sendSuccessResponse(res, { teams: teamsArray, players: [] })
     } else {
       // Get all players who participated in this sport (individual/cultural)
@@ -404,7 +404,7 @@ router.get(
         .select('reg_number full_name gender')
         .lean()
 
-      logger.api(`Found ${players.length} individual participants for ${decodedSport}`)
+      // Found individual participants
 
       const playersList = players.map((p) => ({
         reg_number: p.reg_number,
@@ -412,7 +412,7 @@ router.get(
         gender: p.gender,
       }))
 
-      logger.api(`Players list:`, playersList.map((p) => `${p.full_name} (${p.reg_number})`))
+      // Players list prepared
       return sendSuccessResponse(res, { teams: [], players: playersList })
     }
   })

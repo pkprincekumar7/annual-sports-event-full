@@ -479,7 +479,7 @@ router.get(
   asyncHandler(async (req, res) => {
     // Decode the sport name from URL parameter
     let sport = decodeURIComponent(req.params.sport)
-    logger.api('Received request for teams - sport:', sport)
+    // Received request for teams
 
     if (!sport) {
       return sendErrorResponse(res, 400, 'Sport name is required')
@@ -526,7 +526,7 @@ router.get(
     // Sort teams by team name
     teams.sort((a, b) => a.team_name.localeCompare(b.team_name))
 
-    logger.api(`Found ${teams.length} teams for sport: ${sport}`)
+    // Teams fetched successfully
 
     return sendSuccessResponse(res, {
       sport: sport,

@@ -33,7 +33,7 @@ router.get(
   '/sports-counts',
   authenticateToken,
   asyncHandler(async (req, res) => {
-    logger.api('Received request for all sports counts')
+    // Received request for all sports counts
 
     const teamsCounts = {}
     const participantsCounts = {}
@@ -116,7 +116,7 @@ router.get(
       participantsCounts[sport] = count
     })
 
-    logger.api('All sports counts fetched successfully')
+    // All sports counts fetched successfully
 
     return sendSuccessResponse(res, {
       teams_counts: teamsCounts,

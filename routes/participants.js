@@ -24,7 +24,7 @@ router.get(
   asyncHandler(async (req, res) => {
     // Decode the sport name from URL parameter
     let sport = decodeURIComponent(req.params.sport)
-    logger.api('Received request for participants - sport:', sport)
+    // Received request for participants
 
     if (!sport) {
       return sendErrorResponse(res, 400, 'Sport name is required')
@@ -70,7 +70,7 @@ router.get(
   asyncHandler(async (req, res) => {
     // Decode the sport name from URL parameter
     let sport = decodeURIComponent(req.params.sport)
-    logger.api('Received request for participants count - sport:', sport)
+    // Received request for participants count
 
     if (!sport) {
       return sendErrorResponse(res, 400, 'Sport name is required')
@@ -103,7 +103,7 @@ router.get(
 
     const count = result.length > 0 ? result[0].total : 0
 
-    logger.api(`Participants count for ${sport}: ${count}`)
+    // Participants count fetched
 
     return sendSuccessResponse(res, {
       sport: sport,

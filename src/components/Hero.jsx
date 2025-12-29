@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
+import { EVENT_INFO } from '../constants/app'
 
 function Hero({ onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRemoveCaptainClick, onListPlayersClick, onExportExcel, loggedInUser }) {
   const [eventCountdown, setEventCountdown] = useState('')
 
   useEffect(() => {
-    const targetTime = new Date('2026-01-09T00:00:00').getTime()
+    const targetTime = new Date(EVENT_INFO.eventDates.start).getTime()
 
     const update = () => {
       const now = Date.now()
@@ -60,14 +61,14 @@ function Hero({ onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRe
             }}
           />
           <div className="text-[2.2rem] font-bold tracking-[0.18em] text-white uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.7),0_0_12px_rgba(0,0,0,0.8)] max-md:text-[1.7rem]">
-            UMANG – 2026
+            {EVENT_INFO.name}
           </div>
         </div>
         <div className="mt-1 text-center text-[1.2rem] font-bold text-[#ffe66d] drop-shadow-[0_0_8px_rgba(0,0,0,0.8)] max-md:text-base">
-          Event Date: 9th Jan 2026 to 13th Jan 2026
+          Event Date: {EVENT_INFO.eventDates.display}
         </div>
         <div className="mt-[0.7rem] text-center text-[1.2rem] font-semibold text-[#ff4dff] drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]">
-          Registration Date: 2nd Jan 2026 to 6th Jan 2026
+          Registration Date: {EVENT_INFO.registrationDates.display}
         </div>
         {eventCountdown && (
           <div id="eventCountdown" className="mt-2 mb-0 text-center text-base font-semibold text-red-500">

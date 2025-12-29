@@ -1,17 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
+import { Modal, Button, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
+import { useApi, useModal } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import logger from '../utils/logger'
+import { EVENT_INFO } from '../constants/app'
 
 function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false }) {
   const [participants, setParticipants] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [expandedParticipants, setExpandedParticipants] = useState(new Set())
-  const [deleting, setDeleting] = useState(false)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [participantToDelete, setParticipantToDelete] = useState(null)
   const currentSportRef = useRef(null)
   const abortControllerRef = useRef(null)
+  const { loading: deleting, execute } = useApi()
+  const deleteConfirmModal = useModal(false)
 
   useEffect(() => {
     if (!isOpen || !sport) {
@@ -19,9 +22,8 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
       setParticipants([])
       setExpandedParticipants(new Set())
       setError(null)
-      setShowDeleteConfirm(false)
+      deleteConfirmModal.close()
       setParticipantToDelete(null)
-      setDeleting(false)
       currentSportRef.current = null
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
@@ -147,119 +149,96 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
 
   const handleDeleteClick = (participant) => {
     setParticipantToDelete(participant)
-    setShowDeleteConfirm(true)
+    deleteConfirmModal.open()
   }
 
   const handleConfirmDelete = async () => {
-    if (!participantToDelete || deleting) return
+    if (!participantToDelete) return
 
-    setDeleting(true)
-    setShowDeleteConfirm(false)
+    deleteConfirmModal.close()
     try {
-      const response = await fetchWithAuth('/api/remove-participation', {
-        method: 'DELETE',
-        body: JSON.stringify({
-          reg_number: participantToDelete.reg_number,
-          sport: sport,
+      await execute(
+        () => fetchWithAuth('/api/remove-participation', {
+          method: 'DELETE',
+          body: JSON.stringify({
+            reg_number: participantToDelete.reg_number,
+            sport: sport,
+          }),
         }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.success) {
-        if (onStatusPopup) {
-          onStatusPopup(
-            `✅ ${participantToDelete.full_name}'s participation in ${sport} has been removed!`,
-            'success',
-            3000
-          )
+        {
+          onSuccess: (data) => {
+            if (onStatusPopup) {
+              onStatusPopup(
+                `✅ ${participantToDelete.full_name}'s participation in ${sport} has been removed!`,
+                'success',
+                3000
+              )
+            }
+            // Clear cache before refreshing to ensure we get fresh data
+            const encodedSport = encodeURIComponent(sport)
+            clearCache(`/api/participants/${encodedSport}`)
+            clearCache(`/api/participants-count/${encodedSport}`)
+            clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
+            clearCache('/api/players') // Player participation data changes
+            clearCache('/api/me') // If this was the logged-in user
+            clearCache('/api/sports-counts') // Participant count changes
+            // Remove deleted participant from expanded participants if it was expanded
+            setExpandedParticipants(prev => {
+              const newSet = new Set(prev)
+              newSet.delete(participantToDelete.reg_number)
+              return newSet
+            })
+            // Refresh the participants list (no signal needed for manual refresh)
+            fetchParticipantDetails(null)
+            setParticipantToDelete(null)
+          },
+          onError: (err) => {
+            const errorMessage = err.message || 'Error removing participation. Please try again.'
+            if (onStatusPopup) {
+              onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
+            }
+            setParticipantToDelete(null)
+          },
         }
-        // Clear cache before refreshing to ensure we get fresh data
-        const encodedSport = encodeURIComponent(sport)
-        clearCache(`/api/participants/${encodedSport}`)
-        clearCache(`/api/participants-count/${encodedSport}`)
-        clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
-        clearCache('/api/players') // Player participation data changes
-        clearCache('/api/me') // If this was the logged-in user
-        clearCache('/api/sports-counts') // Participant count changes
-        // Remove deleted participant from expanded participants if it was expanded
-        setExpandedParticipants(prev => {
-          const newSet = new Set(prev)
-          newSet.delete(participantToDelete.reg_number)
-          return newSet
-        })
-        // Refresh the participants list (no signal needed for manual refresh)
-        await fetchParticipantDetails(null)
-        setParticipantToDelete(null)
-      } else {
-        const errorMessage = data.error || 'Error removing participation. Please try again.'
-        if (onStatusPopup) {
-          onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
-        }
-        setParticipantToDelete(null)
-      }
+      )
     } catch (err) {
+      // This catch handles cases where execute throws before onError is called
       logger.error('Error removing participation:', err)
+      const errorMessage = err.message || 'Error removing participation. Please try again.'
       if (onStatusPopup) {
-        onStatusPopup('❌ Error removing participation. Please try again.', 'error', 2500)
+        onStatusPopup(`❌ ${errorMessage}`, 'error', 2500)
       }
       setParticipantToDelete(null)
-    } finally {
-      setDeleting(false)
     }
   }
 
   const handleCancelDelete = () => {
-    setShowDeleteConfirm(false)
+    deleteConfirmModal.close()
     setParticipantToDelete(null)
   }
 
   const isAdmin = loggedInUser?.reg_number === 'admin'
 
-  if (!isOpen) return null
-
-  const content = (
-    <aside className={`${embedded ? 'w-full' : 'max-w-[700px] w-full'} bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] ${embedded ? 'px-0 py-0' : 'px-[1.4rem] py-[1.6rem] pb-[1.5rem]'} border border-[rgba(255,255,255,0.12)] ${embedded ? '' : 'shadow-[0_22px_55px_rgba(0,0,0,0.8)]'} backdrop-blur-[20px] relative ${embedded ? '' : 'max-h-[90vh]'} ${embedded ? '' : 'overflow-y-auto'}`}>
-      {!embedded && (
-        <button
-          type="button"
-          className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer hover:text-[#ffe66d] transition-colors"
-          onClick={onClose}
-        >
-          ✕
-        </button>
-      )}
-
-        <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">
-          Admin Panel
-        </div>
-        <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
-          Participant Details
-        </div>
-        <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">
-          {sport ? sport.toUpperCase() : 'Sport'} • PCE, Purnea • Umang – 2026 Sports Fest
-        </div>
-
+  return (
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="Participant Details"
+        subtitle={sport ? `${sport.toUpperCase()} • ${EVENT_INFO.fullName}` : undefined}
+        embedded={embedded}
+        maxWidth="max-w-[700px]"
+      >
         {loading && (
-          <div className="text-center py-8 text-[#a5b4fc]">
-            Loading participant details...
-          </div>
+          <LoadingSpinner message="Loading participant details..." />
         )}
 
         {error && (
-          <div className="text-center py-8 text-red-400">
-            {error}
-          </div>
+          <ErrorMessage message={error} />
         )}
 
         {!loading && !error && participants.length === 0 && (
-          <div className="text-center py-8 text-[#a5b4fc]">
-            No participants registered for this sport yet.
-          </div>
+          <EmptyState message="No participants registered for this sport yet." className="py-8" />
         )}
 
         {!loading && !error && participants.length > 0 && (
@@ -297,22 +276,19 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
                         </div>
                       </button>
                       {isAdmin && (
-                        <button
+                        <Button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation()
                             handleDeleteClick(participant)
                           }}
                           disabled={deleting}
-                          className={`self-start mt-2 mb-2 ml-4 md:mt-0 md:mb-0 md:ml-2 md:mr-2 md:self-auto px-4 py-1.5 rounded-[8px] text-[0.8rem] font-semibold uppercase tracking-[0.05em] transition-all ${
-                            deleting
-                              ? 'bg-[rgba(239,68,68,0.3)] text-[rgba(239,68,68,0.6)] cursor-not-allowed'
-                              : 'bg-gradient-to-r from-[#ef4444] to-[#dc2626] text-white cursor-pointer hover:shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:-translate-y-0.5'
-                          }`}
+                          variant="danger"
+                          className="self-start mt-2 mb-2 ml-4 md:mt-0 md:mb-0 md:ml-2 md:mr-2 md:self-auto px-4 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em] rounded-[8px]"
                           title="Remove Participation"
                         >
                           {deleting ? 'Deleting...' : 'Delete'}
-                        </button>
+                        </Button>
                       )}
                     </div>
 
@@ -333,56 +309,30 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
             </div>
           </div>
         )}
+      </Modal>
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && participantToDelete && (
-        <div className={`${embedded ? 'absolute' : 'fixed'} inset-0 bg-[rgba(0,0,0,0.75)] flex items-center justify-center z-[300]`}>
-          <div className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative">
-            <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">
-              Confirm Deletion
-            </div>
-            <div className="text-[1.1rem] font-extrabold text-center text-[#ffe66d] mb-4">
-              Remove Participation
-            </div>
-            <div className="text-center text-[#e5e7eb] mb-6">
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={deleteConfirmModal.isOpen && participantToDelete !== null}
+        onClose={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+        title="Remove Participation"
+        message={
+          participantToDelete ? (
+            <>
               Are you sure you want to remove <span className="font-semibold text-[#ffe66d]">{participantToDelete.full_name}</span>'s participation in <span className="font-semibold text-[#ffe66d]">{sport}</span>?
               <br />
               <span className="text-[0.9rem] text-red-400 mt-2 block">This action cannot be undone.</span>
-            </div>
-            <div className="flex gap-[0.6rem] mt-[0.8rem]">
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                disabled={deleting}
-                className="flex-1 rounded-full border-none py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-gradient-to-r from-[#ef4444] to-[#dc2626] text-white shadow-[0_10px_24px_rgba(239,68,68,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(239,68,68,0.75)] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {deleting ? 'Removing...' : 'Delete'}
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelDelete}
-                disabled={deleting}
-                className="flex-1 rounded-full border border-[rgba(148,163,184,0.7)] py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_10px_26px_rgba(15,23,42,0.9)] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </aside>
-  )
-
-  if (embedded) {
-    return content
-  }
-
-  return (
-    <div
-      className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-    >
-      {content}
-    </div>
+            </>
+          ) : ''
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        loading={deleting}
+        embedded={embedded}
+      />
+    </>
   )
 }
 

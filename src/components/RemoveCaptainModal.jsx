@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
+import { Modal, Button, ConfirmationDialog, EmptyState } from './ui'
+import { useApi, useModal } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
 function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
   const [captainsBySport, setCaptainsBySport] = useState({})
   const [expandedSports, setExpandedSports] = useState({})
-  const [removing, setRemoving] = useState(false)
-  const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [captainToRemove, setCaptainToRemove] = useState(null)
   const isRefreshingRef = useRef(false) // Track if we're refreshing after removal
+  const { loading, execute } = useApi()
+  const confirmModal = useModal(false)
 
   // Fetch captains by sport
   useEffect(() => {
@@ -47,11 +49,11 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
   useEffect(() => {
     if (!isOpen) {
       setExpandedSports({})
-      setRemoving(false)
-      setShowConfirmModal(false)
+      confirmModal.close()
       setCaptainToRemove(null)
     }
-  }, [isOpen])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]) // confirmModal is stable from useModal hook, no need to include it
 
   const toggleSport = (sport) => {
     setExpandedSports(prev => ({
@@ -62,84 +64,79 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
 
   const handleRemoveClick = (regNumber, sport, captainName) => {
     setCaptainToRemove({ regNumber, sport, captainName })
-    setShowConfirmModal(true)
+    confirmModal.open()
   }
 
   const handleConfirmRemove = async () => {
-    if (!captainToRemove || removing) return
+    if (!captainToRemove) return
 
-    setRemoving(true)
-    setShowConfirmModal(false)
+    confirmModal.close()
     try {
-      const response = await fetchWithAuth('/api/remove-captain', {
-        method: 'DELETE',
-        body: JSON.stringify({
-          reg_number: captainToRemove.regNumber,
-          sport: captainToRemove.sport,
+      await execute(
+        () => fetchWithAuth('/api/remove-captain', {
+          method: 'DELETE',
+          body: JSON.stringify({
+            reg_number: captainToRemove.regNumber,
+            sport: captainToRemove.sport,
+          }),
         }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.success) {
-        onStatusPopup(
-          `✅ ${captainToRemove.captainName} has been removed as captain for ${captainToRemove.sport}!`,
-          'success',
-          3000
-        )
-        // Refresh the captains list silently
-        isRefreshingRef.current = true
-        clearCache('/api/captains-by-sport')
-        clearCache('/api/players') // captain_in field changes
-        clearCache('/api/me') // In case current user is updated
-        
-        fetchWithAuth('/api/captains-by-sport')
-          .then((res) => {
-            if (!res.ok) {
-              throw new Error(`HTTP error! status: ${res.status}`)
-            }
-            return res.json()
-          })
-          .then((data) => {
-            if (data.success) {
-              setCaptainsBySport(data.captainsBySport || {})
-            } else {
-              logger.warn('Failed to refresh captains list:', data.error)
-              // Don't show error popup here, just log it
-            }
-          })
-          .catch((err) => {
-            logger.error('Error refreshing captains:', err)
-            // Don't show error popup here, just log it - the removal was successful
-          })
-          .finally(() => {
-            isRefreshingRef.current = false
-          })
-        setCaptainToRemove(null)
-      } else {
-        const errorMessage = data.error || 'Error removing captain. Please try again.'
-        onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
-        setCaptainToRemove(null)
-      }
+        {
+          onSuccess: (data) => {
+            onStatusPopup(
+              `✅ ${captainToRemove.captainName} has been removed as captain for ${captainToRemove.sport}!`,
+              'success',
+              3000
+            )
+            // Refresh the captains list silently
+            isRefreshingRef.current = true
+            clearCache('/api/captains-by-sport')
+            clearCache('/api/players') // captain_in field changes
+            clearCache('/api/me') // In case current user is updated
+            
+            fetchWithAuth('/api/captains-by-sport')
+              .then((res) => {
+                if (!res.ok) {
+                  throw new Error(`HTTP error! status: ${res.status}`)
+                }
+                return res.json()
+              })
+              .then((data) => {
+                if (data.success) {
+                  setCaptainsBySport(data.captainsBySport || {})
+                } else {
+                  logger.warn('Failed to refresh captains list:', data.error)
+                  // Don't show error popup here, just log it
+                }
+              })
+              .catch((err) => {
+                logger.error('Error refreshing captains:', err)
+                // Don't show error popup here, just log it - the removal was successful
+              })
+              .finally(() => {
+                isRefreshingRef.current = false
+              })
+            setCaptainToRemove(null)
+          },
+          onError: (err) => {
+            const errorMessage = err.message || 'Error removing captain. Please try again.'
+            onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
+            setCaptainToRemove(null)
+          },
+        }
+      )
     } catch (err) {
+      // This catch handles cases where execute throws before onError is called
       logger.error('Error removing captain:', err)
-      onStatusPopup('❌ Error removing captain. Please try again.', 'error', 2500)
+      const errorMessage = err.message || 'Error removing captain. Please try again.'
+      onStatusPopup(`❌ ${errorMessage}`, 'error', 2500)
       setCaptainToRemove(null)
-    } finally {
-      setRemoving(false)
     }
   }
 
   const handleCancelRemove = () => {
-    setShowConfirmModal(false)
+    confirmModal.close()
     setCaptainToRemove(null)
   }
-
-  if (!isOpen) return null
 
   const teamSports = [
     'Cricket',
@@ -156,32 +153,15 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
   )
 
   return (
-    <div
-      className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-    >
-      <aside className="max-w-[700px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
-        <button
-          type="button"
-          className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer"
-          onClick={onClose}
-        >
-          ✕
-        </button>
-
-        <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">
-          Admin Panel
-        </div>
-        <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
-          Remove Captain
-        </div>
-        <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">
-          PCE, Purnea • Umang – 2026 Sports Fest
-        </div>
-
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="Remove Captain"
+        maxWidth="max-w-[700px]"
+      >
         {!hasAnyCaptains ? (
-          <div className="text-center py-8 text-[#cbd5ff] text-[0.9rem]">
-            No captains found. Add captains first.
-          </div>
+          <EmptyState message="No captains found. Add captains first." className="py-8 text-[0.9rem]" />
         ) : (
           <div className="space-y-2">
             {teamSports.map((sport) => {
@@ -245,21 +225,16 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
                                   </div>
                                 )}
                               </div>
-                              <button
+                              <Button
                                 type="button"
                                 onClick={() => handleRemoveClick(captain.reg_number, sport, captain.full_name)}
-                                disabled={removing || hasTeam}
-                                className={`px-4 py-1.5 rounded-[8px] text-[0.8rem] font-semibold uppercase tracking-[0.05em] transition-all ${
-                                  hasTeam
-                                    ? 'bg-[rgba(148,163,184,0.2)] text-[rgba(148,163,184,0.5)] cursor-not-allowed'
-                                    : removing
-                                    ? 'bg-[rgba(239,68,68,0.3)] text-[rgba(239,68,68,0.6)] cursor-not-allowed'
-                                    : 'bg-gradient-to-r from-[#ef4444] to-[#dc2626] text-white cursor-pointer hover:shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:-translate-y-0.5'
-                                }`}
+                                disabled={loading || hasTeam}
+                                variant="danger"
+                                className="px-4 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em]"
                                 title={hasTeam ? 'Cannot remove: Team already created' : 'Remove Captain'}
                               >
-                                {removing ? 'Removing...' : 'Remove'}
-                              </button>
+                                {loading ? 'Removing...' : 'Remove'}
+                              </Button>
                             </div>
                           </div>
                         )
@@ -273,53 +248,38 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
         )}
 
         <div className="flex gap-[0.6rem] mt-6">
-          <button
+          <Button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-full border border-[rgba(148,163,184,0.7)] py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_10px_26px_rgba(15,23,42,0.9)]"
+            variant="secondary"
+            fullWidth
           >
             Close
-          </button>
+          </Button>
         </div>
-      </aside>
+      </Modal>
 
-      {/* Remove Captain Confirmation Modal */}
-      {showConfirmModal && captainToRemove && (
-        <div className="fixed inset-0 bg-[rgba(0,0,0,0.75)] flex items-center justify-center z-[300]">
-          <div className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative">
-            <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">
-              Confirm Removal
-            </div>
-            <div className="text-[1.1rem] font-extrabold text-center text-[#ffe66d] mb-4">
-              Remove Captain
-            </div>
-            <div className="text-center text-[#e5e7eb] mb-6">
+      {/* Remove Captain Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={confirmModal.isOpen && captainToRemove !== null}
+        onClose={handleCancelRemove}
+        onConfirm={handleConfirmRemove}
+        title="Remove Captain"
+        message={
+          captainToRemove ? (
+            <>
               Are you sure you want to remove <span className="font-semibold text-[#ffe66d]">{captainToRemove.captainName}</span> as captain for <span className="font-semibold text-[#ffe66d]">{captainToRemove.sport}</span>?
               <br />
               <span className="text-[0.9rem] text-red-400 mt-2 block">This action cannot be undone.</span>
-            </div>
-            <div className="flex gap-[0.6rem] mt-[0.8rem]">
-              <button
-                type="button"
-                onClick={handleConfirmRemove}
-                disabled={removing}
-                className="flex-1 rounded-full border-none py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-gradient-to-r from-[#ef4444] to-[#dc2626] text-white shadow-[0_10px_24px_rgba(239,68,68,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(239,68,68,0.75)] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {removing ? 'Removing...' : 'Remove'}
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelRemove}
-                disabled={removing}
-                className="flex-1 rounded-full border border-[rgba(148,163,184,0.7)] py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_10px_26px_rgba(15,23,42,0.9)] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+            </>
+          ) : ''
+        }
+        confirmText="Remove"
+        cancelText="Cancel"
+        variant="danger"
+        loading={loading}
+      />
+    </>
   )
 }
 

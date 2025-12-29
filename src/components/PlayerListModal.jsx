@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
+import { Modal, Button, Input, LoadingSpinner, EmptyState } from './ui'
+import { useApi } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import logger from '../utils/logger'
+import { GENDER_OPTIONS, DEPARTMENT_OPTIONS } from '../constants/app'
 
 function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
   const [players, setPlayers] = useState([])
@@ -9,7 +12,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
   const [loading, setLoading] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState(null)
   const [editedData, setEditedData] = useState({})
-  const [saving, setSaving] = useState(false)
+  const { loading: saving, execute } = useApi()
   const isRefreshingRef = useRef(false) // Use ref to track if we're refreshing after update
 
   // Function to fetch players (extracted for reuse)
@@ -139,130 +142,104 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
       return
     }
 
-    setSaving(true)
     try {
-      const response = await fetchWithAuth('/api/update-player', {
-        method: 'PUT',
-        body: JSON.stringify(editedData),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.success) {
-        if (onStatusPopup) {
-          onStatusPopup('✅ Player details updated successfully!', 'success', 2500)
+      await execute(
+        () => fetchWithAuth('/api/update-player', {
+          method: 'PUT',
+          body: JSON.stringify(editedData),
+        }),
+        {
+          onSuccess: (data) => {
+            if (onStatusPopup) {
+              onStatusPopup('✅ Player details updated successfully!', 'success', 2500)
+            }
+            // Refresh players list silently (don't show error if refresh fails)
+            // Set flag to prevent error popups during refresh
+            isRefreshingRef.current = true
+            
+            // Clear cache first to ensure we get fresh data
+            clearCache('/api/players')
+            
+            // Use a separate function to avoid showing loading state and errors
+            fetchWithAuth('/api/players')
+              .then((response) => {
+                if (!response.ok) {
+                  // Response not OK, but don't show error - just log it
+                  logger.warn('Refresh failed: response not OK', response.status)
+                  isRefreshingRef.current = false
+                  return
+                }
+                return response.json()
+              })
+              .then((refreshData) => {
+                if (refreshData && refreshData.success) {
+                  const filteredPlayers = (refreshData.players || []).filter(
+                    p => p.reg_number !== 'admin'
+                  )
+                  setPlayers(filteredPlayers)
+                  setFilteredPlayers(filteredPlayers)
+                  logger.api('Players list refreshed successfully')
+                } else {
+                  // Data structure unexpected, but don't show error
+                  logger.warn('Refresh: unexpected data structure', refreshData)
+                }
+              })
+              .catch((err) => {
+                // Log error but don't show popup - the update was successful
+                logger.error('Error refreshing players list after update:', err)
+              })
+              .finally(() => {
+                isRefreshingRef.current = false
+              })
+            setEditingPlayer(null)
+            setEditedData({})
+          },
+          onError: (err) => {
+            const errorMessage = err.message || 'Failed to update player. Please try again.'
+            if (onStatusPopup) {
+              onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
+            }
+          },
         }
-        // Refresh players list silently (don't show error if refresh fails)
-        // Set flag to prevent error popups during refresh
-        isRefreshingRef.current = true
-        
-        // Clear cache first to ensure we get fresh data
-        clearCache('/api/players')
-        
-        // Use a separate function to avoid showing loading state and errors
-        try {
-          const response = await fetchWithAuth('/api/players')
-          
-          if (!response.ok) {
-            // Response not OK, but don't show error - just log it
-            logger.warn('Refresh failed: response not OK', response.status)
-            isRefreshingRef.current = false
-            return
-          }
-
-          const refreshData = await response.json()
-          logger.api('Refresh response:', refreshData)
-          
-          if (refreshData && refreshData.success) {
-            const filteredPlayers = (refreshData.players || []).filter(
-              p => p.reg_number !== 'admin'
-            )
-            setPlayers(filteredPlayers)
-            setFilteredPlayers(filteredPlayers)
-            logger.api('Players list refreshed successfully')
-          } else {
-            // Data structure unexpected, but don't show error
-            logger.warn('Refresh: unexpected data structure', refreshData)
-          }
-        } catch (err) {
-          // Log error but don't show popup - the update was successful
-          logger.error('Error refreshing players list after update:', err)
-        } finally {
-          isRefreshingRef.current = false
-        }
-        setEditingPlayer(null)
-        setEditedData({})
-      } else {
-        const errorMessage = data.error || 'Failed to update player. Please try again.'
-        if (onStatusPopup) {
-          onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
-        }
-      }
+      )
     } catch (err) {
+      // This catch handles cases where execute throws before onError is called
       logger.error('Error updating player:', err)
+      const errorMessage = err.message || 'Error updating player. Please try again.'
       if (onStatusPopup) {
-        onStatusPopup('❌ Error updating player. Please try again.', 'error', 3000)
+        onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
       }
-    } finally {
-      setSaving(false)
     }
   }
 
-  if (!isOpen) return null
-
   return (
-    <div
-      className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="List Players"
+      maxWidth="max-w-[800px]"
     >
-      <aside className="max-w-[800px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
-        <button
-          type="button"
-          className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer hover:text-[#ffe66d] transition-colors"
-          onClick={onClose}
-        >
-          ✕
-        </button>
+      {/* Search Bar */}
+      <div className="mb-4">
+        <Input
+          label="Search by Registration Number or Name"
+          id="searchPlayer"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Type registration number or name to search..."
+        />
+      </div>
 
-        <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">
-          Admin Panel
-        </div>
-        <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
-          List Players
-        </div>
-        <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">
-          PCE, Purnea • Umang – 2026 Sports Fest
-        </div>
+      {loading && (
+        <LoadingSpinner message="Loading players..." />
+      )}
 
-        {/* Search Bar */}
-        <div className="mb-4">
-          <label htmlFor="searchPlayer" className="text-[0.78rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em] block">
-            Search by Registration Number or Name
-          </label>
-          <input
-            type="text"
-            id="searchPlayer"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Type registration number or name to search..."
-            className="w-full px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none transition-all duration-[0.15s] ease-in-out focus:border-[#ffe66d] focus:shadow-[0_0_0_1px_rgba(255,230,109,0.55),0_0_16px_rgba(248,250,252,0.2)] focus:-translate-y-[1px]"
-          />
-        </div>
-
-        {loading && (
-          <div className="text-center py-8 text-[#a5b4fc]">
-            Loading players...
-          </div>
-        )}
-
-        {!loading && filteredPlayers.length === 0 && (
-          <div className="text-center py-8 text-[#a5b4fc]">
-            {searchQuery ? 'No players found matching your search.' : 'No players found.'}
-          </div>
-        )}
+      {!loading && filteredPlayers.length === 0 && (
+        <EmptyState
+          message={searchQuery ? 'No players found matching your search.' : 'No players found.'}
+          className="py-8"
+        />
+      )}
 
         {!loading && filteredPlayers.length > 0 && (
           <div className="space-y-2 max-h-[60vh] overflow-y-auto">
@@ -300,114 +277,83 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
                       </div>
                       
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="flex flex-col">
-                          <label className="text-[0.75rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                            Full Name *
-                          </label>
-                          <input
-                            type="text"
-                            value={editedData.full_name || ''}
-                            onChange={(e) => handleFieldChange('full_name', e.target.value)}
-                            className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none focus:border-[#ffe66d]"
-                          />
-                        </div>
+                        <Input
+                          label="Full Name"
+                          value={editedData.full_name || ''}
+                          onChange={(e) => handleFieldChange('full_name', e.target.value)}
+                          required
+                        />
 
-                        <div className="flex flex-col">
-                          <label className="text-[0.75rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                            Gender *
-                          </label>
-                          <select
-                            value={editedData.gender || ''}
-                            onChange={(e) => handleFieldChange('gender', e.target.value)}
-                            disabled={true}
-                            className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none focus:border-[#ffe66d] opacity-50 cursor-not-allowed"
-                          >
-                            <option value="">Select</option>
-                            <option>Male</option>
-                            <option>Female</option>
-                          </select>
-                        </div>
+                        <Input
+                          label="Gender"
+                          type="select"
+                          value={editedData.gender || ''}
+                          onChange={(e) => handleFieldChange('gender', e.target.value)}
+                          disabled={true}
+                          options={GENDER_OPTIONS.filter(opt => opt.value !== '')}
+                          required
+                        />
 
-                        <div className="flex flex-col">
-                          <label className="text-[0.75rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                            Department/Branch *
-                          </label>
-                          <select
-                            value={editedData.department_branch || ''}
-                            onChange={(e) => handleFieldChange('department_branch', e.target.value)}
-                            className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none focus:border-[#ffe66d]"
-                          >
-                            <option value="">Select</option>
-                            <option>CSE</option>
-                            <option>CSE (AI)</option>
-                            <option>ECE</option>
-                            <option>EE</option>
-                            <option>CE</option>
-                            <option>ME</option>
-                            <option>MTE</option>
-                          </select>
-                        </div>
+                        <Input
+                          label="Department/Branch"
+                          type="select"
+                          value={editedData.department_branch || ''}
+                          onChange={(e) => handleFieldChange('department_branch', e.target.value)}
+                          options={DEPARTMENT_OPTIONS.filter(opt => opt.value !== '')}
+                          required
+                        />
 
-                        <div className="flex flex-col">
-                          <label className="text-[0.75rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                            Year *
-                          </label>
-                          <select
-                            value={editedData.year || ''}
-                            onChange={(e) => handleFieldChange('year', e.target.value)}
-                            disabled={true}
-                            className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none focus:border-[#ffe66d] opacity-50 cursor-not-allowed"
-                          >
-                            <option value="">Select</option>
-                            <option>1st Year (2025)</option>
-                            <option>2nd Year (2024)</option>
-                            <option>3rd Year (2023)</option>
-                            <option>4th Year (2022)</option>
-                          </select>
-                        </div>
+                        <Input
+                          label="Year"
+                          type="select"
+                          value={editedData.year || ''}
+                          onChange={(e) => handleFieldChange('year', e.target.value)}
+                          disabled={true}
+                          options={[
+                            { value: '1st Year (2025)', label: '1st Year (2025)' },
+                            { value: '2nd Year (2024)', label: '2nd Year (2024)' },
+                            { value: '3rd Year (2023)', label: '3rd Year (2023)' },
+                            { value: '4th Year (2022)', label: '4th Year (2022)' },
+                          ]}
+                          required
+                        />
 
-                        <div className="flex flex-col">
-                          <label className="text-[0.75rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                            Mobile Number *
-                          </label>
-                          <input
-                            type="tel"
-                            value={editedData.mobile_number || ''}
-                            onChange={(e) => handleFieldChange('mobile_number', e.target.value)}
-                            className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none focus:border-[#ffe66d]"
-                          />
-                        </div>
+                        <Input
+                          label="Mobile Number"
+                          type="tel"
+                          value={editedData.mobile_number || ''}
+                          onChange={(e) => handleFieldChange('mobile_number', e.target.value)}
+                          required
+                        />
 
-                        <div className="flex flex-col">
-                          <label className="text-[0.75rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                            Email ID *
-                          </label>
-                          <input
-                            type="email"
-                            value={editedData.email_id || ''}
-                            onChange={(e) => handleFieldChange('email_id', e.target.value)}
-                            className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none focus:border-[#ffe66d]"
-                          />
-                        </div>
+                        <Input
+                          label="Email ID"
+                          type="email"
+                          value={editedData.email_id || ''}
+                          onChange={(e) => handleFieldChange('email_id', e.target.value)}
+                          required
+                        />
                       </div>
 
                       <div className="flex gap-2 mt-4">
-                        <button
+                        <Button
                           type="button"
                           onClick={handleSavePlayer}
                           disabled={saving}
-                          className="flex-1 px-4 py-2 rounded-[8px] text-[0.85rem] font-semibold bg-gradient-to-r from-[#ffe66d] to-[#ff9f1c] text-[#111827] border-none disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-[0_4px_12px_rgba(250,204,21,0.4)] transition-all"
+                          loading={saving}
+                          className="flex-1 px-4 py-2 text-[0.85rem] font-semibold rounded-[8px]"
                         >
                           {saving ? 'Saving...' : 'Save Changes'}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
                           onClick={handleCancelEdit}
                           disabled={saving}
-                          className="flex-1 px-4 py-2 rounded-[8px] text-[0.85rem] font-semibold bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] border border-[rgba(148,163,184,0.7)] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[rgba(15,23,42,1)] transition-all"
+                          variant="secondary"
+                          className="flex-1 px-4 py-2 text-[0.85rem] font-semibold rounded-[8px]"
                         >
                           Cancel
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -416,8 +362,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
             })}
           </div>
         )}
-      </aside>
-    </div>
+    </Modal>
   )
 }
 

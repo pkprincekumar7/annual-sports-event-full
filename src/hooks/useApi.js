@@ -83,7 +83,9 @@ export const useApi = () => {
       logger.error('API call error:', err)
       setError(err.message || 'An error occurred')
 
-      if (showError && onError) {
+      // Call onError if provided, regardless of showError flag
+      // showError flag controls default error handling, but onError allows custom handling
+      if (onError) {
         onError(err)
       }
 

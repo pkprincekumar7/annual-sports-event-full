@@ -41,10 +41,13 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
           onSuccess: (data) => {
             // useApi already checked response.ok, parsed JSON, and verified data.success
             // Clear caches to ensure fresh data after login
+            // Note: /api/sports-counts is year-specific, but we don't know the year here
+            // The component will fetch it with the correct year when needed
             clearCache('/api/me')
             clearCache('/api/players')
-            clearCache('/api/sports-counts')
             clearCache('/api/captains-by-sport')
+            // Clear all sports-counts cache entries (pattern matching)
+            clearCache('/api/sports-counts')
             
             // Store JWT token in localStorage (user data is handled by App.jsx)
             if (data.token) {
@@ -59,17 +62,16 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
             onClose()
           },
           onError: (err) => {
-            // Error handling - useApi already logged it
-            const errorMessage = err.message || 'Error while logging in. Please try again.'
+            // The useApi hook extracts the error message from the API response
+            const errorMessage = err?.message || err?.error || 'Error while logging in. Please try again.'
             onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
           },
         }
       )
     } catch (err) {
       // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
       logger.error('Error while logging in:', err)
-      const errorMessage = err.message || 'Error while logging in. Please try again.'
-      onStatusPopup(`❌ ${errorMessage}`, 'error', 2500)
     }
   }
 

@@ -1,207 +1,445 @@
 /**
  * Event Schedule Routes
- * Handles event schedule/match management operations
+ * Handles event schedule/match management operations using new schema
  */
 
 import express from 'express'
-import Player from '../models/Player.js'
 import EventSchedule from '../models/EventSchedule.js'
+import Player from '../models/Player.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
-import { MATCH_STATUSES, TEAM_SPORTS, ADMIN_REG_NUMBER } from '../constants/index.js'
-import logger from '../utils/logger.js'
+import { getCache, setCache, clearCache } from '../utils/cache.js'
+import { updatePointsTable } from '../utils/pointsTable.js'
+import { getEventYear } from '../utils/yearHelpers.js'
+import { findSportByNameAndYear, normalizeSportName } from '../utils/sportHelpers.js'
 
 const router = express.Router()
 
 /**
  * GET /api/event-schedule/:sport
  * Get all matches for a sport
+ * Year Filter: Accepts ?year=2026 parameter (defaults to active year)
  */
 router.get(
   '/event-schedule/:sport',
   authenticateToken,
   asyncHandler(async (req, res) => {
     const { sport } = req.params
-    const matches = await EventSchedule.find({ sport }).sort({ match_number: 1 }).lean()
+    const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
 
-    // Matches fetched successfully
-    return sendSuccessResponse(res, { matches })
+    // Check cache
+    const cacheKey = `/api/event-schedule/${sport}?year=${eventYear}`
+    const cached = getCache(cacheKey)
+    if (cached) {
+      return res.json(cached)
+    }
+
+    const matches = await EventSchedule.find({
+      sports_name: normalizeSportName(sport),
+      event_year: eventYear
+    }).sort({ match_number: 1 }).lean()
+
+    const result = { matches }
+
+    // Cache the result
+    setCache(cacheKey, result)
+
+    return sendSuccessResponse(res, result)
+  })
+)
+
+/**
+ * GET /api/event-schedule/:sport/teams-players
+ * Get teams/players list for a sport (for dropdown in form) (admin only)
+ * Year Filter: Accepts ?year=2026 parameter (defaults to active year)
+ * Get teams from Sports collection's teams_participated (filtered by year)
+ * Get players from Sports collection's players_participated (filtered by year)
+ * Exclude teams/players that have been knocked out in previous matches
+ */
+router.get(
+  '/event-schedule/:sport/teams-players',
+  authenticateToken,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { sport } = req.params
+    const decodedSport = decodeURIComponent(sport)
+    const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+
+    // Find sport by name and event_year
+    const sportDoc = await findSportByNameAndYear(decodedSport, eventYear)
+
+    // Get all completed matches for this sport to determine knocked out participants
+    const completedMatches = await EventSchedule.find({
+      sports_name: normalizeSportName(decodedSport),
+      event_year: eventYear,
+      status: 'completed'
+    }).lean()
+
+    const knockedOutParticipants = new Set()
+
+    // Determine knocked out participants from completed matches
+    completedMatches.forEach(match => {
+      if (match.match_type === 'knockout' || match.match_type === 'final') {
+        if (sportDoc.type === 'dual_team' || sportDoc.type === 'dual_player') {
+          // For dual types: loser is knocked out
+          if (match.winner && match.teams) {
+            match.teams.forEach(team => {
+              if (team !== match.winner) {
+                knockedOutParticipants.add(team)
+              }
+            })
+          } else if (match.winner && match.players) {
+            match.players.forEach(player => {
+              if (player !== match.winner) {
+                knockedOutParticipants.add(player)
+              }
+            })
+          }
+        } else {
+          // For multi types: participants not in qualifiers are knocked out
+          if (match.qualifiers && match.qualifiers.length > 0) {
+            const qualifierParticipants = new Set(match.qualifiers.map(q => q.participant))
+            if (match.teams) {
+              match.teams.forEach(team => {
+                if (!qualifierParticipants.has(team)) {
+                  knockedOutParticipants.add(team)
+                }
+              })
+            } else if (match.players) {
+              match.players.forEach(player => {
+                if (!qualifierParticipants.has(player)) {
+                  knockedOutParticipants.add(player)
+                }
+              })
+            }
+          }
+        }
+      }
+    })
+
+    if (sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team') {
+      // Get teams from teams_participated
+      const teams = (sportDoc.teams_participated || [])
+        .map(team => team.team_name)
+        .filter(teamName => !knockedOutParticipants.has(teamName))
+        .sort()
+
+      return sendSuccessResponse(res, { teams, players: [] })
+    } else {
+      // Get players from players_participated
+      const playerRegNumbers = (sportDoc.players_participated || [])
+        .filter(regNumber => !knockedOutParticipants.has(regNumber))
+
+      // Fetch player details
+      const players = await Player.find({
+        reg_number: { $in: playerRegNumbers }
+      })
+        .select('reg_number full_name gender')
+        .lean()
+
+      const playersList = players.map(p => ({
+        reg_number: p.reg_number,
+        full_name: p.full_name,
+        gender: p.gender
+      }))
+
+      return sendSuccessResponse(res, { teams: [], players: playersList })
+    }
   })
 )
 
 /**
  * POST /api/event-schedule
  * Create a new match (admin only)
+ * Year Required: event_year field required in request body (defaults to active year)
  */
 router.post(
   '/event-schedule',
   authenticateToken,
   requireAdmin,
   asyncHandler(async (req, res) => {
-    const { match_type, sport, sport_type, team_one, team_two, player_one, player_two, match_date } = req.body
+    const { match_type, sports_name, teams, players, match_date, event_year, number_of_participants } = req.body
+
+    // Get event year (default to active year if not provided)
+    const eventYear = await getEventYear(event_year ? parseInt(event_year) : null)
 
     // Validate required fields
-    if (!match_type || !sport || !sport_type || !match_date) {
-      return sendErrorResponse(res, 400, 'Missing required fields: match_type, sport, sport_type, match_date')
+    if (!match_type || !sports_name || !match_date) {
+      return sendErrorResponse(res, 400, 'Missing required fields: match_type, sports_name, match_date')
     }
 
-    // Declare player objects outside the if/else block for later use
-    let playerOneObj = null
-    let playerTwoObj = null
+    // Find sport by name and event_year
+    const sportDoc = await findSportByNameAndYear(sports_name, eventYear, { lean: false })
 
-    // Validate team/player fields based on sport_type
-    if (sport_type === 'team') {
-      if (!team_one || !team_two) {
-        return sendErrorResponse(res, 400, 'team_one and team_two are required for team events')
+    // Validate teams/players arrays based on sport type
+    if (sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team') {
+      if (!teams || !Array.isArray(teams) || teams.length === 0) {
+        return sendErrorResponse(res, 400, 'Teams array is required for team sports')
       }
-      // Validate that both teams are different
-      if (team_one === team_two) {
-        return sendErrorResponse(res, 400, 'team_one and team_two must be different')
+      // Remove duplicates
+      const uniqueTeams = [...new Set(teams.map(t => t.trim()).filter(t => t))]
+      if (sportDoc.type === 'dual_team' && uniqueTeams.length !== 2) {
+        return sendErrorResponse(res, 400, 'dual_team sports require exactly 2 teams')
+      }
+      if (sportDoc.type === 'multi_team') {
+        // Validate number_of_participants for multi_team
+        if (number_of_participants !== undefined) {
+          const num = parseInt(number_of_participants)
+          if (isNaN(num) || num < 2 || num > 20) {
+            return sendErrorResponse(res, 400, 'number_of_participants must be between 2 and 20')
+          }
+          if (uniqueTeams.length !== num) {
+            return sendErrorResponse(res, 400, `Number of teams (${uniqueTeams.length}) does not match number_of_participants (${num})`)
+          }
+        }
+        if (uniqueTeams.length <= 2) {
+          return sendErrorResponse(res, 400, 'multi_team sports require more than 2 teams')
+        }
+        // Validate number of teams matches available teams count
+        const availableTeamsCount = (sportDoc.teams_participated || []).length
+        if (uniqueTeams.length > availableTeamsCount) {
+          return sendErrorResponse(res, 400, `Cannot select ${uniqueTeams.length} teams. Only ${availableTeamsCount} team(s) available.`)
+        }
+      }
+      // Validate teams exist in teams_participated
+      const existingTeams = new Set((sportDoc.teams_participated || []).map(t => t.team_name))
+      for (const team of uniqueTeams) {
+        if (!existingTeams.has(team)) {
+          return sendErrorResponse(res, 400, `Team "${team}" does not exist for ${sports_name}`)
+        }
+      }
+      
+      // Validate all teams have players of the same gender (for both dual_team and multi_team)
+      // Since team creation already enforces same gender within a team, we only need to check one player per team
+      const teamDetails = (sportDoc.teams_participated || []).filter(t => uniqueTeams.includes(t.team_name))
+      
+      // Get first player from each team (teams already have same gender players)
+      const firstPlayerRegNumbers = teamDetails
+        .map(team => team.players && team.players.length > 0 ? team.players[0] : null)
+        .filter(Boolean)
+      
+      if (firstPlayerRegNumbers.length !== uniqueTeams.length) {
+        return sendErrorResponse(res, 400, 'Some teams have no players')
+      }
+      
+      // Fetch gender for first player of each team
+      const playersList = await Player.find({ reg_number: { $in: firstPlayerRegNumbers } })
+        .select('reg_number gender')
+        .lean()
+      
+      if (playersList.length !== firstPlayerRegNumbers.length) {
+        return sendErrorResponse(res, 400, 'Some players not found')
+      }
+      
+      // Check if all teams have the same gender
+      const teamGenders = playersList.map(p => p.gender).filter(Boolean)
+      if (teamGenders.length > 0) {
+        const firstGender = teamGenders[0]
+        const genderMismatch = teamGenders.find(g => g !== firstGender)
+        if (genderMismatch) {
+          return sendErrorResponse(res, 400, 'All teams must have players of the same gender for team matches')
+        }
       }
     } else {
-      if (!player_one || !player_two) {
-        return sendErrorResponse(res, 400, 'player_one and player_two are required for individual/cultural events')
+      if (!players || !Array.isArray(players) || players.length === 0) {
+        return sendErrorResponse(res, 400, 'Players array is required for individual/cultural sports')
       }
-      // Validate that both players are different
-      if (player_one === player_two) {
-        return sendErrorResponse(res, 400, 'player_one and player_two must be different')
+      // Remove duplicates
+      const uniquePlayers = [...new Set(players.map(p => p.trim()).filter(p => p))]
+      if (sportDoc.type === 'dual_player' && uniquePlayers.length !== 2) {
+        return sendErrorResponse(res, 400, 'dual_player sports require exactly 2 players')
       }
-
-      // Validate that both players have the same gender and fetch their names
-      const player1 = await Player.findOne({ reg_number: player_one }).select('gender full_name').lean()
-      const player2 = await Player.findOne({ reg_number: player_two }).select('gender full_name').lean()
-
-      if (!player1) {
-        return sendErrorResponse(res, 400, `Player with registration number ${player_one} not found`)
+      if (sportDoc.type === 'multi_player') {
+        // Validate number_of_participants for multi_player
+        if (number_of_participants !== undefined) {
+          const num = parseInt(number_of_participants)
+          if (isNaN(num) || num < 2 || num > 20) {
+            return sendErrorResponse(res, 400, 'number_of_participants must be between 2 and 20')
+          }
+          if (uniquePlayers.length !== num) {
+            return sendErrorResponse(res, 400, `Number of players (${uniquePlayers.length}) does not match number_of_participants (${num})`)
+          }
+        }
+        if (uniquePlayers.length <= 2) {
+          return sendErrorResponse(res, 400, 'multi_player sports require more than 2 players')
+        }
+        // Validate number of players matches available players count
+        const availablePlayersCount = (sportDoc.players_participated || []).length
+        if (uniquePlayers.length > availablePlayersCount) {
+          return sendErrorResponse(res, 400, `Cannot select ${uniquePlayers.length} players. Only ${availablePlayersCount} player(s) available.`)
+        }
       }
-      if (!player2) {
-        return sendErrorResponse(res, 400, `Player with registration number ${player_two} not found`)
+      // Validate players exist in players_participated
+      const existingPlayers = new Set(sportDoc.players_participated || [])
+      for (const player of uniquePlayers) {
+        if (!existingPlayers.has(player)) {
+          return sendErrorResponse(res, 400, `Player "${player}" is not registered for ${sports_name}`)
+        }
       }
-
-      if (player1.gender !== player2.gender) {
-        return sendErrorResponse(
-          res,
-          400,
-          `Gender mismatch: Both players must have the same gender. Player one is ${player1.gender}, player two is ${player2.gender}.`
-        )
+      // Validate all players have same gender
+      const playerDocs = await Player.find({ reg_number: { $in: uniquePlayers } }).select('gender').lean()
+      if (playerDocs.length !== uniquePlayers.length) {
+        return sendErrorResponse(res, 400, 'Some players not found')
       }
-
-      // Prepare player objects with name and reg_number
-      playerOneObj = {
-        name: player1.full_name || '',
-        reg_number: player_one,
-      }
-      playerTwoObj = {
-        name: player2.full_name || '',
-        reg_number: player_two,
+      const firstGender = playerDocs[0].gender
+      const genderMismatch = playerDocs.find(p => p.gender !== firstGender)
+      if (genderMismatch) {
+        return sendErrorResponse(res, 400, 'All players must have the same gender')
       }
     }
 
-    // Validate match date - must be today or after today
-    const matchDateObj = new Date(match_date)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0) // Reset time to start of day for comparison
-    matchDateObj.setHours(0, 0, 0, 0)
+    // Validate match_type restrictions
+    if (sportDoc.type === 'multi_team' || sportDoc.type === 'multi_player') {
+      if (match_type === 'league') {
+        return sendErrorResponse(res, 400, 'match_type "league" is not allowed for multi_team and multi_player sports')
+      }
+    }
 
+    // Validate league vs knockout restrictions
+    if (match_type === 'league') {
+      // Check if any knockout match exists for this sport
+      const knockoutMatch = await EventSchedule.findOne({
+        sports_name: normalizeSportName(sports_name),
+        event_year: eventYear,
+        match_type: { $in: ['knockout', 'final'] },
+        status: { $in: ['scheduled', 'completed', 'draw', 'cancelled'] }
+      })
+      if (knockoutMatch) {
+        return sendErrorResponse(res, 400, 'Cannot schedule league matches. Knockout matches already exist for this sport.')
+      }
+    } else if (match_type === 'knockout' || match_type === 'final') {
+      // Check if any league match exists
+      const leagueMatches = await EventSchedule.find({
+        sports_name: normalizeSportName(sports_name),
+        event_year: eventYear,
+        match_type: 'league'
+      }).sort({ match_date: -1 }).lean()
+
+      if (leagueMatches.length > 0) {
+        // Validate that match_date is after all league matches (date-only comparison)
+        const latestLeagueDate = new Date(leagueMatches[0].match_date)
+        latestLeagueDate.setHours(0, 0, 0, 0)
+        // Handle date-only format (YYYY-MM-DD) or datetime format
+        const matchDateStr = match_date.includes('T') ? match_date : match_date + 'T00:00:00'
+        const matchDateObj = new Date(matchDateStr)
+        matchDateObj.setHours(0, 0, 0, 0)
+        if (matchDateObj <= latestLeagueDate) {
+          return sendErrorResponse(
+            res,
+            400,
+            `Knockout match date must be after all league matches. Latest league match date: ${latestLeagueDate.toLocaleDateString()}`
+          )
+        }
+      }
+    }
+
+    // Validate match_type: 'final' restrictions
+    if (sportDoc.type === 'dual_team' || sportDoc.type === 'dual_player') {
+      // Get eligible participants (not knocked out)
+      const eligibleParticipants = sportDoc.type === 'dual_team'
+        ? (sportDoc.teams_participated || []).map(t => t.team_name)
+        : (sportDoc.players_participated || [])
+
+      // Get knocked out participants from completed matches
+      const completedMatches = await EventSchedule.find({
+        sports_name: normalizeSportName(sports_name),
+        event_year: eventYear,
+        status: 'completed',
+        match_type: { $in: ['knockout', 'final'] }
+      }).lean()
+
+      const knockedOut = new Set()
+      completedMatches.forEach(match => {
+        if (match.winner && match.teams) {
+          match.teams.forEach(team => {
+            if (team !== match.winner) knockedOut.add(team)
+          })
+        } else if (match.winner && match.players) {
+          match.players.forEach(player => {
+            if (player !== match.winner) knockedOut.add(player)
+          })
+        }
+      })
+
+      const activeParticipants = eligibleParticipants.filter(p => !knockedOut.has(p))
+      const participantsInMatch = sportDoc.type === 'dual_team' ? teams : players
+
+      // If exactly 2 eligible participants are in the match, it MUST be 'final'
+      if (activeParticipants.length === 2 && participantsInMatch.length === 2) {
+        if (match_type !== 'final') {
+          return sendErrorResponse(
+            res,
+            400,
+            'match_type must be "final" when exactly 2 eligible participants are in the match'
+          )
+        }
+      }
+    }
+
+    // Prevent scheduling if 'final' match is already completed
+    const completedFinalMatch = await EventSchedule.findOne({
+      sports_name: normalizeSportName(sports_name),
+      event_year: eventYear,
+      match_type: 'final',
+      status: 'completed'
+    })
+    if (completedFinalMatch) {
+      return sendErrorResponse(res, 400, 'Cannot schedule new matches. Final match is already completed for this sport.')
+    }
+
+    // Validate match date (date-only comparison)
+    // Handle date-only format (YYYY-MM-DD) or datetime format
+    const matchDateStr = match_date.includes('T') ? match_date : match_date + 'T00:00:00'
+    const matchDateObj = new Date(matchDateStr)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    matchDateObj.setHours(0, 0, 0, 0)
     if (matchDateObj < today) {
       return sendErrorResponse(res, 400, 'Match date must be today or a future date')
     }
 
-    // Get next match number for this sport
-    const lastMatch = await EventSchedule.findOne({ sport }).sort({ match_number: -1 }).lean()
+    // Get next match number for this sport and year
+    const lastMatch = await EventSchedule.findOne({
+      sports_name: normalizeSportName(sports_name),
+      event_year: eventYear
+    }).sort({ match_number: -1 }).lean()
 
     const match_number = lastMatch ? lastMatch.match_number + 1 : 1
 
-    // Validate eligibility based on previous matches (per sport)
-    // For knockout matches: check if participant lost any previous completed match IN THIS SPORT
-    if (match_type === 'knockout') {
-      // Check previous matches for team_one/player_one (only for this sport)
-      const participantOne = sport_type === 'team' ? team_one : player_one
-      const previousMatchesOne = await EventSchedule.find({
-        sport, // Only check matches for the same sport
-        match_type: 'knockout',
-        $or: [
-          { team_one: participantOne },
-          { team_two: participantOne },
-          { 'player_one.reg_number': participantOne },
-          { 'player_two.reg_number': participantOne },
-        ],
-      }).lean()
-
-      // Check if participant lost any completed match in this sport
-      for (const match of previousMatchesOne) {
-        const matchWinner = match.winner?.reg_number || match.winner
-        if (match.status === 'completed' && matchWinner && matchWinner !== participantOne) {
-          return sendErrorResponse(
-            res,
-            400,
-            `${participantOne} cannot be added to ${sport}. They lost a previous knockout match in ${sport} (Match #${match.match_number}).`
-          )
-        }
-      }
-
-      // Check previous matches for team_two/player_two (only for this sport)
-      const participantTwo = sport_type === 'team' ? team_two : player_two
-      const previousMatchesTwo = await EventSchedule.find({
-        sport, // Only check matches for the same sport
-        match_type: 'knockout',
-        $or: [
-          { team_one: participantTwo },
-          { team_two: participantTwo },
-          { 'player_one.reg_number': participantTwo },
-          { 'player_two.reg_number': participantTwo },
-        ],
-      }).lean()
-
-      // Check if participant lost any completed match in this sport
-      for (const match of previousMatchesTwo) {
-        const matchWinner = match.winner?.reg_number || match.winner
-        if (match.status === 'completed' && matchWinner && matchWinner !== participantTwo) {
-          return sendErrorResponse(
-            res,
-            400,
-            `${participantTwo} cannot be added to ${sport}. They lost a previous knockout match in ${sport} (Match #${match.match_number}).`
-          )
-        }
-      }
-    }
-    // For league matches, no eligibility check needed - losers can be added
-
     // Create new match
     const matchData = {
+      event_year: eventYear,
       match_number,
       match_type,
-      sport,
-      sport_type,
-      match_date: new Date(match_date),
-      status: 'scheduled',
+      sports_name: normalizeSportName(sports_name),
+      match_date: new Date(match_date.includes('T') ? match_date : match_date + 'T00:00:00'),
+      status: 'scheduled'
     }
 
-    // Add team or player data based on sport type
-    if (sport_type === 'team') {
-      matchData.team_one = team_one
-      matchData.team_two = team_two
-      matchData.player_one = null
-      matchData.player_two = null
+    if (sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team') {
+      matchData.teams = teams.map(t => t.trim())
+      matchData.players = []
     } else {
-      matchData.player_one = playerOneObj
-      matchData.player_two = playerTwoObj
-      matchData.team_one = null
-      matchData.team_two = null
+      matchData.players = players.map(p => p.trim())
+      matchData.teams = []
     }
 
     const newMatch = new EventSchedule(matchData)
-
     await newMatch.save()
 
-    // Match created successfully
+    // Clear cache
+    clearCache(`/api/event-schedule/${sports_name}?year=${eventYear}`)
+    clearCache(`/api/event-schedule/${sports_name}/teams-players?year=${eventYear}`)
+
     return sendSuccessResponse(res, { match: newMatch }, `Match #${match_number} scheduled successfully`)
   })
 )
 
 /**
  * PUT /api/event-schedule/:id
- * Update match winner and status (admin only)
+ * Update match result (admin only)
+ * Handles winner for dual types, qualifiers for multi types
+ * Updates points table for league matches
  */
 router.put(
   '/event-schedule/:id',
@@ -209,98 +447,149 @@ router.put(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const { id } = req.params
-    const { winner, status } = req.body
+    const { winner, qualifiers, status } = req.body
 
-    // First, find the match to validate
+    // Find the match
     const match = await EventSchedule.findById(id)
-
     if (!match) {
       return handleNotFoundError(res, 'Match')
     }
 
-    // Check if match date is in the future
+    // Get sport details
+    const sportDoc = await findSportByNameAndYear(match.sports_name, match.event_year)
+
+    // Check if match date is in the future (date-only comparison)
     const matchDateObj = new Date(match.match_date)
     const now = new Date()
     matchDateObj.setHours(0, 0, 0, 0)
     now.setHours(0, 0, 0, 0)
     const isFutureMatch = matchDateObj > now
 
+    const previousStatus = match.status
+    const previousWinner = match.winner || null
     const updateData = {}
 
     // Validate and set status
     if (status !== undefined) {
-      // Prevent status updates for future matches
-      if (isFutureMatch) {
+      if (isFutureMatch && status !== 'scheduled') {
         return sendErrorResponse(res, 400, 'Cannot update status for future matches. Please wait until the match date.')
       }
-      if (!MATCH_STATUSES.includes(status)) {
-        return sendErrorResponse(
-          res,
-          400,
-          `Invalid status. Must be one of: ${MATCH_STATUSES.join(', ')}`
-        )
+      if (!['completed', 'draw', 'cancelled', 'scheduled'].includes(status)) {
+        return sendErrorResponse(res, 400, 'Invalid status')
       }
+      
+      // Prevent status change from 'completed' to another status if winner/qualifiers are set
+      if (match.status === 'completed' && status !== 'completed') {
+        if (match.winner) {
+          return sendErrorResponse(res, 400, 'Cannot change status when winner is set. Please clear the winner first.')
+        }
+        if (match.qualifiers && match.qualifiers.length > 0) {
+          return sendErrorResponse(res, 400, 'Cannot change status when qualifiers are set. Please clear the qualifiers first.')
+        }
+      }
+      
       updateData.status = status
 
-      // If status is being changed from completed and winner exists, clear winner
-      if (match.status === 'completed' && status !== 'completed' && match.winner) {
+      // Clear winner/qualifiers when status changes away from completed
+      if (status !== 'completed') {
         updateData.winner = null
+        updateData.qualifiers = []
       }
     }
 
-    // Validate and set winner
-    if (winner !== undefined) {
-      // Prevent winner selection for future matches
+    // Handle winner for dual types
+    if (winner !== undefined && (sportDoc.type === 'dual_team' || sportDoc.type === 'dual_player')) {
       if (isFutureMatch) {
         return sendErrorResponse(res, 400, 'Cannot declare winner for future matches. Please wait until the match date.')
       }
 
-      // Winner can only be set if status is completed
       const targetStatus = status || match.status
       if (targetStatus !== 'completed') {
         return sendErrorResponse(res, 400, 'Winner can only be set when match status is "completed"')
       }
 
-      // Validate winner matches one of the teams/players
-      let isValidWinner = false
-      if (match.sport_type === 'team') {
-        isValidWinner = winner === match.team_one || winner === match.team_two
-      } else {
-        // For non-team events, winner should match player_one or player_two format
-        const playerOneName =
-          match.player_one && match.player_one.name
-            ? `${match.player_one.name} (${match.player_one.reg_number})`
-            : null
-        const playerTwoName =
-          match.player_two && match.player_two.name
-            ? `${match.player_two.name} (${match.player_two.reg_number})`
-            : null
-        isValidWinner = winner === playerOneName || winner === playerTwoName
-      }
-
-      if (!isValidWinner) {
+      // Validate winner is one of the participants
+      const participants = sportDoc.type === 'dual_team' ? match.teams : match.players
+      if (!participants || !participants.includes(winner)) {
         return sendErrorResponse(res, 400, 'Winner must be one of the participating teams/players')
       }
 
       updateData.winner = winner
-      // Ensure status is completed when winner is set
+      updateData.qualifiers = [] // Clear qualifiers for dual types
       if (!updateData.status) {
         updateData.status = 'completed'
       }
     }
 
-    // If winner is being cleared (set to null or empty), allow it
-    if (winner === null || winner === '') {
-      updateData.winner = null
+    // Handle qualifiers for multi types
+    if (qualifiers !== undefined && (sportDoc.type === 'multi_team' || sportDoc.type === 'multi_player')) {
+      if (isFutureMatch) {
+        return sendErrorResponse(res, 400, 'Cannot set qualifiers for future matches. Please wait until the match date.')
+      }
+
+      const targetStatus = status || match.status
+      if (targetStatus !== 'completed') {
+        return sendErrorResponse(res, 400, 'Qualifiers can only be set when match status is "completed"')
+      }
+
+      if (!Array.isArray(qualifiers) || qualifiers.length === 0) {
+        return sendErrorResponse(res, 400, 'Qualifiers array is required for multi_team and multi_player sports')
+      }
+
+      // Validate qualifiers positions are unique and sequential
+      const positions = qualifiers.map(q => q.position).sort((a, b) => a - b)
+      const uniquePositions = new Set(positions)
+      if (positions.length !== uniquePositions.size) {
+        return sendErrorResponse(res, 400, 'Qualifier positions must be unique')
+      }
+
+      // Validate positions are sequential starting from 1
+      for (let i = 0; i < positions.length; i++) {
+        if (positions[i] !== i + 1) {
+          return sendErrorResponse(res, 400, 'Qualifier positions must be sequential (1, 2, 3, etc.)')
+        }
+      }
+
+      // Validate qualifiers are from match participants
+      const participants = sportDoc.type === 'multi_team' ? match.teams : match.players
+      const participantSet = new Set(participants)
+      for (const qualifier of qualifiers) {
+        if (!participantSet.has(qualifier.participant)) {
+          return sendErrorResponse(res, 400, `Qualifier "${qualifier.participant}" must be one of the match participants`)
+        }
+      }
+
+      updateData.qualifiers = qualifiers
+      updateData.winner = null // Clear winner for multi types
+      if (!updateData.status) {
+        updateData.status = 'completed'
+      }
     }
 
-    const updatedMatch = await EventSchedule.findByIdAndUpdate(id, { $set: updateData }, { new: true, runValidators: true })
+    // Update match
+    const updatedMatch = await EventSchedule.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    )
 
     if (!updatedMatch) {
       return handleNotFoundError(res, 'Match')
     }
 
-    // Match updated successfully
+    // Update points table for league matches
+    if (match.match_type === 'league') {
+      await updatePointsTable(updatedMatch, previousStatus, previousWinner)
+    }
+
+    // Clear cache
+    clearCache(`/api/event-schedule/${match.sports_name}?year=${match.event_year}`)
+    clearCache(`/api/event-schedule/${match.sports_name}/teams-players?year=${match.event_year}`)
+    // Clear points table cache if it's a league match
+    if (match.match_type === 'league') {
+      clearCache(`/api/points-table/${match.sports_name}?year=${match.event_year}`)
+    }
+
     return sendSuccessResponse(res, { match: updatedMatch }, 'Match updated successfully')
   })
 )
@@ -308,6 +597,7 @@ router.put(
 /**
  * DELETE /api/event-schedule/:id
  * Delete a match (admin only)
+ * Year Context: Match is already associated with event_year (use for points table cleanup)
  */
 router.delete(
   '/event-schedule/:id',
@@ -316,9 +606,8 @@ router.delete(
   asyncHandler(async (req, res) => {
     const { id } = req.params
 
-    // First, find the match to check its status
+    // Find the match
     const match = await EventSchedule.findById(id)
-
     if (!match) {
       return handleNotFoundError(res, 'Match')
     }
@@ -332,91 +621,21 @@ router.delete(
       )
     }
 
+    // If it's a league match, clean up points table
+    if (match.match_type === 'league') {
+      // Points table cleanup will be handled by updatePointsTable when status changes
+      // For deletion, we just delete the match (no points were added for scheduled matches)
+    }
+
     // Delete the match
     await EventSchedule.findByIdAndDelete(id)
 
-    // Match deleted successfully
+    // Clear cache
+    clearCache(`/api/event-schedule/${match.sports_name}?year=${match.event_year}`)
+    clearCache(`/api/event-schedule/${match.sports_name}/teams-players?year=${match.event_year}`)
+
     return sendSuccessResponse(res, {}, 'Match deleted successfully')
   })
 )
 
-/**
- * GET /api/event-schedule/:sport/teams-players
- * Get teams/players list for a sport (for dropdown in form) (admin only)
- */
-router.get(
-  '/event-schedule/:sport/teams-players',
-  authenticateToken,
-  requireAdmin,
-  asyncHandler(async (req, res) => {
-    const { sport } = req.params
-    // Decode the sport name in case it's URL encoded
-    const decodedSport = decodeURIComponent(sport)
-
-    // Fetching teams/players for sport
-
-    // Get sport type from existing matches or determine from sport name
-    const existingMatch = await EventSchedule.findOne({ sport: decodedSport }).lean()
-    const sportType = existingMatch
-      ? existingMatch.sport_type
-      : TEAM_SPORTS.includes(decodedSport)
-        ? 'team'
-        : 'individual'
-
-    // Sport type determined
-
-    if (sportType === 'team') {
-      // Get all unique team names for this sport
-      const players = await Player.find({
-        reg_number: { $ne: ADMIN_REG_NUMBER },
-        'participated_in.sport': decodedSport,
-        'participated_in.team_name': { $exists: true, $ne: null, $ne: '' },
-      })
-        .select('participated_in')
-        .lean()
-
-      // Found players with teams
-
-      const teamsSet = new Set()
-      players.forEach((player) => {
-        if (player.participated_in && Array.isArray(player.participated_in)) {
-          const participation = player.participated_in.find((p) => p.sport === decodedSport && p.team_name)
-          if (participation && participation.team_name) {
-            teamsSet.add(participation.team_name)
-          }
-        }
-      })
-
-      const teamsArray = Array.from(teamsSet).sort()
-      // Found unique teams
-      return sendSuccessResponse(res, { teams: teamsArray, players: [] })
-    } else {
-      // Get all players who participated in this sport (individual/cultural)
-      const players = await Player.find({
-        reg_number: { $ne: ADMIN_REG_NUMBER },
-        participated_in: {
-          $elemMatch: {
-            sport: decodedSport,
-            $or: [{ team_name: { $exists: false } }, { team_name: null }, { team_name: '' }],
-          },
-        },
-      })
-        .select('reg_number full_name gender')
-        .lean()
-
-      // Found individual participants
-
-      const playersList = players.map((p) => ({
-        reg_number: p.reg_number,
-        full_name: p.full_name,
-        gender: p.gender,
-      }))
-
-      // Players list prepared
-      return sendSuccessResponse(res, { teams: [], players: playersList })
-    }
-  })
-)
-
 export default router
-

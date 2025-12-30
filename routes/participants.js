@@ -1,21 +1,26 @@
 /**
  * Participant Routes
- * Handles participant management operations
+ * Handles participant management operations using Sports collection
  */
 
 import express from 'express'
+import Sport from '../models/Sport.js'
 import Player from '../models/Player.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
-import { TEAM_SPORTS, MAX_PARTICIPATIONS, ADMIN_REG_NUMBER } from '../constants/index.js'
-import logger from '../utils/logger.js'
+import { canParticipateInEvents } from '../utils/playerHelpers.js'
+import { getCache, setCache, clearCache } from '../utils/cache.js'
+import { getEventYear } from '../utils/yearHelpers.js'
+import { findSportByNameAndYear } from '../utils/sportHelpers.js'
 
 const router = express.Router()
 
 /**
  * GET /api/participants/:sport
  * Get all participants for a specific sport (non-team events) (admin only)
+ * Year Filter: Accepts ?year=2026 parameter (defaults to active year)
+ * Query Sports collection's players_participated array (filtered by year)
  */
 router.get(
   '/participants/:sport',
@@ -24,30 +29,32 @@ router.get(
   asyncHandler(async (req, res) => {
     // Decode the sport name from URL parameter
     let sport = decodeURIComponent(req.params.sport)
-    // Received request for participants
+    const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
 
     if (!sport) {
       return sendErrorResponse(res, 400, 'Sport name is required')
     }
 
-    // Query directly for players who have participated in this sport without team_name
-    const players = await Player.find({
-      reg_number: { $ne: ADMIN_REG_NUMBER },
-      participated_in: {
-        $elemMatch: {
-          sport: sport,
-          $or: [{ team_name: { $exists: false } }, { team_name: null }, { team_name: '' }],
-        },
-      },
+    // Find sport by name and event_year
+    const sportDoc = await findSportByNameAndYear(sport, eventYear)
+
+    // Get participants from players_participated array
+    const participantRegNumbers = sportDoc.players_participated || []
+
+    if (participantRegNumbers.length === 0) {
+      return sendSuccessResponse(res, {
+        sport: sport,
+        participants: [],
+        total_participants: 0
+      })
+    }
+
+    // Fetch all participants at once
+    const participants = await Player.find({
+      reg_number: { $in: participantRegNumbers }
     })
       .select('-password')
       .lean()
-
-    // Map to participants (excluding password)
-    const participants = players.map((player) => {
-      const { password: _, ...playerData } = player
-      return playerData
-    })
 
     // Sort participants by name
     participants.sort((a, b) => a.full_name.localeCompare(b.full_name))
@@ -55,7 +62,7 @@ router.get(
     return sendSuccessResponse(res, {
       sport: sport,
       participants: participants,
-      total_participants: participants.length,
+      total_participants: participants.length
     })
   })
 )
@@ -63,6 +70,8 @@ router.get(
 /**
  * GET /api/participants-count/:sport
  * Get total participants count for a specific sport (non-team events)
+ * Year Filter: Accepts ?year=2026 parameter (defaults to active year)
+ * Query Sports collection's players_participated array (filtered by year)
  */
 router.get(
   '/participants-count/:sport',
@@ -70,205 +79,180 @@ router.get(
   asyncHandler(async (req, res) => {
     // Decode the sport name from URL parameter
     let sport = decodeURIComponent(req.params.sport)
-    // Received request for participants count
+    const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
 
     if (!sport) {
       return sendErrorResponse(res, 400, 'Sport name is required')
     }
 
-    // Count players who have participated in this sport without team_name
-    const result = await Player.aggregate([
-      {
-        $match: {
-          reg_number: { $ne: ADMIN_REG_NUMBER },
-        },
-      },
-      {
-        $unwind: '$participated_in',
-      },
-      {
-        $match: {
-          'participated_in.sport': sport,
-          $or: [
-            { 'participated_in.team_name': { $exists: false } },
-            { 'participated_in.team_name': null },
-            { 'participated_in.team_name': '' },
-          ],
-        },
-      },
-      {
-        $count: 'total',
-      },
-    ])
+    // Find sport by name and event_year
+    const sportDoc = await findSportByNameAndYear(sport, eventYear)
 
-    const count = result.length > 0 ? result[0].total : 0
-
-    // Participants count fetched
+    // Get count from players_participated array
+    const count = (sportDoc.players_participated || []).length
 
     return sendSuccessResponse(res, {
       sport: sport,
-      total_participants: count,
+      count: count
     })
   })
 )
 
 /**
  * POST /api/update-participation
- * Update participated_in field for individual events
+ * Update individual/cultural event participation
+ * Year Required: event_year field required in request body (defaults to active year)
+ * Update Sports collection's players_participated array (for the specified year)
  */
 router.post(
   '/update-participation',
   authenticateToken,
   asyncHandler(async (req, res) => {
-    let { reg_number, sport } = req.body
+    let { reg_number, sport, event_year } = req.body
 
     // Trim fields
-    const trimmed = trimObjectFields({ reg_number, sport })
+    const trimmed = trimObjectFields({ reg_number, sport, event_year })
     reg_number = trimmed.reg_number
     sport = trimmed.sport
+    event_year = trimmed.event_year
+
+    // Get event year (default to active year if not provided)
+    const eventYear = await getEventYear(event_year ? parseInt(event_year) : null)
 
     // Validate required fields
     if (!reg_number || !sport) {
       return sendErrorResponse(res, 400, 'Registration number and sport are required')
     }
 
-    // Check if the sport is a Team Event (individual registration not allowed)
-    if (TEAM_SPORTS.includes(sport)) {
-      return sendErrorResponse(
-        res,
-        400,
-        `${sport} is a Team Event. Individual registration is not allowed. Please register as a team.`
-      )
-    }
-
-    // Find player
+    // Validate player exists
     const player = await Player.findOne({ reg_number })
     if (!player) {
       return handleNotFoundError(res, 'Player')
     }
 
-    // Initialize participated_in array if it doesn't exist
-    if (!player.participated_in) {
-      player.participated_in = []
-    }
-
-    // Check for duplicate sport entries
-    const sportSet = new Set(player.participated_in.map((p) => p.sport))
-    if (sportSet.size !== player.participated_in.length) {
+    // Validate participation eligibility
+    if (!canParticipateInEvents(player.year_of_admission)) {
       return sendErrorResponse(
         res,
         400,
-        'participated_in array contains duplicate sport entries. Please fix the data first.'
+        'Player is not eligible to participate. Only 1st to 5th year students can participate.'
       )
     }
 
-    // Check maximum limit
-    const currentParticipationsCount = player.participated_in.length
-    if (currentParticipationsCount >= MAX_PARTICIPATIONS) {
-      return sendErrorResponse(
-        res,
-        400,
-        `Maximum ${MAX_PARTICIPATIONS} participations allowed (based on unique sport names). Please remove a participation first.`
-      )
+    // Find sport by name and event_year
+    const sportDoc = await findSportByNameAndYear(sport, eventYear, { lean: false })
+
+    // Validate sport is an individual/cultural sport
+    if (sportDoc.type !== 'dual_player' && sportDoc.type !== 'multi_player') {
+      return sendErrorResponse(res, 400, 'Individual participation is only applicable for individual/cultural sports (dual_player or multi_player)')
     }
 
-    // Check if already participated in this sport
-    const existingParticipation = player.participated_in.find((p) => p.sport === sport)
-
-    if (existingParticipation) {
-      return sendErrorResponse(
-        res,
-        400,
-        `You are already registered for ${sport}. Same sport cannot be participated twice.`
-      )
+    // Initialize players_participated array if it doesn't exist
+    if (!sportDoc.players_participated) {
+      sportDoc.players_participated = []
     }
 
-    // Count non-team participations
-    const nonTeamParticipations = player.participated_in.filter((p) => !p.team_name).length
-
-    // Get captain count
-    const captainCount = player.captain_in && Array.isArray(player.captain_in) ? player.captain_in.length : 0
-
-    // Check maximum limit: (captain_in length + non-team participated_in) should not exceed 10
-    if (captainCount + nonTeamParticipations >= MAX_PARTICIPATIONS) {
-      const remainingSlots = MAX_PARTICIPATIONS - captainCount
-      if (remainingSlots <= 0) {
-        return sendErrorResponse(
-          res,
-          400,
-          `Maximum limit reached. You are a captain in ${captainCount} sport(s). You cannot register for any non-team events. Total (captain roles + non-team participations) cannot exceed ${MAX_PARTICIPATIONS}.`
-        )
-      } else {
-        return sendErrorResponse(
-          res,
-          400,
-          `Maximum limit reached. You are a captain in ${captainCount} sport(s) and have ${nonTeamParticipations} non-team participation(s). You can only register for ${remainingSlots} more non-team event(s). Total (captain roles + non-team participations) cannot exceed ${MAX_PARTICIPATIONS}.`
-        )
-      }
+    // Check if already participating
+    if (sportDoc.players_participated.includes(reg_number)) {
+      return sendErrorResponse(res, 400, `Player is already registered for ${sport}`)
     }
 
-    // Add sport to participated_in array (without team_name for individual events)
-    player.participated_in.push({ sport })
-    await player.save()
+    // Add to players_participated array
+    sportDoc.players_participated.push(reg_number)
+    await sportDoc.save()
 
-    // Return player data (excluding password for security)
-    const playerData = player.toObject()
-    delete playerData.password
+    // Clear cache
+    clearCache(`/api/sports?year=${eventYear}`)
+    clearCache(`/api/sports/${sport}?year=${eventYear}`)
+    clearCache(`/api/participants/${sport}?year=${eventYear}`)
+    clearCache(`/api/participants-count/${sport}?year=${eventYear}`)
+    clearCache(`/api/sports-counts?year=${eventYear}`)
 
-    return sendSuccessResponse(res, { player: playerData }, `Participation updated successfully for ${sport}`)
+    return sendSuccessResponse(res, { sport: sportDoc }, `Participation updated successfully for ${sport}`)
   })
 )
 
 /**
  * DELETE /api/remove-participation
- * Remove participation for non-team events (admin only)
+ * Remove participation (team or individual) (admin only)
+ * Year Required: event_year field required in request body (defaults to active year)
+ * Update Sports collection's teams_participated or players_participated (for the specified year)
  */
 router.delete(
   '/remove-participation',
   authenticateToken,
   requireAdmin,
   asyncHandler(async (req, res) => {
-    let { reg_number, sport } = req.body
+    let { reg_number, sport, event_year } = req.body
 
     // Trim fields
-    const trimmed = trimObjectFields({ reg_number, sport })
+    const trimmed = trimObjectFields({ reg_number, sport, event_year })
     reg_number = trimmed.reg_number
     sport = trimmed.sport
+    event_year = trimmed.event_year
+
+    // Get event year (default to active year if not provided)
+    const eventYear = await getEventYear(event_year ? parseInt(event_year) : null)
 
     // Validate required fields
     if (!reg_number || !sport) {
       return sendErrorResponse(res, 400, 'Registration number and sport are required')
     }
 
-    // Find player
-    const player = await Player.findOne({ reg_number })
-    if (!player) {
-      return handleNotFoundError(res, 'Player')
+    // Find sport by name and event_year
+    const sportDoc = await findSportByNameAndYear(sport, eventYear, { lean: false })
+
+    let removed = false
+
+    // Check if player is in a team
+    const teamIndex = sportDoc.teams_participated.findIndex(
+      team => team.players && team.players.includes(reg_number)
+    )
+
+    if (teamIndex !== -1) {
+      // Player is in a team - remove from team
+      const team = sportDoc.teams_participated[teamIndex]
+      
+      // Cannot remove if player is the captain
+      if (team.captain === reg_number) {
+        return sendErrorResponse(
+          res,
+          400,
+          `Cannot remove participation. Player is the captain of team "${team.team_name}". Please delete the team first or assign a new captain.`
+        )
+      }
+
+      // Remove player from team
+      team.players = team.players.filter(p => p !== reg_number)
+      
+      // If team has no players left, remove the team
+      if (team.players.length === 0) {
+        sportDoc.teams_participated.splice(teamIndex, 1)
+      }
+      
+      removed = true
+    } else if (sportDoc.players_participated && sportDoc.players_participated.includes(reg_number)) {
+      // Player is an individual participant - remove from players_participated
+      sportDoc.players_participated = sportDoc.players_participated.filter(p => p !== reg_number)
+      removed = true
     }
 
-    // Initialize participated_in array if it doesn't exist
-    if (!player.participated_in) {
-      player.participated_in = []
+    if (!removed) {
+      return sendErrorResponse(res, 400, `Player is not registered for ${sport}`)
     }
 
-    // Find the participation entry for this sport (non-team event - no team_name)
-    const participationIndex = player.participated_in.findIndex((p) => p.sport === sport && !p.team_name)
+    await sportDoc.save()
 
-    if (participationIndex === -1) {
-      return sendErrorResponse(res, 404, `Player is not registered for ${sport} as a non-team event`)
-    }
+    // Clear cache
+    clearCache(`/api/sports?year=${eventYear}`)
+    clearCache(`/api/sports/${sport}?year=${eventYear}`)
+    clearCache(`/api/teams/${sport}?year=${eventYear}`)
+    clearCache(`/api/participants/${sport}?year=${eventYear}`)
+    clearCache(`/api/participants-count/${sport}?year=${eventYear}`)
+    clearCache(`/api/sports-counts?year=${eventYear}`)
 
-    // Remove the participation entry
-    player.participated_in.splice(participationIndex, 1)
-    await player.save()
-
-    // Return player data (excluding password for security)
-    const playerData = player.toObject()
-    delete playerData.password
-
-    return sendSuccessResponse(res, { player: playerData }, `Participation removed successfully for ${sport}`)
+    return sendSuccessResponse(res, { sport: sportDoc }, `Participation removed successfully for ${sport}`)
   })
 )
 
 export default router
-

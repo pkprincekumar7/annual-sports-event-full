@@ -1,16 +1,5 @@
 import mongoose from 'mongoose'
 
-const participationSchema = new mongoose.Schema({
-  sport: {
-    type: String,
-    required: true
-  },
-  team_name: {
-    type: String,
-    default: null
-  }
-}, { _id: false })
-
 const playerSchema = new mongoose.Schema({
   reg_number: {
     type: String,
@@ -32,14 +21,14 @@ const playerSchema = new mongoose.Schema({
   department_branch: {
     type: String,
     required: true,
-    enum: ['CSE', 'CSE (AI)', 'ECE', 'EE', 'CE', 'ME', 'MTE'],
     trim: true
+    // No enum restriction - validated against Department collection
   },
-  year: {
-    type: String,
-    required: true,
-    enum: ['1st Year (2025)', '2nd Year (2024)', '3rd Year (2023)', '4th Year (2022)'],
-    trim: true
+  year_of_admission: {
+    type: Number,
+    required: true
+    // No enum restriction - accepts any numeric year
+    // Display format "1st Year (2025)" computed dynamically
   },
   mobile_number: {
     type: String,
@@ -57,24 +46,16 @@ const playerSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true
-  },
-  participated_in: {
-    type: [participationSchema],
-    default: []
-  },
-  captain_in: {
-    type: [String],
-    default: []
   }
+  // participated_in and captain_in removed - computed dynamically from Sports collection
 }, {
   timestamps: true
 })
 
 // Create indexes for faster lookups
 playerSchema.index({ reg_number: 1 }) // Already unique, but explicit index for performance
-playerSchema.index({ captain_in: 1 }) // For queries filtering by captain_in array
-playerSchema.index({ 'participated_in.sport': 1, 'participated_in.team_name': 1 }) // Compound index for team queries
-playerSchema.index({ 'participated_in.sport': 1 }) // Index for sport-based queries
+playerSchema.index({ department_branch: 1 }) // For queries filtering by department
+playerSchema.index({ year_of_admission: 1 }) // For queries filtering by year of admission
 
 const Player = mongoose.model('Player', playerSchema)
 

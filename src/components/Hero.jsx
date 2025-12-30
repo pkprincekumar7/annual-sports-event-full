@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { EVENT_INFO } from '../constants/app'
+import YearSelector from './YearSelector'
 
-function Hero({ onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRemoveCaptainClick, onListPlayersClick, onExportExcel, loggedInUser }) {
+function Hero({ onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRemoveCaptainClick, onListPlayersClick, onExportExcel, onAdminDashboardClick, onYearChange, selectedYear, loggedInUser }) {
   const [eventCountdown, setEventCountdown] = useState('')
 
   useEffect(() => {
@@ -76,10 +77,11 @@ function Hero({ onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRe
           </div>
         )}
         {loggedInUser ? (
-          <div className="mt-4 mb-2 text-center flex gap-4 justify-center items-center flex-wrap">
-            <div className="text-[1.2rem] font-bold text-[#ffe66d] drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]">
-              Welcome {loggedInUser.full_name}
-            </div>
+          <div className="mt-4 mb-2 text-center flex flex-col gap-3 items-center">
+            <div className="flex gap-4 justify-center items-center flex-wrap">
+              <div className="text-[1.2rem] font-bold text-[#ffe66d] drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]">
+                Welcome {loggedInUser.full_name}
+              </div>
             {onLogout && (
               <button
                 onClick={onLogout}
@@ -119,6 +121,22 @@ function Hero({ onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRe
               >
                 Export Excel
               </button>
+            )}
+            {loggedInUser?.reg_number === 'admin' && onAdminDashboardClick && (
+              <button
+                onClick={onAdminDashboardClick}
+                className="px-6 py-2 rounded-full border border-[rgba(148,163,184,0.7)] text-sm font-bold uppercase tracking-[0.1em] cursor-pointer bg-gradient-to-r from-[#f59e0b] to-[#d97706] text-[#e5e7eb] shadow-[0_10px_24px_rgba(245,158,11,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(245,158,11,0.8)]"
+              >
+                Admin Dashboard
+              </button>
+            )}
+            </div>
+            {loggedInUser?.reg_number === 'admin' && (
+              <YearSelector
+                selectedYear={selectedYear}
+                onYearChange={onYearChange}
+                loggedInUser={loggedInUser}
+              />
             )}
           </div>
         ) : (

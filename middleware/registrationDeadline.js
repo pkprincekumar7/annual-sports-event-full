@@ -13,9 +13,12 @@ const deadlineDate = new Date(REGISTRATION_DEADLINE)
  */
 export const checkRegistrationDeadline = (req, res, next) => {
   const currentDate = new Date() // Uses server's local timezone
+  currentDate.setHours(0, 0, 0, 0) // Reset time for date-only comparison
+  const deadline = new Date(deadlineDate)
+  deadline.setHours(0, 0, 0, 0) // Reset time for date-only comparison
 
-  // If current date is after the registration deadline
-  if (currentDate >= deadlineDate) {
+  // If current date is after the registration deadline (date-only comparison)
+  if (currentDate >= deadline) {
     // Allow GET requests and login endpoint
     if (req.method !== 'GET' && req.path !== '/login') {
       return res.status(400).json({

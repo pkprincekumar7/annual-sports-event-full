@@ -13,6 +13,7 @@ import ParticipantDetailsModal from './components/ParticipantDetailsModal'
 import PlayerListModal from './components/PlayerListModal'
 import EventScheduleModal from './components/EventScheduleModal'
 import SportDetailsModal from './components/SportDetailsModal'
+import AdminDashboardModal from './components/AdminDashboardModal'
 import AboutSection from './components/AboutSection'
 import Footer from './components/Footer'
 import StatusPopup from './components/StatusPopup'
@@ -28,6 +29,8 @@ function App() {
   const [isPlayerListModalOpen, setIsPlayerListModalOpen] = useState(false)
   const [isEventScheduleModalOpen, setIsEventScheduleModalOpen] = useState(false)
   const [isSportDetailsModalOpen, setIsSportDetailsModalOpen] = useState(false)
+  const [isAdminDashboardModalOpen, setIsAdminDashboardModalOpen] = useState(false)
+  const [selectedYear, setSelectedYear] = useState(null) // Admin can select a year to view
   const [selectedSport, setSelectedSport] = useState(null)
   const [selectedEventSport, setSelectedEventSport] = useState(null)
   const [statusPopup, setStatusPopup] = useState({ show: false, message: '', type: 'success' })
@@ -84,15 +87,35 @@ function App() {
             localStorage.setItem('authToken', tokenBeforeFetch)
           }
         } else if (result.authError || tokenWasCleared) {
-          // Authentication error - token is invalid or expired
-          // Token may have already been cleared by fetchWithAuth
-          logger.info('Authentication error detected, clearing token')
-          if (localStorage.getItem('authToken')) {
-            localStorage.removeItem('authToken')
+          // Authentication error - but be VERY conservative on rapid refresh
+          // If token exists in localStorage, don't clear it immediately
+          // This prevents false logouts on rapid page refreshes
+          const currentToken = localStorage.getItem('authToken')
+          
+          if (tokenWasCleared && !currentToken) {
+            // Token was actually cleared - this is a real auth error
+            logger.info('Authentication error detected, token was cleared')
+            setAuthToken(null)
+            setLoggedInUser(null)
+            setIsLoadingUser(false)
+          } else if (result.authError && currentToken) {
+            // We got an auth error, but token still exists
+            // On rapid refresh, this might be a false positive
+            // Don't clear the token or user state - just stop loading
+            // The user stays logged in with the token
+            logger.warn('Auth error but token exists - preserving login state (might be false positive on rapid refresh)')
+            setIsLoadingUser(false)
+            // Keep the user logged in - don't clear state
+            // If the token is really invalid, it will fail on the next real API call
+          } else if (result.authError && !currentToken) {
+            // Auth error and no token - clear state
+            logger.info('Authentication error detected, no token found')
+            setAuthToken(null)
+            setLoggedInUser(null)
+            setIsLoadingUser(false)
+          } else {
+            setIsLoadingUser(false)
           }
-          setAuthToken(null)
-          setLoggedInUser(null)
-          setIsLoadingUser(false) // Stop loading
         } else {
           // If result.user is null but authError is false and token wasn't cleared,
           // it means a temporary error (network issue, server error, etc.)
@@ -403,6 +426,15 @@ function App() {
                 onRemoveCaptainClick={() => setIsRemoveCaptainModalOpen(true)}
                 onListPlayersClick={() => setIsPlayerListModalOpen(true)}
                 onExportExcel={handleExportExcel}
+                onAdminDashboardClick={() => setIsAdminDashboardModalOpen(true)}
+                onYearChange={(year) => {
+                  setSelectedYear(year)
+                  // Clear caches when year changes
+                  clearCache('/api/sports')
+                  clearCache('/api/sports-counts')
+                  clearCache('/api/event-schedule')
+                }}
+                selectedYear={selectedYear}
                 loggedInUser={loggedInUser}
               />
               <SportsSection 
@@ -432,11 +464,13 @@ function App() {
         isOpen={isAddCaptainModalOpen}
         onClose={() => setIsAddCaptainModalOpen(false)}
         onStatusPopup={showStatusPopup}
+        selectedYear={selectedYear}
       />
       <RemoveCaptainModal
         isOpen={isRemoveCaptainModalOpen}
         onClose={() => setIsRemoveCaptainModalOpen(false)}
         onStatusPopup={showStatusPopup}
+        selectedYear={selectedYear}
       />
       <TeamDetailsModal
         isOpen={isTeamDetailsModalOpen}
@@ -447,6 +481,7 @@ function App() {
         sport={selectedSport?.name}
         loggedInUser={loggedInUser}
         onStatusPopup={showStatusPopup}
+        selectedYear={selectedYear}
       />
       <ParticipantDetailsModal
         isOpen={isParticipantDetailsModalOpen}
@@ -457,11 +492,13 @@ function App() {
         sport={selectedSport?.name}
         loggedInUser={loggedInUser}
         onStatusPopup={showStatusPopup}
+        selectedYear={selectedYear}
       />
       <PlayerListModal
         isOpen={isPlayerListModalOpen}
         onClose={() => setIsPlayerListModalOpen(false)}
         onStatusPopup={showStatusPopup}
+        selectedYear={selectedYear}
       />
       <EventScheduleModal
         isOpen={isEventScheduleModalOpen}
@@ -473,6 +510,7 @@ function App() {
         sportType={selectedEventSport?.sportType || (selectedEventSport?.type === 'team' ? 'team' : 'individual')}
         loggedInUser={loggedInUser}
         onStatusPopup={showStatusPopup}
+        selectedYear={selectedYear}
       />
       <SportDetailsModal
         isOpen={isSportDetailsModalOpen}
@@ -485,6 +523,21 @@ function App() {
         onStatusPopup={showStatusPopup}
         onUserUpdate={handleUserUpdate}
         onEventScheduleClick={handleEventScheduleClick}
+        selectedYear={selectedYear}
+      />
+      <AdminDashboardModal
+        isOpen={isAdminDashboardModalOpen}
+        onClose={() => setIsAdminDashboardModalOpen(false)}
+        onStatusPopup={showStatusPopup}
+        selectedYear={selectedYear}
+        onYearChange={(year) => {
+          setSelectedYear(year)
+          // Clear caches when year changes
+          clearCache('/api/sports')
+          clearCache('/api/sports-counts')
+          clearCache('/api/event-schedule')
+        }}
+        loggedInUser={loggedInUser}
       />
       <AboutSection />
       <Footer />

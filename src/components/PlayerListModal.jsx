@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input, LoadingSpinner, EmptyState } from './ui'
-import { useApi } from '../hooks'
+import { useApi, useDepartments, useEventYearWithFallback } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
-import logger from '../utils/logger'
-import { GENDER_OPTIONS, DEPARTMENT_OPTIONS } from '../constants/app'
+import { buildApiUrlWithYear } from '../utils/apiHelpers'
+import { GENDER_OPTIONS } from '../constants/app'
+import { computeYearDisplay } from '../utils/yearHelpers'
 
-function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
+function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   const [players, setPlayers] = useState([])
   const [filteredPlayers, setFilteredPlayers] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -13,6 +14,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
   const [editingPlayer, setEditingPlayer] = useState(null)
   const [editedData, setEditedData] = useState({})
   const { loading: saving, execute } = useApi()
+  const { departments: departmentOptions, loading: loadingDepartments } = useDepartments()
+  const eventYear = useEventYearWithFallback(selectedYear)
   const isRefreshingRef = useRef(false) // Use ref to track if we're refreshing after update
 
   // Function to fetch players (extracted for reuse)
@@ -20,7 +23,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
   const fetchPlayers = async (signal = null, showError = true) => {
     setLoading(true)
     try {
-      const response = await fetchWithAuth('/api/players', {
+      const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear), {
         signal,
       })
 
@@ -41,7 +44,6 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
       }
     } catch (err) {
       if (err.name === 'AbortError') return
-      logger.error('Error fetching players:', err)
       // Don't show error if we're in the middle of a refresh after update
       if (showError && onStatusPopup && !isRefreshingRef.current) {
         onStatusPopup('❌ Error fetching players. Please try again.', 'error', 3000)
@@ -71,7 +73,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
       abortController.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]) // Removed onStatusPopup from dependencies to prevent re-fetching
+  }, [isOpen, eventYear]) // Include eventYear to refetch when year changes
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -95,7 +97,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
       full_name: player.full_name,
       gender: player.gender,
       department_branch: player.department_branch,
-      year: player.year,
+      year_of_admission: player.year_of_admission, // Store numeric year_of_admission
       mobile_number: player.mobile_number,
       email_id: player.email_id,
     })
@@ -116,7 +118,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
   const handleSavePlayer = async () => {
     // Validate required fields
     if (!editedData.reg_number || !editedData.full_name || !editedData.gender || 
-        !editedData.department_branch || !editedData.year || !editedData.mobile_number || 
+        !editedData.department_branch || !editedData.mobile_number || 
         !editedData.email_id) {
       if (onStatusPopup) {
         onStatusPopup('❌ Please fill all required fields.', 'error', 2500)
@@ -161,11 +163,9 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
             clearCache('/api/players')
             
             // Use a separate function to avoid showing loading state and errors
-            fetchWithAuth('/api/players')
+            fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear))
               .then((response) => {
                 if (!response.ok) {
-                  // Response not OK, but don't show error - just log it
-                  logger.warn('Refresh failed: response not OK', response.status)
                   isRefreshingRef.current = false
                   return
                 }
@@ -178,15 +178,10 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
                   )
                   setPlayers(filteredPlayers)
                   setFilteredPlayers(filteredPlayers)
-                  // Players list refreshed successfully
-                } else {
-                  // Data structure unexpected, but don't show error
-                  logger.warn('Refresh: unexpected data structure', refreshData)
                 }
               })
-              .catch((err) => {
-                // Log error but don't show popup - the update was successful
-                logger.error('Error refreshing players list after update:', err)
+              .catch(() => {
+                // Don't show popup - the update was successful
               })
               .finally(() => {
                 isRefreshingRef.current = false
@@ -195,7 +190,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
             setEditedData({})
           },
           onError: (err) => {
-            const errorMessage = err.message || 'Failed to update player. Please try again.'
+            // The useApi hook extracts the error message from the API response
+            const errorMessage = err?.message || err?.error || 'Failed to update player. Please try again.'
             if (onStatusPopup) {
               onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
             }
@@ -204,11 +200,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
       )
     } catch (err) {
       // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
       logger.error('Error updating player:', err)
-      const errorMessage = err.message || 'Error updating player. Please try again.'
-      if (onStatusPopup) {
-        onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
-      }
     }
   }
 
@@ -265,7 +258,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
                           {player.full_name}
                         </div>
                         <div className="text-[#a5b4fc] text-[0.8rem] mt-1">
-                          Reg. No: {player.reg_number} • {player.department_branch} • {player.year}
+                          Reg. No: {player.reg_number} • {player.department_branch} • {player.year || (player.year_of_admission ? computeYearDisplay(player.year_of_admission, eventYear) : '')}
                         </div>
                       </div>
                       <div className="text-[#ffe66d] text-sm">Click to edit</div>
@@ -299,22 +292,16 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup }) {
                           type="select"
                           value={editedData.department_branch || ''}
                           onChange={(e) => handleFieldChange('department_branch', e.target.value)}
-                          options={DEPARTMENT_OPTIONS.filter(opt => opt.value !== '')}
+                          options={loadingDepartments ? [{ value: '', label: 'Loading...' }] : departmentOptions.filter(opt => opt.value !== '')}
+                          disabled={loadingDepartments}
                           required
                         />
 
                         <Input
-                          label="Year"
-                          type="select"
-                          value={editedData.year || ''}
-                          onChange={(e) => handleFieldChange('year', e.target.value)}
+                          label="Year Of Admission"
+                          type="text"
+                          value={editedData.year_of_admission ? computeYearDisplay(editedData.year_of_admission, eventYear) : ''}
                           disabled={true}
-                          options={[
-                            { value: '1st Year (2025)', label: '1st Year (2025)' },
-                            { value: '2nd Year (2024)', label: '2nd Year (2024)' },
-                            { value: '3rd Year (2023)', label: '3rd Year (2023)' },
-                            { value: '4th Year (2022)', label: '4th Year (2022)' },
-                          ]}
                           required
                         />
 

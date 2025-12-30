@@ -1,65 +1,85 @@
 import mongoose from 'mongoose'
 
-const eventScheduleSchema = new mongoose.Schema({
-  match_number: {
+const qualifierSchema = new mongoose.Schema({
+  participant: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  position: {
     type: Number,
     required: true,
+    min: 1
+  }
+}, { _id: false })
+
+const eventScheduleSchema = new mongoose.Schema({
+  event_year: {
+    type: Number,
+    required: true
+  },
+  match_number: {
+    type: Number,
+    required: true
   },
   match_type: {
     type: String,
-    enum: ['league', 'knockout'],
-    required: true,
+    enum: ['league', 'knockout', 'final'],
+    required: true
   },
-  sport: {
+  sports_name: {
     type: String,
     required: true,
+    trim: true,
+    lowercase: true
   },
-  sport_type: {
-    type: String,
-    enum: ['team', 'individual', 'cultural'],
-    required: true,
+  teams: {
+    type: [String],
+    default: []
+    // Array of team names (for dual_team and multi_team)
   },
-  team_one: {
-    type: String,
-    default: null,
-  },
-  team_two: {
-    type: String,
-    default: null,
-  },
-  player_one: {
-    type: mongoose.Schema.Types.Mixed,
-    default: null,
-  },
-  player_two: {
-    type: mongoose.Schema.Types.Mixed,
-    default: null,
+  players: {
+    type: [String],
+    default: []
+    // Array of player reg_numbers (for dual_player and multi_player)
   },
   match_date: {
     type: Date,
-    required: true,
+    required: true
   },
   winner: {
     type: String,
-    default: null,
+    default: null
+    // For dual_team/dual_player: single winner (team_name or player reg_number)
+  },
+  qualifiers: {
+    type: [qualifierSchema],
+    default: []
+    // For multi_team/multi_player: multiple qualifiers with positions
   },
   status: {
     type: String,
     enum: ['completed', 'draw', 'cancelled', 'scheduled'],
-    default: 'scheduled',
-  },
+    default: 'scheduled'
+  }
 }, {
-  timestamps: true,
+  timestamps: true
 })
 
-// Compound index for match_number and sport to ensure unique sequence per sport
-eventScheduleSchema.index({ sport: 1, match_number: 1 }, { unique: true })
+// Create indexes for faster lookups
+eventScheduleSchema.index({ event_year: 1, sports_name: 1, match_number: 1 }, { unique: true }) // Compound unique - unique match numbers per sport per year
+eventScheduleSchema.index({ event_year: 1, sports_name: 1 }) // For efficient year + sport queries
+eventScheduleSchema.index({ event_year: 1, sports_name: 1, status: 1 }) // For efficient year + sport + status queries
+eventScheduleSchema.index({ event_year: 1 }) // For efficient year queries
 
-// Index for efficient queries
-eventScheduleSchema.index({ sport: 1 })
-eventScheduleSchema.index({ sport: 1, status: 1 })
+// Pre-save hook to lowercase sports_name
+eventScheduleSchema.pre('save', function(next) {
+  if (this.isModified('sports_name')) {
+    this.sports_name = this.sports_name.toLowerCase().trim()
+  }
+  next()
+})
 
 const EventSchedule = mongoose.model('EventSchedule', eventScheduleSchema)
 
 export default EventSchedule
-

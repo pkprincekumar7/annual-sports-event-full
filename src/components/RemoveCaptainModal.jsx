@@ -1,21 +1,22 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, ConfirmationDialog, EmptyState } from './ui'
-import { useApi, useModal } from '../hooks'
+import { useApi, useModal, useEventYearWithFallback } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
-import logger from '../utils/logger'
+import { buildApiUrlWithYear } from '../utils/apiHelpers'
 
-function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
+function RemoveCaptainModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   const [captainsBySport, setCaptainsBySport] = useState({})
   const [expandedSports, setExpandedSports] = useState({})
   const [captainToRemove, setCaptainToRemove] = useState(null)
   const isRefreshingRef = useRef(false) // Track if we're refreshing after removal
   const { loading, execute } = useApi()
+  const eventYear = useEventYearWithFallback(selectedYear)
   const confirmModal = useModal(false)
 
   // Fetch captains by sport
   useEffect(() => {
-    if (isOpen) {
-      fetchWithAuth('/api/captains-by-sport')
+    if (isOpen && eventYear) {
+      fetchWithAuth(buildApiUrlWithYear('/api/captains-by-sport', eventYear))
         .then((res) => {
           if (!res.ok) {
             throw new Error(`HTTP error! status: ${res.status}`)
@@ -34,7 +35,6 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
           }
         })
         .catch((err) => {
-          logger.error('Error fetching captains by sport:', err)
           setCaptainsBySport({})
           // Don't show error if we're refreshing after removal
           if (!isRefreshingRef.current && onStatusPopup) {
@@ -43,7 +43,7 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
         })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]) // Removed onStatusPopup from dependencies
+  }, [isOpen, eventYear]) // Removed onStatusPopup from dependencies
 
   // Reset state when modal closes
   useEffect(() => {
@@ -70,30 +70,36 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
   const handleConfirmRemove = async () => {
     if (!captainToRemove) return
 
+    // Store values before async operations to avoid closure issues
+    const { regNumber, sport, captainName } = captainToRemove
     confirmModal.close()
+    
     try {
       await execute(
         () => fetchWithAuth('/api/remove-captain', {
           method: 'DELETE',
           body: JSON.stringify({
-            reg_number: captainToRemove.regNumber,
-            sport: captainToRemove.sport,
+            reg_number: regNumber,
+            sport: sport,
+            event_year: eventYear,
           }),
         }),
         {
           onSuccess: (data) => {
             onStatusPopup(
-              `✅ ${captainToRemove.captainName} has been removed as captain for ${captainToRemove.sport}!`,
+              `✅ ${captainName} has been removed as captain for ${sport}!`,
               'success',
               3000
             )
             // Refresh the captains list silently
             isRefreshingRef.current = true
-            clearCache('/api/captains-by-sport')
+            // Clear cache with year parameter to match the API call
+            clearCache(buildApiUrlWithYear('/api/captains-by-sport', eventYear))
             clearCache('/api/players') // captain_in field changes
             clearCache('/api/me') // In case current user is updated
             
-            fetchWithAuth('/api/captains-by-sport')
+            // Fetch updated captains list
+            fetchWithAuth(`/api/captains-by-sport${eventYear ? `?year=${eventYear}` : ''}`, { skipCache: true })
               .then((res) => {
                 if (!res.ok) {
                   throw new Error(`HTTP error! status: ${res.status}`)
@@ -103,14 +109,19 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
               .then((data) => {
                 if (data.success) {
                   setCaptainsBySport(data.captainsBySport || {})
-                } else {
-                  logger.warn('Failed to refresh captains list:', data.error)
-                  // Don't show error popup here, just log it
+                  // Reset expanded state for the sport if it has no captains left
+                  const updatedCaptains = data.captainsBySport?.[sport] || []
+                  if (updatedCaptains.length === 0) {
+                    setExpandedSports(prev => {
+                      const newState = { ...prev }
+                      delete newState[sport]
+                      return newState
+                    })
+                  }
                 }
               })
               .catch((err) => {
-                logger.error('Error refreshing captains:', err)
-                // Don't show error popup here, just log it - the removal was successful
+                // Don't show error popup here - the removal was successful
               })
               .finally(() => {
                 isRefreshingRef.current = false
@@ -118,7 +129,8 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
             setCaptainToRemove(null)
           },
           onError: (err) => {
-            const errorMessage = err.message || 'Error removing captain. Please try again.'
+            // The useApi hook extracts the error message from the API response
+            const errorMessage = err?.message || err?.error || 'Error removing captain. Please try again.'
             onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
             setCaptainToRemove(null)
           },
@@ -126,9 +138,8 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
       )
     } catch (err) {
       // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
       logger.error('Error removing captain:', err)
-      const errorMessage = err.message || 'Error removing captain. Please try again.'
-      onStatusPopup(`❌ ${errorMessage}`, 'error', 2500)
       setCaptainToRemove(null)
     }
   }
@@ -138,19 +149,12 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
     setCaptainToRemove(null)
   }
 
-  const teamSports = [
-    'Cricket',
-    'Volleyball',
-    'Badminton',
-    'Table Tennis',
-    'Kabaddi',
-    'Relay 4×100 m',
-    'Relay 4×400 m',
-  ]
-
-  const hasAnyCaptains = teamSports.some(sport => 
+  // Get all sports that have captains (dynamic from API response)
+  const sportsWithCaptains = Object.keys(captainsBySport).filter(sport => 
     captainsBySport[sport] && captainsBySport[sport].length > 0
   )
+  
+  const hasAnyCaptains = sportsWithCaptains.length > 0
 
   return (
     <>
@@ -164,7 +168,7 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
           <EmptyState message="No captains found. Add captains first." className="py-8 text-[0.9rem]" />
         ) : (
           <div className="space-y-2">
-            {teamSports.map((sport) => {
+            {sportsWithCaptains.map((sport) => {
               const captains = captainsBySport[sport] || []
               if (captains.length === 0) return null
 
@@ -246,17 +250,6 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup }) {
             })}
           </div>
         )}
-
-        <div className="flex gap-[0.6rem] mt-6">
-          <Button
-            type="button"
-            onClick={onClose}
-            variant="secondary"
-            fullWidth
-          >
-            Close
-          </Button>
-        </div>
       </Modal>
 
       {/* Remove Captain Confirmation Dialog */}

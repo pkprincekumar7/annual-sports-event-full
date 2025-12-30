@@ -6,4 +6,7 @@
 export { useAuth } from './useAuth'
 export { useApi, useFetch } from './useApi'
 export { useModal } from './useModal'
+export { useDepartments } from './useDepartments'
+export { useEventYear } from './useEventYear'
+export { useEventYearWithFallback } from './useEventYearWithFallback'
 

@@ -7,36 +7,6 @@ import logger from '../utils/logger'
 import { LoadingSpinner, EmptyState } from './ui'
 import { formatSportName } from '../utils/stringHelpers'
 
-// Sport image mapping (fallback if sport doesn't have image in database)
-const sportImageMap = {
-  'Cricket': '/images/Cricket.jpg',
-  'Volleyball': '/images/Vollyball.jpg',
-  'Badminton': '/images/Badminton.jpeg',
-  'Table Tennis': '/images/Tabletennis.jpeg',
-  'Kabaddi': '/images/Kabbadi.png',
-  'Relay 4×100 m': '/images/Relay1.o.jpg',
-  'Relay 4×400 m': '/images/Relay.jpg',
-  'Carrom': '/images/Carrom.jpg',
-  'Chess': '/images/Chess.jpeg',
-  'Sprint 100 m': '/images/Sprint1.jpg',
-  'Sprint 200 m': '/images/Sprint2.jpg',
-  'Sprint 400 m': '/images/Sprint3.jpg',
-  'Long Jump': '/images/Longjump.jpeg',
-  'High Jump': '/images/Highjump.jpeg',
-  'Javelin': '/images/javelin.jpeg',
-  'Shot Put': '/images/Shotput.jpeg',
-  'Discus Throw': '/images/Discussthrow.jpeg',
-  'Essay Writing': '/images/Essay Writing.jpg',
-  'Story Writing': '/images/Story Writing.jpg',
-  'Group Discussion': '/images/gd.png',
-  'Debate': '/images/Debate.jpg',
-  'Extempore': '/images/Extempore.jpeg',
-  'Quiz': '/images/Quiz.jpg',
-  'Dumb Charades': '/images/Dumb_Charades.jpg',
-  'Painting': '/images/painting.png',
-  'Singing': '/images/Singing.jpg',
-}
-
 
 function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUser, isEnrolled, isCaptain, canCreateOrViewTeam, teamsCount, participantsCount }) {
   const isAdmin = loggedInUser?.reg_number === 'admin'
@@ -71,7 +41,7 @@ function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUs
   }
 
   const cardClasses = "relative min-h-[170px] rounded-[18px] overflow-hidden shadow-[0_18px_40px_rgba(0,0,0,0.75)] cursor-pointer translate-y-0 transition-all duration-[0.25s] ease-in-out hover:-translate-y-2 hover:shadow-[0_26px_55px_rgba(0,0,0,0.9)]"
-  const imageUrl = sport.imageUri || sportImageMap[formatSportName(sport.name)] || '/images/default-sport.jpg'
+  const imageUrl = sport.imageUri || '/images/default-sport.jpg'
 
   return (
     <div

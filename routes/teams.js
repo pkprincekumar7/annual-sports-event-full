@@ -7,6 +7,7 @@ import express from 'express'
 import Sport from '../models/Sport.js'
 import Player from '../models/Player.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
+import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError, handleForbiddenError } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
 import { canParticipateInEvents } from '../utils/playerHelpers.js'
@@ -25,6 +26,7 @@ const router = express.Router()
 router.post(
   '/update-team-participation',
   authenticateToken,
+  requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     let { team_name, sport, reg_numbers, event_year } = req.body
 
@@ -332,6 +334,7 @@ router.post(
   '/update-team-player',
   authenticateToken,
   requireAdmin,
+  requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     let { team_name, sport, old_reg_number, new_reg_number, event_year } = req.body
 
@@ -482,6 +485,7 @@ router.delete(
   '/delete-team',
   authenticateToken,
   requireAdmin,
+  requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     let { team_name, sport, event_year } = req.body
 

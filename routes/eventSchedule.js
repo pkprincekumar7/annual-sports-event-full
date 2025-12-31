@@ -7,6 +7,7 @@ import express from 'express'
 import EventSchedule from '../models/EventSchedule.js'
 import Player from '../models/Player.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
+import { requireEventPeriod, isMatchDateWithinEventRange } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
 import { updatePointsTable } from '../utils/pointsTable.js'
@@ -157,19 +158,40 @@ router.post(
   '/event-schedule',
   authenticateToken,
   requireAdmin,
+  requireEventPeriod,
   asyncHandler(async (req, res) => {
     const { match_type, sports_name, teams, players, match_date, event_year, number_of_participants } = req.body
 
     // Get event year (default to active year if not provided)
-    const eventYear = await getEventYear(event_year ? parseInt(event_year) : null)
+    const eventYear = await getEventYear(event_year ? parseInt(event_year) : null, { returnDoc: true })
+    const eventYearDoc = eventYear.doc
 
     // Validate required fields
     if (!match_type || !sports_name || !match_date) {
       return sendErrorResponse(res, 400, 'Missing required fields: match_type, sports_name, match_date')
     }
 
+    // Validate match_date is within event date range
+    if (!isMatchDateWithinEventRange(match_date, eventYearDoc)) {
+      const eventStart = new Date(eventYearDoc.event_dates.start)
+      const eventEnd = new Date(eventYearDoc.event_dates.end)
+      const formatDate = (date) => {
+        const d = new Date(date)
+        const day = d.getDate()
+        const month = d.toLocaleString('en-US', { month: 'short' })
+        const year = d.getFullYear()
+        const ordinal = day % 10 === 1 && day % 100 !== 11 ? day + 'st' : day % 10 === 2 && day % 100 !== 12 ? day + 'nd' : day % 10 === 3 && day % 100 !== 13 ? day + 'rd' : day + 'th'
+        return `${ordinal} ${month} ${year}`
+      }
+      return sendErrorResponse(
+        res,
+        400,
+        `Match date must be within event date range (${formatDate(eventStart)} to ${formatDate(eventEnd)})`
+      )
+    }
+
     // Find sport by name and event_year
-    const sportDoc = await findSportByNameAndYear(sports_name, eventYear, { lean: false })
+    const sportDoc = await findSportByNameAndYear(sports_name, eventYear.year, { lean: false })
 
     // Validate teams/players arrays based on sport type
     if (sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team') {
@@ -300,7 +322,7 @@ router.post(
       // Check if any knockout match exists for this sport
       const knockoutMatch = await EventSchedule.findOne({
         sports_name: normalizeSportName(sports_name),
-        event_year: eventYear,
+        event_year: eventYear.year,
         match_type: { $in: ['knockout', 'final'] },
         status: { $in: ['scheduled', 'completed', 'draw', 'cancelled'] }
       })
@@ -311,7 +333,7 @@ router.post(
       // Check if any league match exists
       const leagueMatches = await EventSchedule.find({
         sports_name: normalizeSportName(sports_name),
-        event_year: eventYear,
+        event_year: eventYear.year,
         match_type: 'league'
       }).sort({ match_date: -1 }).lean()
 
@@ -343,7 +365,7 @@ router.post(
       // Get knocked out participants from completed matches
       const completedMatches = await EventSchedule.find({
         sports_name: normalizeSportName(sports_name),
-        event_year: eventYear,
+        event_year: eventYear.year,
         status: 'completed',
         match_type: { $in: ['knockout', 'final'] }
       }).lean()
@@ -379,7 +401,7 @@ router.post(
     // Prevent scheduling if 'final' match is already completed
     const completedFinalMatch = await EventSchedule.findOne({
       sports_name: normalizeSportName(sports_name),
-      event_year: eventYear,
+      event_year: eventYear.year,
       match_type: 'final',
       status: 'completed'
     })
@@ -408,7 +430,7 @@ router.post(
 
     // Create new match
     const matchData = {
-      event_year: eventYear,
+      event_year: eventYear.year,
       match_number,
       match_type,
       sports_name: normalizeSportName(sports_name),
@@ -428,8 +450,8 @@ router.post(
     await newMatch.save()
 
     // Clear cache
-    clearCache(`/api/event-schedule/${sports_name}?year=${eventYear}`)
-    clearCache(`/api/event-schedule/${sports_name}/teams-players?year=${eventYear}`)
+    clearCache(`/api/event-schedule/${sports_name}?year=${eventYear.year}`)
+    clearCache(`/api/event-schedule/${sports_name}/teams-players?year=${eventYear.year}`)
 
     return sendSuccessResponse(res, { match: newMatch }, `Match #${match_number} scheduled successfully`)
   })
@@ -445,9 +467,10 @@ router.put(
   '/event-schedule/:id',
   authenticateToken,
   requireAdmin,
+  requireEventPeriod,
   asyncHandler(async (req, res) => {
     const { id } = req.params
-    const { winner, qualifiers, status } = req.body
+    const { winner, qualifiers, status, match_date } = req.body
 
     // Find the match
     const match = await EventSchedule.findById(id)
@@ -455,11 +478,39 @@ router.put(
       return handleNotFoundError(res, 'Match')
     }
 
+    // Get event year document for date range validation
+    const eventYearData = await getEventYear(match.event_year, { returnDoc: true })
+    const eventYearDoc = eventYearData.doc
+
     // Get sport details
     const sportDoc = await findSportByNameAndYear(match.sports_name, match.event_year)
 
+    // Validate match_date update if provided
+    if (match_date !== undefined) {
+      // Validate match_date is within event date range
+      if (!isMatchDateWithinEventRange(match_date, eventYearDoc)) {
+        const eventStart = new Date(eventYearDoc.event_dates.start)
+        const eventEnd = new Date(eventYearDoc.event_dates.end)
+        const formatDate = (date) => {
+          const d = new Date(date)
+          const day = d.getDate()
+          const month = d.toLocaleString('en-US', { month: 'short' })
+          const year = d.getFullYear()
+          const ordinal = day % 10 === 1 && day % 100 !== 11 ? day + 'st' : day % 10 === 2 && day % 100 !== 12 ? day + 'nd' : day % 10 === 3 && day % 100 !== 13 ? day + 'rd' : day + 'th'
+          return `${ordinal} ${month} ${year}`
+        }
+        return sendErrorResponse(
+          res,
+          400,
+          `Match date must be within event date range (${formatDate(eventStart)} to ${formatDate(eventEnd)})`
+        )
+      }
+      updateData.match_date = new Date(match_date.includes('T') ? match_date : match_date + 'T00:00:00')
+    }
+
     // Check if match date is in the future (date-only comparison)
-    const matchDateObj = new Date(match.match_date)
+    const currentMatchDate = match_date !== undefined ? match_date : match.match_date
+    const matchDateObj = new Date(currentMatchDate.includes('T') ? currentMatchDate : currentMatchDate + 'T00:00:00')
     const now = new Date()
     matchDateObj.setHours(0, 0, 0, 0)
     now.setHours(0, 0, 0, 0)
@@ -476,6 +527,32 @@ router.put(
       }
       if (!['completed', 'draw', 'cancelled', 'scheduled'].includes(status)) {
         return sendErrorResponse(res, 400, 'Invalid status')
+      }
+      
+      // Validate status changes to completed/draw/cancelled only happen within event date range
+      if (['completed', 'draw', 'cancelled'].includes(status)) {
+        const now = new Date()
+        now.setHours(0, 0, 0, 0)
+        const eventStart = new Date(eventYearDoc.event_dates.start)
+        eventStart.setHours(0, 0, 0, 0)
+        const eventEnd = new Date(eventYearDoc.event_dates.end)
+        eventEnd.setHours(23, 59, 59, 999)
+        
+        if (now < eventStart || now > eventEnd) {
+          const formatDate = (date) => {
+            const d = new Date(date)
+            const day = d.getDate()
+            const month = d.toLocaleString('en-US', { month: 'short' })
+            const year = d.getFullYear()
+            const ordinal = day % 10 === 1 && day % 100 !== 11 ? day + 'st' : day % 10 === 2 && day % 100 !== 12 ? day + 'nd' : day % 10 === 3 && day % 100 !== 13 ? day + 'rd' : day + 'th'
+            return `${ordinal} ${month} ${year}`
+          }
+          return sendErrorResponse(
+            res,
+            400,
+            `Match status can only be set to "${status}" within event date range (${formatDate(eventStart)} to ${formatDate(eventEnd)})`
+          )
+        }
       }
       
       // Prevent status change from 'completed' to another status if winner/qualifiers are set
@@ -603,6 +680,7 @@ router.delete(
   '/event-schedule/:id',
   authenticateToken,
   requireAdmin,
+  requireEventPeriod,
   asyncHandler(async (req, res) => {
     const { id } = req.params
 

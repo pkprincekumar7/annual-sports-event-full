@@ -3,13 +3,13 @@
  * Eliminates code duplication across all modals
  */
 
-import { EVENT_INFO } from '../../constants/app'
+import { useEventYear } from '../../hooks/useEventYear'
 
 function Modal({ 
   isOpen, 
   onClose, 
   title, 
-  subtitle = EVENT_INFO.fullName,
+  subtitle,
   headerLabel = 'Admin Panel',
   children, 
   embedded = false,
@@ -17,6 +17,9 @@ function Modal({
   showCloseButton = true,
   className = '',
 }) {
+  const { eventYearConfig } = useEventYear()
+  const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
+  const displaySubtitle = subtitle !== undefined ? subtitle : eventHighlight
   if (!isOpen) return null
 
   const modalContent = (
@@ -58,9 +61,9 @@ function Modal({
         </div>
       )}
       
-      {subtitle && (
+      {displaySubtitle && (
         <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">
-          {subtitle}
+          {displaySubtitle}
         </div>
       )}
 

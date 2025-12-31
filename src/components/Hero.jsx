@@ -1,12 +1,30 @@
 import { useEffect, useState } from 'react'
-import { EVENT_INFO } from '../constants/app'
+import { useEventYear } from '../hooks/useEventYear'
+import { formatDateRange } from '../utils/dateFormatters'
 import YearSelector from './YearSelector'
 
-function Hero({ onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRemoveCaptainClick, onListPlayersClick, onExportExcel, onAdminDashboardClick, onYearChange, selectedYear, loggedInUser }) {
+function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRemoveCaptainClick, onListPlayersClick, onExportExcel, onAdminDashboardClick, onYearChange, selectedYear, loggedInUser }) {
+  const { eventYearConfig } = useEventYear()
+  const eventOrganizer = eventYearConfig?.event_organizer || 'Events Community'
   const [eventCountdown, setEventCountdown] = useState('')
 
+  // Format dates from database
+  const eventDateDisplay = eventYearConfig?.event_dates 
+    ? formatDateRange(eventYearConfig.event_dates.start, eventYearConfig.event_dates.end)
+    : ''
+  const registrationDateDisplay = eventYearConfig?.registration_dates
+    ? formatDateRange(eventYearConfig.registration_dates.start, eventYearConfig.registration_dates.end)
+    : ''
+
   useEffect(() => {
-    const targetTime = new Date(EVENT_INFO.eventDates.start).getTime()
+    // Use event start date from database for countdown
+    const eventStartDate = eventYearConfig?.event_dates?.start
+    if (!eventStartDate) {
+      setEventCountdown('')
+      return
+    }
+
+    const targetTime = new Date(eventStartDate).getTime()
 
     const update = () => {
       const now = Date.now()
@@ -16,7 +34,7 @@ function Hero({ onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRe
         const days = Math.floor(diff / (1000 * 60 * 60 * 24))
         const hours = Math.floor((diff / (1000 * 60 * 60)) % 24)
         const minutes = Math.floor((diff / (1000 * 60)) % 60)
-        const seconds = Math.floor((diff / 1000) % 60)
+        const seconds = Math.floor((diff / (1000 * 60)) % 60)
 
         setEventCountdown(
           `Event starts in: ${days}d ${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`
@@ -30,7 +48,7 @@ function Hero({ onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRe
     const timer = setInterval(update, 1000)
 
     return () => clearInterval(timer)
-  }, [])
+  }, [eventYearConfig?.event_dates?.start])
 
   return (
     <div id="home" className="mb-6 text-center">
@@ -41,7 +59,7 @@ function Hero({ onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRe
         }}
       >
         <div className="text-center text-[1.7rem] font-semibold text-white drop-shadow-[0_0_8px_rgba(0,0,0,0.7)]">
-          Purnea College of Engineering, Purnea
+          {eventOrganizer}
         </div>
         <div
           className="mt-[1.2rem] mb-[0.6rem] mx-auto text-center w-fit px-[1.6rem] py-2 bg-gradient-to-b from-[#ff3434] to-[#b70000] rounded-full shadow-[0_14px_30px_rgba(0,0,0,0.6),0_0_0_3px_rgba(255,255,255,0.15)] relative overflow-visible"
@@ -62,15 +80,19 @@ function Hero({ onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRe
             }}
           />
           <div className="text-[2.2rem] font-bold tracking-[0.18em] text-white uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.7),0_0_12px_rgba(0,0,0,0.8)] max-md:text-[1.7rem]">
-            {EVENT_INFO.name}
+            {eventDisplayName || 'Championship'}
           </div>
         </div>
-        <div className="mt-1 text-center text-[1.2rem] font-bold text-[#ffe66d] drop-shadow-[0_0_8px_rgba(0,0,0,0.8)] max-md:text-base">
-          Event Date: {EVENT_INFO.eventDates.display}
-        </div>
-        <div className="mt-[0.7rem] text-center text-[1.2rem] font-semibold text-[#ff4dff] drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]">
-          Registration Date: {EVENT_INFO.registrationDates.display}
-        </div>
+        {eventDateDisplay && (
+          <div className="mt-1 text-center text-[1.2rem] font-bold text-[#ffe66d] drop-shadow-[0_0_8px_rgba(0,0,0,0.8)] max-md:text-base">
+            Event Date: {eventDateDisplay}
+          </div>
+        )}
+        {registrationDateDisplay && (
+          <div className="mt-[0.7rem] text-center text-[1.2rem] font-semibold text-[#ff4dff] drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]">
+            Registration Date: {registrationDateDisplay}
+          </div>
+        )}
         {eventCountdown && (
           <div id="eventCountdown" className="mt-2 mb-0 text-center text-base font-semibold text-red-500">
             {eventCountdown}

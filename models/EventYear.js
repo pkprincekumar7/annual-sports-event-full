@@ -35,6 +35,21 @@ const eventYearSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  event_organizer: {
+    type: String,
+    trim: true,
+    default: 'Events Community'
+  },
+  event_title: {
+    type: String,
+    trim: true,
+    default: 'Community Entertainment'
+  },
+  event_highlight: {
+    type: String,
+    trim: true,
+    default: 'Community Entertainment Fest'
+  },
   created_by: {
     type: String,
     required: true,

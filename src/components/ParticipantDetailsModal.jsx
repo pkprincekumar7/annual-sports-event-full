@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
-import { useApi, useModal, useEventYearWithFallback } from '../hooks'
+import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
 import { fetchWithAuth } from '../utils/api'
 import { clearIndividualParticipationCaches } from '../utils/cacheHelpers'
 import logger from '../utils/logger'
-import { EVENT_INFO } from '../constants/app'
 import { computeYearDisplay } from '../utils/yearHelpers'
 
 function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
+  const { eventYearConfig } = useEventYear()
+  const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [participants, setParticipants] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -222,7 +223,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
         isOpen={isOpen}
         onClose={onClose}
         title="Participant Details"
-        subtitle={sport ? `${sport.toUpperCase()} • ${EVENT_INFO.fullName}` : undefined}
+        subtitle={sport ? `${sport.toUpperCase()} • ${eventHighlight}` : undefined}
         embedded={embedded}
         maxWidth="max-w-[700px]"
       >

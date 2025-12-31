@@ -7,6 +7,7 @@ import express from 'express'
 import Player from '../models/Player.js'
 import EventYear from '../models/EventYear.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
+import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { validateUpdatePlayerData, validatePlayerData, trimObjectFields } from '../utils/validation.js'
 import { computePlayerParticipation, computeYearDisplay, canParticipateInEvents, validateDepartmentExists } from '../utils/playerHelpers.js'
@@ -147,6 +148,7 @@ router.get(
  */
 router.post(
   '/save-player',
+  requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
     
@@ -216,6 +218,7 @@ router.post(
  */
 router.post(
   '/save-players',
+  requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     let { players } = req.body
 
@@ -301,6 +304,7 @@ router.put(
   '/update-player',
   authenticateToken,
   requireAdmin,
+  requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
     const validation = await validateUpdatePlayerData(trimmed)

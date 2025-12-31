@@ -1,11 +1,17 @@
+import { useEventYear } from '../hooks/useEventYear'
+
 function Navbar() {
+  const { eventYearConfig } = useEventYear()
+  const eventTitle = eventYearConfig?.event_title || 'Community Entertainment'
+  const eventYear = eventYearConfig?.year
+
   return (
     <nav className="bg-[rgba(5,7,22,0.96)] backdrop-blur-[20px] py-[0.9rem] sticky top-0 z-[100] shadow-[0_10px_25px_rgba(0,0,0,0.6)]">
       <div className="max-w-[1300px] mx-auto px-4 flex justify-between items-center gap-4 flex-wrap">
         <div className="flex items-center gap-[0.6rem]">
           <img src="/images/logo.png" alt="PCE Logo" className="h-10 w-auto object-contain" />
           <div className="text-[1.1rem] font-extrabold tracking-[0.16em] uppercase text-white">
-            <span className="text-[#ffe66d]">PCE - Annual Sports</span> - 2026
+            <span className="text-[#ffe66d]">{eventTitle}</span>{eventYear ? ` - ${eventYear}` : ''}
           </div>
         </div>
 

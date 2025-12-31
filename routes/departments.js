@@ -2,6 +2,7 @@ import express from 'express'
 import Department from '../models/Department.js'
 import Player from '../models/Player.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
+import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { clearCache } from '../utils/cache.js'
 
 const router = express.Router()
@@ -47,7 +48,7 @@ router.get('/active', async (req, res) => {
  * Create new department (admin only)
  * Validation: Department name must be unique
  */
-router.post('/', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/', authenticateToken, requireAdmin, requireRegistrationPeriod, async (req, res) => {
   try {
     const { name, code, display_order } = req.body
     
@@ -90,7 +91,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
  * Restriction: Only display_order field can be updated
  * Validation: Reject update if trying to modify name or code (these are immutable)
  */
-router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/:id', authenticateToken, requireAdmin, requireRegistrationPeriod, async (req, res) => {
   try {
     const { id } = req.params
     const { display_order } = req.body
@@ -132,7 +133,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
  * If players exist, reject deletion with error message
  * If no players, allow hard delete
  */
-router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, requireRegistrationPeriod, async (req, res) => {
   try {
     const { id } = req.params
     

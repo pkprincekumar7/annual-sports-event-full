@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Modal, Button, Input, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
-import { useApi, useModal, useEventYearWithFallback } from '../hooks'
+import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import { clearSportCaches } from '../utils/cacheHelpers'
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
-import { EVENT_INFO } from '../constants/app'
 import { computeYearDisplay } from '../utils/yearHelpers'
 
 function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
+  const { eventYearConfig } = useEventYear()
+  const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [teams, setTeams] = useState([])
   const [totalTeams, setTotalTeams] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -409,7 +410,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
         isOpen={isOpen}
         onClose={onClose}
         title="Team Details"
-        subtitle={sport ? `${sport.toUpperCase()} • ${EVENT_INFO.fullName}` : undefined}
+        subtitle={sport ? `${sport.toUpperCase()} • ${eventHighlight}` : undefined}
         embedded={embedded}
         maxWidth="max-w-[700px]"
       >

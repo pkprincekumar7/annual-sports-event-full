@@ -8,6 +8,7 @@ import Sport from '../models/Sport.js'
 import EventSchedule from '../models/EventSchedule.js'
 import PointsTable from '../models/PointsTable.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
+import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { getCache, setCache, clearCache, clearCachePattern } from '../utils/cache.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse } from '../utils/errorHandler.js'
 import { getEventYear } from '../utils/yearHelpers.js'
@@ -50,7 +51,7 @@ router.get('/sports', asyncHandler(async (req, res) => {
  * Admin sets type, category, team_size
  * Validates team_size only for team sports
  */
-router.post('/sports', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
     const { name, event_year, type, category, team_size, imageUri } = req.body
     
     if (!name || !name.trim()) {
@@ -112,7 +113,7 @@ router.post('/sports', authenticateToken, requireAdmin, asyncHandler(async (req,
  * Update within same year (cannot change event_year)
  * Validates team_size if updated
  */
-router.put('/sports/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
     const { id } = req.params
   const { type, category, team_size, imageUri } = req.body
     
@@ -177,7 +178,7 @@ router.put('/sports/:id', authenticateToken, requireAdmin, asyncHandler(async (r
  * Delete sport (admin only)
  * Validates no matches or points table entries exist for this sport in the same year
  */
-router.delete('/sports/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
     const { id } = req.params
     
     const sport = await Sport.findById(id)

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchWithAuth, fetchCurrentUser, decodeJWT, clearCache } from './utils/api'
 import logger from './utils/logger'
+import { useEventYear } from './hooks/useEventYear'
+import { formatDateRange } from './utils/dateFormatters'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
 import SportsSection from './components/SportsSection'
@@ -42,6 +44,13 @@ function App() {
   })
   const [loggedInUser, setLoggedInUser] = useState(null)
   const [isLoadingUser, setIsLoadingUser] = useState(true)
+  
+  // Fetch active event year for dynamic event name display
+  const { eventYearConfig } = useEventYear()
+  const eventDisplayName = eventYearConfig 
+    ? `${eventYearConfig.event_name} - ${eventYearConfig.year}`
+    : 'Championship' // Fallback to default value if no active year
+  const eventOrganizer = eventYearConfig?.event_organizer || 'Events Community'
 
   // Fetch user data from server on mount if token exists
   useEffect(() => {
@@ -385,7 +394,7 @@ function App() {
                 }}
               >
                 <div className="text-center text-[1.7rem] font-semibold text-white drop-shadow-[0_0_8px_rgba(0,0,0,0.7)]">
-                  Purnea College of Engineering, Purnea
+                  {eventOrganizer}
                 </div>
                 <div
                   className="mt-[1.2rem] mb-[0.6rem] mx-auto text-center w-fit px-[1.6rem] py-2 bg-gradient-to-b from-[#ff3434] to-[#b70000] rounded-full shadow-[0_14px_30px_rgba(0,0,0,0.6),0_0_0_3px_rgba(255,255,255,0.15)] relative overflow-visible"
@@ -406,7 +415,7 @@ function App() {
                     }}
                   />
                   <div className="text-[2.2rem] font-bold tracking-[0.18em] text-white uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.7),0_0_12px_rgba(0,0,0,0.8)] max-md:text-[1.7rem]">
-                    UMANG – 2026
+                    {eventDisplayName}
                   </div>
                 </div>
                 <div className="mt-4 mb-2 text-center">
@@ -419,6 +428,7 @@ function App() {
           ) : (
             <>
               <Hero 
+                eventDisplayName={eventDisplayName}
                 onRegisterClick={() => setIsModalOpen(true)} 
                 onLoginClick={() => setIsLoginModalOpen(true)}
                 onLogout={handleLogout}

@@ -4,6 +4,7 @@ import Sport from '../models/Sport.js'
 import EventSchedule from '../models/EventSchedule.js'
 import PointsTable from '../models/PointsTable.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
+import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 
@@ -51,11 +52,11 @@ router.get('/active', asyncHandler(async (req, res) => {
  * POST /api/event-years
  * Create new event year (admin only)
  */
-router.post('/', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
-  const { year, event_name, event_dates, registration_dates } = req.body
+router.post('/', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
+  const { year, event_name, event_dates, registration_dates, event_organizer, event_title, event_highlight } = req.body
   
   if (!year || !event_name || !event_dates || !registration_dates) {
-    return sendErrorResponse(res, 400, 'All fields are required')
+    return sendErrorResponse(res, 400, 'All required fields are required')
   }
   
   // Check if year already exists
@@ -69,6 +70,9 @@ router.post('/', authenticateToken, requireAdmin, asyncHandler(async (req, res) 
     event_name: event_name.trim(),
     event_dates,
     registration_dates,
+    event_organizer: event_organizer ? event_organizer.trim() : undefined, // Will use default if not provided
+    event_title: event_title ? event_title.trim() : undefined, // Will use default if not provided
+    event_highlight: event_highlight ? event_highlight.trim() : undefined, // Will use default if not provided
     is_active: false, // New years are inactive by default
     created_by: req.user.reg_number
   })
@@ -85,9 +89,9 @@ router.post('/', authenticateToken, requireAdmin, asyncHandler(async (req, res) 
  * PUT /api/event-years/:year
  * Update event year configuration (admin only)
  */
-router.put('/:year', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/:year', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
   const { year } = req.params
-  const { event_name, event_dates, registration_dates } = req.body
+  const { event_name, event_dates, registration_dates, event_organizer, event_title, event_highlight } = req.body
   
   const eventYear = await EventYear.findOne({ year: parseInt(year) })
   if (!eventYear) {
@@ -103,6 +107,15 @@ router.put('/:year', authenticateToken, requireAdmin, asyncHandler(async (req, r
   if (registration_dates) {
     eventYear.registration_dates = registration_dates
   }
+  if (event_organizer !== undefined) {
+    eventYear.event_organizer = event_organizer ? event_organizer.trim() : 'Events Community'
+  }
+  if (event_title !== undefined) {
+    eventYear.event_title = event_title ? event_title.trim() : 'Community Entertainment'
+  }
+  if (event_highlight !== undefined) {
+    eventYear.event_highlight = event_highlight ? event_highlight.trim() : 'Community Entertainment Fest'
+  }
   
   await eventYear.save()
   
@@ -116,7 +129,7 @@ router.put('/:year', authenticateToken, requireAdmin, asyncHandler(async (req, r
  * PUT /api/event-years/:year/activate
  * Set year as active (admin only, deactivates others)
  */
-router.put('/:year/activate', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/:year/activate', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
   const { year } = req.params
   
   const eventYear = await EventYear.findOne({ year: parseInt(year) })
@@ -144,7 +157,7 @@ router.put('/:year/activate', authenticateToken, requireAdmin, asyncHandler(asyn
  * DELETE /api/event-years/:year
  * Delete event year (admin only, only if no data exists and not active)
  */
-router.delete('/:year', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.delete('/:year', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
   const { year } = req.params
   const eventYear = parseInt(year)
   

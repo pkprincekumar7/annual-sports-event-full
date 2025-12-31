@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Modal, Button, Input, DatePickerInput, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
-import { useApi, useModal, useEventYearWithFallback } from '../hooks'
+import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import { buildSportApiUrl, buildEventScheduleApiUrl } from '../utils/apiHelpers'
 import logger from '../utils/logger'
-import { EVENT_INFO } from '../constants/app'
 
 function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
+  const { eventYearConfig } = useEventYear()
+  const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [matches, setMatches] = useState([])
   const [loading, setLoading] = useState(false)
   const [expandedMatches, setExpandedMatches] = useState(new Set())
@@ -842,7 +843,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
         isOpen={isOpen}
         onClose={onClose}
         title={`${sport} - Event Schedule`}
-        subtitle={EVENT_INFO.fullName}
+        subtitle={eventHighlight}
         embedded={embedded}
         maxWidth="max-w-[900px]"
       >

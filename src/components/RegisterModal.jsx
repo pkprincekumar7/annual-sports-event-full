@@ -11,7 +11,6 @@ import { formatSportName } from '../utils/stringHelpers'
 import { isTeamSport, getSportType, getTeamSize, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual } from '../utils/sportHelpers'
 
 function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate, embedded = false, selectedYear }) {
-  const [registrationCountdown, setRegistrationCountdown] = useState('')
   const [players, setPlayers] = useState([])
   const [selectedPlayers, setSelectedPlayers] = useState({})
   const [totalTeams, setTotalTeams] = useState(0)
@@ -236,35 +235,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     // Reset state when modal closes is handled by useApi hook
   }, [isOpen, isTeam, playerCount, loggedInUser])
 
-  // Registration countdown
-  useEffect(() => {
-    if (!isOpen) return
-
-    const targetTime = new Date(EVENT_INFO.registrationDates.start).getTime()
-
-    const update = () => {
-      const now = Date.now()
-      const diff = targetTime - now
-
-      if (diff > 0) {
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-        const hours = Math.floor((diff / (1000 * 60 * 60)) % 24)
-        const minutes = Math.floor((diff / (1000 * 60)) % 60)
-        const seconds = Math.floor((diff / 1000) % 60)
-
-        setRegistrationCountdown(
-          `Registration opens in: ${days}d ${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`
-        )
-      } else {
-        setRegistrationCountdown('Registration is OPEN!')
-      }
-    }
-
-    update()
-    const timer = setInterval(update, 1000)
-
-    return () => clearInterval(timer)
-  }, [isOpen])
 
   const handlePlayerSelect = (playerIndex, regNumber) => {
     setSelectedPlayers((prev) => ({
@@ -627,7 +597,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           isOpen={isOpen}
           onClose={onClose}
           title={formatSportName(selectedSport.name)}
-          subtitle={EVENT_INFO.fullName}
           embedded={embedded}
           maxWidth="max-w-[420px]"
         >
@@ -663,9 +632,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           Total Players Participated: <span className="text-[#ffe66d] font-bold">{loadingParticipants ? '...' : totalParticipants}</span>
         </div>
 
-        {registrationCountdown && (
-          <div className="my-2 mb-6 text-center text-base font-semibold text-red-500">{registrationCountdown}</div>
-        )}
 
         <div className="text-center text-[1.1rem] font-semibold text-[#e5e7eb] mb-8">
           Are you sure you want to participate?
@@ -712,7 +678,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           isOpen={isOpen}
           onClose={onClose}
           title="Team Registration"
-          subtitle={`${formatSportName(selectedSport.name)} • ${EVENT_INFO.fullName}`}
           embedded={embedded}
           maxWidth="max-w-[420px]"
         >
@@ -736,9 +701,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           Total Teams Participated: <span className="text-[#ffe66d] font-bold">{loadingTeams ? '...' : totalTeams}</span>
         </div>
 
-        {registrationCountdown && (
-          <div className="my-2 mb-[0.9rem] text-center text-base font-semibold text-red-500">{registrationCountdown}</div>
-        )}
 
         <form id="teamRegistrationForm" onSubmit={handleTeamSubmit}>
           <Input
@@ -893,9 +855,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       embedded={embedded}
       maxWidth="max-w-[420px]"
     >
-      {registrationCountdown && (
-        <div className="my-2 mb-[0.9rem] text-center text-base font-semibold text-red-500">{registrationCountdown}</div>
-      )}
 
       <form id="generalRegistrationForm" onSubmit={handleGeneralSubmit}>
         <Input

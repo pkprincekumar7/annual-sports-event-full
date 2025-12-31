@@ -7,6 +7,7 @@ import express from 'express'
 import Sport from '../models/Sport.js'
 import Player from '../models/Player.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
+import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { validateCaptainAssignment, trimObjectFields } from '../utils/validation.js'
 import { clearCache } from '../utils/cache.js'
@@ -26,6 +27,7 @@ router.post(
   '/add-captain',
   authenticateToken,
   requireAdmin,
+  requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
     const validation = validateCaptainAssignment(trimmed)
@@ -91,6 +93,7 @@ router.delete(
   '/remove-captain',
   authenticateToken,
   requireAdmin,
+  requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
     const validation = validateCaptainAssignment(trimmed)

@@ -35,6 +35,9 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
   const [eventYearForm, setEventYearForm] = useState({
     year: '',
     event_name: '',
+    event_organizer: '',
+    event_title: '',
+    event_highlight: '',
     event_dates: { start: '', end: '' },
     registration_dates: { start: '', end: '' }
   })
@@ -178,7 +181,11 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...eventYearForm,
+          year: eventYearForm.year,
+          event_name: eventYearForm.event_name,
+          event_organizer: eventYearForm.event_organizer || undefined,
+          event_title: eventYearForm.event_title || undefined,
+          event_highlight: eventYearForm.event_highlight || undefined,
           event_dates: {
             start: new Date(eventYearForm.event_dates.start + 'T00:00:00'),
             end: new Date(eventYearForm.event_dates.end + 'T23:59:59')
@@ -196,7 +203,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
       const createdYear = await response.json()
       clearCache('/api/event-years/active')
       onStatusPopup('✅ Event year created successfully', 'success', 2500)
-      setEventYearForm({ year: '', event_name: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
+      setEventYearForm({ year: '', event_name: '', event_organizer: '', event_title: '', event_highlight: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
       // Add the newly created year to the list immediately (optimistic update)
       setEventYears(prev => {
         // Check if year already exists to avoid duplicates
@@ -236,20 +243,26 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
     e.preventDefault()
     if (!editingEventYear) return
     try {
+      const updateData = {
+        event_name: eventYearForm.event_name,
+        event_dates: {
+          start: new Date(eventYearForm.event_dates.start + 'T00:00:00'),
+          end: new Date(eventYearForm.event_dates.end + 'T23:59:59')
+        },
+        registration_dates: {
+          start: new Date(eventYearForm.registration_dates.start + 'T00:00:00'),
+          end: new Date(eventYearForm.registration_dates.end + 'T23:59:59')
+        },
+        // Always include optional fields - backend will handle defaults if empty
+        event_organizer: eventYearForm.event_organizer ? eventYearForm.event_organizer.trim() : '',
+        event_title: eventYearForm.event_title ? eventYearForm.event_title.trim() : '',
+        event_highlight: eventYearForm.event_highlight ? eventYearForm.event_highlight.trim() : ''
+      }
+      
       const response = await fetchWithAuth(`/api/event-years/${editingEventYear.year}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event_name: eventYearForm.event_name,
-          event_dates: {
-            start: new Date(eventYearForm.event_dates.start + 'T00:00:00'),
-            end: new Date(eventYearForm.event_dates.end + 'T23:59:59')
-          },
-          registration_dates: {
-            start: new Date(eventYearForm.registration_dates.start + 'T00:00:00'),
-            end: new Date(eventYearForm.registration_dates.end + 'T23:59:59')
-          }
-        })
+        body: JSON.stringify(updateData)
       })
       if (!response.ok) {
         const error = await response.json()
@@ -258,7 +271,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
       clearCache('/api/event-years/active')
       onStatusPopup('✅ Event year updated successfully', 'success', 2500)
       setEditingEventYear(null)
-      setEventYearForm({ year: '', event_name: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
+      setEventYearForm({ year: '', event_name: '', event_organizer: '', event_title: '', event_highlight: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
       fetchEventYearsData()
     } catch (error) {
       onStatusPopup(`❌ ${error.message}`, 'error', 3000)
@@ -279,6 +292,9 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
     setEventYearForm({
       year: year.year.toString(),
       event_name: year.event_name,
+      event_organizer: year.event_organizer || '',
+      event_title: year.event_title || '',
+      event_highlight: year.event_highlight || '',
       event_dates: {
         start: formatDateForInput(year.event_dates.start),
         end: formatDateForInput(year.event_dates.end)
@@ -538,11 +554,16 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
   }
 
 
-  // Scroll to top when editing starts
+  // Scroll to top when editing starts or delete confirmation is shown
   useEffect(() => {
-    if (editingEventYear || editingSport || editingDept) {
-      // Use setTimeout to ensure DOM is updated and form is rendered
+    if (editingEventYear || editingSport || editingDept || showDeleteConfirm || showDeleteSportConfirm || showDeleteDeptConfirm) {
+      // Use setTimeout to ensure DOM is updated and form/dialog is rendered
       setTimeout(() => {
+        // Scroll the page window to top (for delete confirmation dialogs)
+        if (showDeleteConfirm || showDeleteSportConfirm || showDeleteDeptConfirm) {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        }
+        
         // Find the modal's scrollable container (the aside element with overflow-y-auto)
         // The modal container has max-w-[900px] class and overflow-y-auto
         const modalContainer = document.querySelector('aside[class*="max-w-[900px]"]')
@@ -557,7 +578,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
         }
       }, 100)
     }
-  }, [editingEventYear, editingSport, editingDept])
+  }, [editingEventYear, editingSport, editingDept, showDeleteConfirm, showDeleteSportConfirm, showDeleteDeptConfirm])
 
   return (
     <Modal
@@ -612,6 +633,27 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                 onChange={(e) => setEventYearForm({ ...eventYearForm, event_name: e.target.value })}
                 required
               />
+              <Input
+                label="Event Organizer"
+                name="event_organizer"
+                value={eventYearForm.event_organizer}
+                onChange={(e) => setEventYearForm({ ...eventYearForm, event_organizer: e.target.value })}
+                placeholder="Events Community"
+              />
+              <Input
+                label="Event Title"
+                name="event_title"
+                value={eventYearForm.event_title}
+                onChange={(e) => setEventYearForm({ ...eventYearForm, event_title: e.target.value })}
+                placeholder="Community Entertainment"
+              />
+              <Input
+                label="Event Highlight"
+                name="event_highlight"
+                value={eventYearForm.event_highlight}
+                onChange={(e) => setEventYearForm({ ...eventYearForm, event_highlight: e.target.value })}
+                placeholder="Community Entertainment Fest"
+              />
               <DatePickerInput
                 label="Event Start Date"
                 name="event_start"
@@ -664,7 +706,27 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                   onChange={(e) => setEventYearForm({ ...eventYearForm, event_name: e.target.value })}
                   required
                 />
-                <div></div>
+                <Input
+                  label="Event Organizer"
+                  name="event_organizer"
+                  value={eventYearForm.event_organizer}
+                  onChange={(e) => setEventYearForm({ ...eventYearForm, event_organizer: e.target.value })}
+                  placeholder="Events Community"
+                />
+                <Input
+                  label="Event Title"
+                  name="event_title"
+                  value={eventYearForm.event_title}
+                  onChange={(e) => setEventYearForm({ ...eventYearForm, event_title: e.target.value })}
+                  placeholder="Community Entertainment"
+                />
+                <Input
+                  label="Event Highlight"
+                  name="event_highlight"
+                  value={eventYearForm.event_highlight}
+                  onChange={(e) => setEventYearForm({ ...eventYearForm, event_highlight: e.target.value })}
+                  placeholder="Community Entertainment Fest"
+                />
                 <DatePickerInput
                   label="Event Start Date"
                   name="event_start"
@@ -701,7 +763,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                   variant="secondary"
                   onClick={() => {
                     setEditingEventYear(null)
-                    setEventYearForm({ year: '', event_name: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
+                    setEventYearForm({ year: '', event_name: '', event_organizer: '', event_title: '', event_highlight: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
                   }}
                 >
                   Cancel

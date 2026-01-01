@@ -56,10 +56,16 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   }, [isOpen]) // confirmModal is stable from useModal hook, no need to include it
 
   const toggleSport = (sport) => {
-    setExpandedSports(prev => ({
-      ...prev,
-      [sport]: !prev[sport]
-    }))
+    setExpandedSports(prev => {
+      // If clicking on an already expanded sport, collapse it
+      if (prev[sport]) {
+        const newState = { ...prev }
+        delete newState[sport]
+        return newState
+      }
+      // Otherwise, expand this sport and collapse all others
+      return { [sport]: true }
+    })
   }
 
   const handleRemoveClick = (regNumber, sport, captainName) => {

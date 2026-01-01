@@ -221,13 +221,14 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
 
   const toggleTeam = useCallback((teamName) => {
     setExpandedTeams(prev => {
-      const newExpanded = new Set(prev)
-      if (newExpanded.has(teamName)) {
+      // If clicking on an already expanded team, collapse it
+      if (prev.has(teamName)) {
+        const newExpanded = new Set(prev)
         newExpanded.delete(teamName)
-      } else {
-        newExpanded.add(teamName)
+        return newExpanded
       }
-      return newExpanded
+      // Otherwise, expand this team and collapse all others
+      return new Set([teamName])
     })
   }, [])
 
@@ -590,7 +591,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                       onClick={handleUpdatePlayer}
                                       disabled={updating || !selectedReplacementPlayer}
                                       loading={updating}
-                                      className="flex-1 px-4 py-2 text-[0.85rem] font-semibold rounded-[8px]"
+                                      className="flex-1 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-[0.85rem] font-semibold rounded-[8px]"
                                     >
                                       {updating ? 'Updating...' : 'Update'}
                                     </Button>
@@ -599,7 +600,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                       onClick={handleCancelEdit}
                                       disabled={updating}
                                       variant="secondary"
-                                      className="flex-1 px-4 py-2 text-[0.85rem] font-semibold rounded-[8px]"
+                                      className="flex-1 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-[0.85rem] font-semibold rounded-[8px]"
                                     >
                                       Cancel
                                     </Button>

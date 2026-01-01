@@ -243,13 +243,16 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   }, [playerOne, playerTwo, allPlayersList, sportType])
 
   const toggleMatch = (matchId) => {
-    const newExpanded = new Set(expandedMatches)
-    if (newExpanded.has(matchId)) {
-      newExpanded.delete(matchId)
-    } else {
-      newExpanded.add(matchId)
-    }
-    setExpandedMatches(newExpanded)
+    setExpandedMatches(prev => {
+      // If clicking on an already expanded match, collapse it
+      if (prev.has(matchId)) {
+        const newExpanded = new Set(prev)
+        newExpanded.delete(matchId)
+        return newExpanded
+      }
+      // Otherwise, expand this match and collapse all others
+      return new Set([matchId])
+    })
   }
 
   const handleDeleteClick = (matchId) => {
@@ -1076,7 +1079,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                   disabled={submitting}
                   loading={submitting}
                   variant="success"
-                  className="flex-1 px-2 py-2 text-[0.85rem] font-bold rounded-lg"
+                  className="flex-1 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-[0.85rem] font-bold rounded-lg"
                 >
                   {submitting ? 'Scheduling...' : 'Schedule'}
                 </Button>
@@ -1092,7 +1095,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                     setMatchDate('')
                   }}
                   variant="secondary"
-                  className="px-4 py-2 text-[0.85rem] font-bold rounded-lg"
+                  className="flex-1 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-[0.85rem] font-bold rounded-lg"
                 >
                   Cancel
                 </Button>

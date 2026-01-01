@@ -142,13 +142,16 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
   }
 
   const toggleParticipant = (regNumber) => {
-    const newExpanded = new Set(expandedParticipants)
-    if (newExpanded.has(regNumber)) {
-      newExpanded.delete(regNumber)
-    } else {
-      newExpanded.add(regNumber)
-    }
-    setExpandedParticipants(newExpanded)
+    setExpandedParticipants(prev => {
+      // If clicking on an already expanded participant, collapse it
+      if (prev.has(regNumber)) {
+        const newExpanded = new Set(prev)
+        newExpanded.delete(regNumber)
+        return newExpanded
+      }
+      // Otherwise, expand this participant and collapse all others
+      return new Set([regNumber])
+    })
   }
 
   const handleDeleteClick = (participant) => {

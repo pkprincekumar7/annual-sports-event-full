@@ -588,7 +588,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
       maxWidth="max-w-[900px]"
     >
       {/* Tabs */}
-      <div className="flex gap-2 mb-6 border-b border-[rgba(255,255,255,0.1)]">
+      <div className="flex gap-2 mb-6 border-b border-[rgba(255,255,255,0.1)] overflow-x-auto">
         {Object.entries({
           [TABS.EVENT_YEARS]: 'Event Years',
           [TABS.SPORTS]: 'Sports',
@@ -597,7 +597,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
           <button
             key={key}
             onClick={() => setActiveTab(key)}
-            className={`px-4 py-2 font-bold text-sm uppercase tracking-wide transition-colors ${
+            className={`px-3 md:px-4 py-2 font-bold text-xs md:text-sm uppercase tracking-wide transition-colors whitespace-nowrap flex-shrink-0 ${
               activeTab === key
                 ? 'text-[#ffe66d] border-b-2 border-[#ffe66d]'
                 : 'text-[#94a3b8] hover:text-[#e5e7eb]'
@@ -611,13 +611,11 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
       {/* Event Years Tab */}
       {activeTab === TABS.EVENT_YEARS && (
         <div>
-          <h3 className="text-lg font-bold text-[#ffe66d] mb-4">Manage Event Years</h3>
-          
           {/* Create/Edit Form */}
           {!editingEventYear ? (
             <form onSubmit={handleCreateEventYear} className="mb-6 p-4 bg-[rgba(0,0,0,0.3)] rounded-lg">
               <h4 className="text-md font-bold text-[#cbd5ff] mb-3">Create New Event Year</h4>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input
                 label="Year"
                 type="number"
@@ -683,13 +681,13 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                 required
               />
             </div>
-            <Button type="submit" className="mt-4">Create Event Year</Button>
+            <Button type="submit" className="mt-4">Create</Button>
           </form>
           ) : (
             <form onSubmit={handleUpdateEventYear} className="mb-6 p-4 bg-[rgba(0,0,0,0.3)] rounded-lg">
               <h4 className="text-md font-bold text-[#cbd5ff] mb-3">Edit Event Year: {editingEventYear.year}</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="col-span-1 md:col-span-2">
                   <Input
                     label="Year"
                     type="number"
@@ -757,7 +755,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                 />
               </div>
               <div className="flex gap-2 mt-4">
-                <Button type="submit">Update Event Year</Button>
+                <Button type="submit">Update</Button>
                 <Button
                   type="button"
                   variant="secondary"
@@ -782,15 +780,15 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
             ) : (
               <div className="space-y-2">
                 {eventYears.map((year) => (
-                  <div key={year._id} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-[#ffe66d]">{year.year}</span>
-                      <span className="ml-2 text-[#e5e7eb]">- {year.event_name}</span>
-                      {year.is_active && (
-                        <span className="ml-2 px-2 py-1 bg-[#22c55e] text-white text-xs rounded">Active</span>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
+                  <div key={year._id} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div className="flex flex-row items-center justify-start gap-2">
+                      <div>
+                        <span className="font-bold text-[#ffe66d]">{year.year}</span>
+                        <span className="ml-2 text-[#e5e7eb]">- {year.event_name}</span>
+                        {year.is_active && (
+                          <span className="ml-2 px-2 py-1 bg-[#22c55e] text-white text-xs rounded">Active</span>
+                        )}
+                      </div>
                       {!year.is_active && (
                         <Button
                           variant="success"
@@ -800,6 +798,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                           Activate
                         </Button>
                       )}
+                    </div>
+                    <div className="flex gap-2 md:ml-0">
                       <Button
                         variant="secondary"
                         onClick={() => handleEditEventYear(year)}
@@ -829,16 +829,15 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
       {/* Sports Tab */}
       {activeTab === TABS.SPORTS && (
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-[#ffe66d]">Manage Sports</h3>
-            {loggedInUser && (
+          {loggedInUser && (
+            <div className="flex items-center justify-end mb-4">
               <YearSelector
                 selectedYear={selectedYear}
                 onYearChange={onYearChange}
                 loggedInUser={loggedInUser}
               />
-            )}
-          </div>
+            </div>
+          )}
           {!currentEventYear && (
             <ErrorMessage message="No active event year. Please activate an event year first or select a year from the dropdown above." />
           )}
@@ -851,7 +850,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                 <span className="ml-2 text-red-400 text-sm">(Event year required)</span>
               )}
             </h4>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input
                 label="Sport Name"
                 name="name"
@@ -932,7 +931,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                    (!sportForm.team_size || String(sportForm.team_size || '').trim() === ''))
                 }
               >
-                {editingSport ? 'Update' : 'Create'} Sport
+                {editingSport ? 'Update' : 'Create'}
               </Button>
               {editingSport && (
                 <Button
@@ -959,7 +958,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
             ) : (
               <div className="space-y-2">
                 {sports.map((sport) => (
-                  <div key={sport._id} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex items-center justify-between">
+                  <div key={sport._id} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div>
                       <span className="font-bold text-[#ffe66d]">{formatSportName(sport.name)}</span>
                       <span className="ml-2 text-[#94a3b8] text-sm">
@@ -969,7 +968,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                         <span className="ml-2 text-[#cbd5ff] text-sm">Team Size: {sport.team_size}</span>
                       )}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 md:ml-0">
                       <Button
                         variant="secondary"
                         onClick={() => handleEditSport(sport)}
@@ -996,13 +995,11 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
       {/* Departments Tab */}
       {activeTab === TABS.DEPARTMENTS && (
         <div>
-          <h3 className="text-lg font-bold text-[#ffe66d] mb-4">Manage Departments</h3>
-          
           {/* Create Form */}
           {!editingDept && (
             <form onSubmit={handleCreateDepartment} className="mb-6 p-4 bg-[rgba(0,0,0,0.3)] rounded-lg">
               <h4 className="text-md font-bold text-[#cbd5ff] mb-3">Create New Department</h4>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Input
                   label="Department Name"
                   name="name"
@@ -1024,7 +1021,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                   onChange={(e) => setDeptForm({ ...deptForm, display_order: e.target.value })}
                 />
               </div>
-              <Button type="submit" className="mt-4">Create Department</Button>
+              <Button type="submit" className="mt-4">Create</Button>
             </form>
           )}
 
@@ -1040,7 +1037,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                   onChange={(e) => setDeptForm({ ...deptForm, display_order: e.target.value })}
                 />
               <div className="flex gap-2 mt-4">
-                <Button type="submit">Update Department</Button>
+                <Button type="submit">Update</Button>
                 <Button
                   type="button"
                   variant="secondary"
@@ -1065,13 +1062,13 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
             ) : (
               <div className="space-y-2">
                 {departments.sort((a, b) => (a.display_order || 0) - (b.display_order || 0)).map((dept) => (
-                  <div key={dept._id} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex items-center justify-between">
+                  <div key={dept._id} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div>
                       <span className="font-bold text-[#ffe66d]">{dept.name}</span>
                       {dept.code && <span className="ml-2 text-[#94a3b8]">({dept.code})</span>}
                       <span className="ml-2 text-[#94a3b8] text-sm">Order: {dept.display_order || 0}</span>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 md:ml-0">
                       <Button
                         variant="secondary"
                         onClick={() => handleEditDepartment(dept)}

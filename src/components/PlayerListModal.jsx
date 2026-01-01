@@ -269,7 +269,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                         Editing: {player.full_name} ({player.reg_number})
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <Input
                           label="Full Name"
                           value={editedData.full_name || ''}
@@ -330,7 +330,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                           loading={saving}
                           className="flex-1 px-4 py-2 text-[0.85rem] font-semibold rounded-[8px]"
                         >
-                          {saving ? 'Saving...' : 'Save Changes'}
+                          {saving ? 'Saving...' : 'Save'}
                         </Button>
                         <Button
                           type="button"

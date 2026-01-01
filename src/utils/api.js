@@ -2,8 +2,8 @@ import API_URL from '../config/api.js'
 import logger from './logger.js'
 
 // Cache configuration
+// Note: /api/me is never cached to ensure fresh authentication data
 const CACHE_TTL = {
-  '/api/me': 5000, // 5 seconds for current user data
   '/api/players': 5000, // 5 seconds for players list
   '/api/sports': 5000, // 5 seconds for sports list
   default: 5000, // 5 seconds default
@@ -12,6 +12,10 @@ const CACHE_TTL = {
 // Request cache and deduplication
 const requestCache = new Map()
 const pendingRequests = new Map()
+
+// Singleton lock for fetchCurrentUser to prevent race conditions on rapid refreshes
+// All concurrent calls will share the same promise
+let currentUserRequest = null
 
 // Utility function to decode JWT token (without verification - for client-side use only)
 export const decodeJWT = (token) => {
@@ -46,6 +50,12 @@ const getCacheKey = (url, options = {}) => {
   const method = (options.method || 'GET').toUpperCase()
   // Only cache GET requests
   if (method !== 'GET') return null
+  
+  // Never cache /api/me - authentication endpoints should always fetch fresh data
+  // This prevents race conditions and stale authentication state on rapid page refreshes
+  if (url === '/api/me' || url.startsWith('/api/me?')) {
+    return null // Return null to disable caching for this endpoint
+  }
   
   // Create cache key from URL
   return url
@@ -88,9 +98,9 @@ export const fetchWithAuth = async (url, options = {}) => {
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  // Check cache for GET requests
+  // Check cache for GET requests (skip if skipCache option is set)
   const cacheKey = getCacheKey(url, options)
-  if (cacheKey) {
+  if (cacheKey && !options.skipCache) {
     const cached = requestCache.get(cacheKey)
     if (isCacheValid(cached, url)) {
       // Return cached response as a new Response-like object
@@ -102,7 +112,8 @@ export const fetchWithAuth = async (url, options = {}) => {
     }
     
     // Check for pending request (deduplication)
-    if (pendingRequests.has(cacheKey)) {
+    // Skip deduplication for /api/me to avoid race conditions on rapid refreshes
+    if (pendingRequests.has(cacheKey) && !(url === '/api/me' || url.startsWith('/api/me?'))) {
       // Wait for the pending request to complete
       // Wrap it to clone the response for this specific caller
       // This ensures each caller gets their own independent clone
@@ -122,10 +133,15 @@ export const fetchWithAuth = async (url, options = {}) => {
   }).then(async (response) => {
     // Handle token expiration (401 Unauthorized or 403 Forbidden)
     if (response.status === 401 || response.status === 403) {
+      // Only clear token if explicitly requested (default true for backward compatibility)
+      // During initial user fetch (reloadOnAuthError: false), don't clear token immediately
+      // Let the calling code handle auth errors appropriately
+      if (options.clearTokenOnAuthError !== false) {
       // Clear token only (user data is not stored in localStorage)
       localStorage.removeItem('authToken')
       // Clear cache on auth failure
       clearCache()
+      }
       
       // Only reload if explicitly requested (not during initial user fetch)
       // The calling code should handle the auth error appropriately
@@ -139,8 +155,8 @@ export const fetchWithAuth = async (url, options = {}) => {
       return response
     }
 
-    // Cache successful GET responses
-    if (cacheKey && response.ok && response.status === 200) {
+    // Cache successful GET responses (only if skipCache is not set)
+    if (cacheKey && response.ok && response.status === 200 && !options.skipCache) {
       try {
         // Clone response to read body without consuming the original
         const clonedForCache = response.clone()
@@ -188,27 +204,114 @@ export const fetchWithAuth = async (url, options = {}) => {
 
 // Fetch current user data only (optimized - uses dedicated /api/me endpoint)
 // Returns { user: userData, authError: boolean } to distinguish auth failures from other errors
+// Uses singleton pattern to prevent race conditions on rapid page refreshes
 export const fetchCurrentUser = async () => {
   const token = localStorage.getItem('authToken')
   if (!token) {
+    // If there's a pending request, wait for it to complete
+    if (currentUserRequest) {
+      try {
+        const result = await currentUserRequest
+        // If the pending request cleared the token, return auth error
+        if (!localStorage.getItem('authToken')) {
+          return { user: null, authError: true }
+        }
+        return result
+      } catch (error) {
+        return { user: null, authError: false }
+      }
+    }
     return { user: null, authError: false }
   }
 
+  // If there's already a pending request, reuse it to prevent duplicate requests
+  // This prevents race conditions when multiple components call fetchCurrentUser simultaneously
+  if (currentUserRequest) {
+    try {
+      const result = await currentUserRequest
+      return result
+    } catch (error) {
+      return { user: null, authError: false }
+    }
+  }
+
+  // Create new request and store it as singleton
+  // All concurrent calls will share this same promise
+  currentUserRequest = (async () => {
   try {
     const decoded = decodeJWT(token)
     if (!decoded || !decoded.reg_number) {
       // Invalid token format - this is an auth error
+        currentUserRequest = null
       return { user: null, authError: true }
     }
 
-    // Fetch current user directly using dedicated endpoint (more efficient)
-    // Don't reload on auth error during initial fetch - let App.jsx handle it
-    const response = await fetchWithAuth('/api/me', { reloadOnAuthError: false })
+      // Fetch current user directly using dedicated endpoint
+      // /api/me is never cached (see getCacheKey) to ensure fresh authentication data
+      // Don't reload or clear token on auth error during initial fetch - let App.jsx handle it
+      // This prevents false logouts on page refresh due to temporary network issues
+      let response = await fetchWithAuth('/api/me', { 
+        reloadOnAuthError: false,
+        clearTokenOnAuthError: false
+      })
     
     // Check for authentication errors
     if (response.status === 401 || response.status === 403) {
-      // Token is invalid or expired - auth error
+        // Check if token still exists (might have been cleared by another request)
+        const currentToken = localStorage.getItem('authToken')
+        if (!currentToken || currentToken !== token) {
+          // Token was cleared or changed by another request - don't retry, just return auth error
+          currentUserRequest = null
+          return { user: null, authError: true }
+        }
+
+        // For rapid refreshes, be more lenient - retry multiple times with increasing delays
+        // This prevents false logouts due to temporary server issues or timing problems
+        let retryCount = 0
+        const maxRetries = 3
+        const retryDelays = [50, 100, 200] // Increasing delays
+        
+        while (retryCount < maxRetries) {
+          try {
+            await new Promise(resolve => setTimeout(resolve, retryDelays[retryCount]))
+            
+            // Check token again before retry
+            const tokenBeforeRetry = localStorage.getItem('authToken')
+            if (!tokenBeforeRetry || tokenBeforeRetry !== token) {
+              // Token was cleared or changed - stop retrying
+              currentUserRequest = null
       return { user: null, authError: true }
+            }
+
+            response = await fetchWithAuth('/api/me', { 
+              reloadOnAuthError: false,
+              clearTokenOnAuthError: false
+            })
+            
+            // If retry succeeded, break out of retry loop
+            if (response.ok || (response.status !== 401 && response.status !== 403)) {
+              break
+            }
+            
+            retryCount++
+          } catch (retryError) {
+            // Network error on retry - treat as temporary error, not auth error
+            logger.warn(`Retry ${retryCount + 1} failed in fetchCurrentUser:`, retryError)
+            retryCount++
+            // Continue to next retry
+          }
+        }
+        
+        // If all retries failed with 401/403, then it's a real auth error
+        if (response.status === 401 || response.status === 403) {
+          // DON'T clear the token here - let the calling code decide
+          // On rapid refresh, we might get false positives, so be conservative
+          // Only return authError, but don't clear the token
+          // The calling code (App.jsx) will handle token clearing more carefully
+          currentUserRequest = null
+          return { user: null, authError: true }
+        }
+        // Retry succeeded - continue processing the response below
     }
     
     if (response.ok) {
@@ -217,24 +320,37 @@ export const fetchCurrentUser = async () => {
         if (data.success && data.player) {
           // Backend returns 'player' for /api/me endpoint
           const { password: _, ...userData } = data.player
+            currentUserRequest = null
           return { user: userData, authError: false }
         } else {
           logger.warn('Unexpected response structure from /api/me:', data)
+            currentUserRequest = null
           return { user: null, authError: false }
         }
       } catch (jsonError) {
         // If response body was already read, try to get error details from response
         logger.error('Error parsing response JSON in fetchCurrentUser:', jsonError)
+          currentUserRequest = null
         return { user: null, authError: false }
       }
     }
     
     // Other errors (network, server errors, etc.) - not auth errors
     logger.warn('API call failed with status:', response.status, 'for /api/me')
+      currentUserRequest = null
     return { user: null, authError: false }
   } catch (error) {
     // Network errors or other exceptions - not auth errors
     logger.error('Error fetching current user:', error)
+      currentUserRequest = null
+      return { user: null, authError: false }
+    }
+  })()
+
+  try {
+    const result = await currentUserRequest
+    return result
+  } catch (error) {
     return { user: null, authError: false }
   }
 }

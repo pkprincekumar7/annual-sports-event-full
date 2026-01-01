@@ -1,203 +1,47 @@
 /**
  * Team Routes
- * Handles team management operations
+ * Handles team management operations using Sports collection
  */
 
 import express from 'express'
+import Sport from '../models/Sport.js'
 import Player from '../models/Player.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
+import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError, handleForbiddenError } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
-import { TEAM_SPORTS, MAX_PARTICIPATIONS, ADMIN_REG_NUMBER } from '../constants/index.js'
-import logger from '../utils/logger.js'
+import { canParticipateInEvents } from '../utils/playerHelpers.js'
+import { getCache, setCache, clearCache } from '../utils/cache.js'
+import { getEventYear } from '../utils/yearHelpers.js'
+import { findSportByNameAndYear } from '../utils/sportHelpers.js'
 
 const router = express.Router()
 
 /**
- * POST /api/validate-participations
- * Validate participations before team registration
- */
-router.post(
-  '/validate-participations',
-  authenticateToken,
-  asyncHandler(async (req, res) => {
-    let { reg_numbers, sport } = req.body
-
-    // Trim fields
-    sport = sport?.trim()
-    if (Array.isArray(reg_numbers)) {
-      reg_numbers = reg_numbers.map((rn) => rn?.trim()).filter((rn) => rn)
-    }
-
-    // Validate required fields
-    if (!reg_numbers || !Array.isArray(reg_numbers) || reg_numbers.length === 0 || !sport) {
-      return sendErrorResponse(res, 400, 'Registration numbers array and sport are required')
-    }
-
-    const errors = []
-
-    // Fetch all players at once (optimized: single query)
-    const players = await Player.find({ reg_number: { $in: reg_numbers } }).select('-password').lean()
-    const playersMap = new Map(players.map((p) => [p.reg_number, p]))
-
-    // Validate each player
-    for (const reg_number of reg_numbers) {
-      const player = playersMap.get(reg_number)
-      if (!player) {
-        errors.push(`Player with reg_number ${reg_number} not found`)
-        continue
-      }
-
-      // Initialize participated_in array if it doesn't exist
-      if (!player.participated_in) {
-        player.participated_in = []
-      }
-
-      // Check if already participated in this sport
-      const existingParticipation = player.participated_in.find((p) => p.sport === sport)
-      if (existingParticipation) {
-        if (existingParticipation.team_name) {
-          const isCaptain = player.captain_in && Array.isArray(player.captain_in) && player.captain_in.includes(sport)
-          if (isCaptain) {
-            errors.push(
-              `${player.full_name} (${reg_number}) is a captain and has already created a team (${existingParticipation.team_name}) for ${sport}. A captain cannot create multiple teams for the same sport.`
-            )
-          } else {
-            errors.push(
-              `${player.full_name} (${reg_number}) is already in a team (${existingParticipation.team_name}) for ${sport}. A player can only belong to one team per sport.`
-            )
-          }
-        } else {
-          errors.push(`${player.full_name} (${reg_number}) is already registered for ${sport}`)
-        }
-        continue
-      }
-
-      // Check for duplicate sport entries
-      const sportSet = new Set(player.participated_in.map((p) => p.sport))
-      if (sportSet.size !== player.participated_in.length) {
-        errors.push(
-          `${player.full_name} (${reg_number}) has duplicate sport entries in participated_in array. Please fix the data first.`
-        )
-        continue
-      }
-
-      // Check maximum limit
-      const currentParticipationsCount = player.participated_in.length
-      if (currentParticipationsCount >= MAX_PARTICIPATIONS) {
-        errors.push(
-          `${player.full_name} (${reg_number}) has reached maximum ${MAX_PARTICIPATIONS} participations (based on unique sport names). Please remove a participation first.`
-        )
-        continue
-      }
-
-      // Count non-team participations
-      const nonTeamParticipations = player.participated_in.filter((p) => !p.team_name).length
-
-      // Count team participations where sport IS in captain_in array
-      const captainTeamParticipations = player.participated_in.filter(
-        (p) =>
-          p.team_name &&
-          player.captain_in &&
-          Array.isArray(player.captain_in) &&
-          player.captain_in.includes(p.sport)
-      ).length
-
-      // Get captain count
-      const captainCount = player.captain_in && Array.isArray(player.captain_in) ? player.captain_in.length : 0
-
-      // Check if this is a team event where the player IS a captain for this sport
-      const isCaptainForSport = player.captain_in && Array.isArray(player.captain_in) && player.captain_in.includes(sport)
-
-      if (isCaptainForSport) {
-        // Check: team participations (for captain sports) should not exceed captain_in length
-        if (captainTeamParticipations >= captainCount) {
-          errors.push(
-            `${player.full_name} (${reg_number}) has reached maximum team participations for captain sports (${captainCount}). Maximum team participations allowed for sports in captain_in array is equal to captain roles (${captainCount}).`
-          )
-          continue
-        }
-      }
-    }
-
-    // Check for multiple captains in the same request
-    const captainsInRequest = players.filter(
-      (s) => s && s.captain_in && Array.isArray(s.captain_in) && s.captain_in.includes(sport)
-    )
-
-    if (captainsInRequest.length > 1) {
-      const captainNames = captainsInRequest.map((s) => `${s.full_name} (${s.reg_number})`)
-      errors.push(
-        `Multiple captains found in the same team registration: ${captainNames.join(', ')}. A team can only have exactly one captain for ${sport}.`
-      )
-    }
-
-    // Validate that exactly one captain is in the team
-    if (captainsInRequest.length === 0) {
-      errors.push(`Team must have exactly one captain for ${sport}. At least one player in the team must be assigned as captain for this sport.`)
-    } else if (captainsInRequest.length !== 1) {
-      errors.push(`Team must have exactly one captain for ${sport}. Found ${captainsInRequest.length} captains.`)
-    }
-
-    // Validate that the logged-in user is included in the team and is the captain
-    const loggedInUserRegNumber = req.user?.reg_number
-    if (loggedInUserRegNumber) {
-      let loggedInUserInDatabase = playersMap.get(loggedInUserRegNumber)
-      if (!loggedInUserInDatabase) {
-        loggedInUserInDatabase = await Player.findOne({ reg_number: loggedInUserRegNumber }).select('-password').lean()
-      }
-
-      // Check if logged-in user is included in the team request
-      const loggedInUserInRequest = reg_numbers.includes(loggedInUserRegNumber)
-      if (!loggedInUserInRequest) {
-        errors.push(`You must be included in the team to create it.`)
-      }
-
-      // Check if logged-in user is a captain for this sport
-      const isLoggedInUserCaptain =
-        loggedInUserInDatabase &&
-        loggedInUserInDatabase.captain_in &&
-        Array.isArray(loggedInUserInDatabase.captain_in) &&
-        loggedInUserInDatabase.captain_in.includes(sport)
-
-      if (!isLoggedInUserCaptain) {
-        errors.push(
-          `You can only create teams for sports where you are assigned as captain. You are not assigned as captain for ${sport}.`
-        )
-      }
-    }
-
-    if (errors.length > 0) {
-      return sendErrorResponse(res, 400, errors.join('; '))
-    }
-
-    return sendSuccessResponse(res, {}, 'All players can participate')
-  })
-)
-
-/**
  * POST /api/update-team-participation
- * Update participated_in field for team events
+ * Captain creates a team (workflow: captain assigned via POST /api/add-captain)
+ * Year Required: event_year field required in request body (defaults to active year)
+ * Update Sports collection's teams_participated array (for the specified year)
  */
 router.post(
   '/update-team-participation',
   authenticateToken,
+  requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
-    let { reg_numbers, sport, team_name } = req.body
+    let { team_name, sport, reg_numbers, event_year } = req.body
 
     // Trim fields
-    const trimmed = trimObjectFields({ sport, team_name })
+    const trimmed = trimObjectFields({ team_name, sport, event_year })
     sport = trimmed.sport
     team_name = trimmed.team_name
+    event_year = trimmed.event_year
+
+    // Get event year (default to active year if not provided)
+    const eventYear = await getEventYear(event_year ? parseInt(event_year) : null)
 
     // Validate required fields
-    if (!reg_numbers || !Array.isArray(reg_numbers) || reg_numbers.length === 0 || !sport || !team_name) {
-      return sendErrorResponse(res, 400, 'Registration numbers array, sport, and team name are required')
-    }
-
-    // Trim and validate team name
-    if (team_name.length === 0) {
-      return sendErrorResponse(res, 400, 'Team name cannot be empty')
+    if (!team_name || !sport || !reg_numbers || !Array.isArray(reg_numbers) || reg_numbers.length === 0) {
+      return sendErrorResponse(res, 400, 'Team name, sport, and registration numbers array are required')
     }
 
     // Trim reg_numbers array
@@ -221,26 +65,19 @@ router.post(
       )
     }
 
-    // Check if a team with the same name already exists for this sport
-    const playersWithTeams = await Player.find({
-      participated_in: {
-        $elemMatch: {
-          sport: sport,
-          team_name: { $exists: true, $ne: null },
-        },
-      },
-    })
-      .select('participated_in')
-      .lean()
+    // Find sport by name and event_year
+    const sportDoc = await findSportByNameAndYear(sport, eventYear, { lean: false })
 
-    // Check for case-insensitive match
-    const teamExists = playersWithTeams.some((player) =>
-      player.participated_in?.some(
-        (p) => p.sport === sport && p.team_name && p.team_name.toLowerCase() === team_name.toLowerCase()
-      )
+    // Validate sport is a team sport
+    if (sportDoc.type !== 'dual_team' && sportDoc.type !== 'multi_team') {
+      return sendErrorResponse(res, 400, 'Team participation is only applicable for team sports (dual_team or multi_team)')
+    }
+
+    // Check if team name already exists for this sport
+    const existingTeam = sportDoc.teams_participated.find(
+      team => team.team_name.toLowerCase() === team_name.toLowerCase()
     )
-
-    if (teamExists) {
+    if (existingTeam) {
       return sendErrorResponse(
         res,
         400,
@@ -253,23 +90,19 @@ router.post(
     const playersMap = new Map(players.map((p) => [p.reg_number, p]))
 
     // Validate all players exist
-    const playerData = []
     const errors = []
-
     for (const reg_number of reg_numbers) {
-      const player = playersMap.get(reg_number)
-      if (!player) {
+      if (!playersMap.has(reg_number)) {
         errors.push(`Player with reg_number ${reg_number} not found`)
-        continue
       }
-      playerData.push(player)
     }
-
     if (errors.length > 0) {
       return sendErrorResponse(res, 400, errors.join('; '))
     }
 
-    // Check that all players have the same gender
+    const playerData = reg_numbers.map(rn => playersMap.get(rn))
+
+    // Validate that all players have the same gender
     if (playerData.length > 0) {
       const firstGender = playerData[0].gender
       const genderMismatches = playerData.filter((p) => p.gender !== firstGender).map((p) => `${p.full_name} (${p.reg_number})`)
@@ -281,24 +114,64 @@ router.post(
           `Gender mismatch: ${genderMismatches.join(', ')} must have the same gender (${firstGender}) as other team members.`
         )
       }
+    }
 
-      // Check that all players have the same year
-      const firstYear = playerData[0].year
-      const yearMismatches = playerData.filter((p) => p.year !== firstYear).map((p) => `${p.full_name} (${p.reg_number})`)
+    // CRITICAL: Validate that all players have the same year_of_admission
+    if (playerData.length > 0) {
+      const firstYearOfAdmission = playerData[0].year_of_admission
+      const yearMismatches = playerData.filter((p) => p.year_of_admission !== firstYearOfAdmission).map((p) => `${p.full_name} (${p.reg_number})`)
 
       if (yearMismatches.length > 0) {
         return sendErrorResponse(
           res,
           400,
-          `Year mismatch: ${yearMismatches.join(', ')} must be in the same year (${firstYear}) as other team members.`
+          `Year mismatch: ${yearMismatches.join(', ')} must be in the same year of admission (${firstYearOfAdmission}) as other team members.`
         )
+      }
+
+      // Validate all team members are 1st to 5th year students
+      for (const player of playerData) {
+        if (!canParticipateInEvents(player.year_of_admission)) {
+          return sendErrorResponse(
+            res,
+            400,
+            `${player.full_name} (${player.reg_number}) is not eligible to participate. Only 1st to 5th year students can participate.`
+          )
+        }
       }
     }
 
-    // Check for multiple captains in the same team
+    // Validate captain eligibility
+    const loggedInUserRegNumber = req.user?.reg_number
+    if (!loggedInUserRegNumber) {
+      return handleForbiddenError(res, 'You must be logged in to create a team')
+    }
+
+    // Check if logged-in user is in eligible_captains
+    if (!sportDoc.eligible_captains || !sportDoc.eligible_captains.includes(loggedInUserRegNumber)) {
+      return handleForbiddenError(
+        res,
+        `You can only create teams for sports where you are assigned as captain. You are not assigned as captain for ${sport}.`
+      )
+    }
+
+    // Check if logged-in user is in the team
+    if (!reg_numbers.includes(loggedInUserRegNumber)) {
+      return handleForbiddenError(res, 'You must be included in the team to create it.')
+    }
+
+    // Validate exactly one captain in the team
     const captainsInTeam = playerData.filter(
-      (p) => p.captain_in && Array.isArray(p.captain_in) && p.captain_in.includes(sport)
+      (p) => sportDoc.eligible_captains && sportDoc.eligible_captains.includes(p.reg_number)
     )
+
+    if (captainsInTeam.length === 0) {
+      return sendErrorResponse(
+        res,
+        400,
+        `Team must have exactly one captain for ${sport}. At least one player in the team must be assigned as captain for this sport.`
+      )
+    }
 
     if (captainsInTeam.length > 1) {
       const captainNames = captainsInTeam.map((p) => `${p.full_name} (${p.reg_number})`)
@@ -309,162 +182,55 @@ router.post(
       )
     }
 
-    // Validate that exactly one captain is in the team
-    if (captainsInTeam.length === 0) {
-      return sendErrorResponse(
-        res,
-        400,
-        `Team must have exactly one captain for ${sport}. At least one player in the team must be assigned as captain for this sport.`
-      )
-    }
-
-    // Validate that the logged-in user is included in the team and is the captain
-    const loggedInUserRegNumber = req.user?.reg_number
-    if (loggedInUserRegNumber) {
-      const loggedInUserInDatabase = playersMap.get(loggedInUserRegNumber)
-      if (!loggedInUserInDatabase) {
-        return handleForbiddenError(res, `You must be included in the team to create it.`)
-      }
-
-      const loggedInUserInTeam = playerData.find((p) => p.reg_number === loggedInUserRegNumber)
-      if (!loggedInUserInTeam) {
-        return handleForbiddenError(res, `You must be included in the team to create it.`)
-      }
-
-      const isLoggedInUserCaptain =
-        loggedInUserInDatabase.captain_in &&
-        Array.isArray(loggedInUserInDatabase.captain_in) &&
-        loggedInUserInDatabase.captain_in.includes(sport)
-
-      if (!isLoggedInUserCaptain) {
-        return handleForbiddenError(
+    // Validate team size
+    if (sportDoc.team_size !== null && sportDoc.team_size !== undefined) {
+      if (reg_numbers.length !== sportDoc.team_size) {
+        return sendErrorResponse(
           res,
-          `You can only create teams for sports where you are assigned as captain. You are not assigned as captain for ${sport}.`
+          400,
+          `Team size mismatch. This sport requires exactly ${sportDoc.team_size} players, but ${reg_numbers.length} players were provided.`
         )
       }
     }
 
-    // Check if there's already a captain in the existing team
-    const existingTeamMembers = await Player.find({
-      participated_in: {
-        $elemMatch: {
-          sport: sport,
-          team_name: team_name,
-        },
-      },
-    })
-      .select('-password')
-      .lean()
-
-    const existingCaptains = existingTeamMembers.filter(
-      (s) => s.captain_in && Array.isArray(s.captain_in) && s.captain_in.includes(sport)
-    )
-
-    // If there's already a captain in the team, and we're trying to add another captain
-    if (existingCaptains.length > 0 && captainsInTeam.length > 0) {
-      const existingCaptainName = existingCaptains[0].full_name
-      const newCaptainName = captainsInTeam[0].full_name
-      return sendErrorResponse(
-        res,
-        400,
-        `Team "${team_name}" already has a captain (${existingCaptainName}) for ${sport}. Cannot add another captain (${newCaptainName}). A team can only have one captain.`
+    // Check if any player is already in a team for this sport
+    for (const player of playerData) {
+      const existingTeam = sportDoc.teams_participated.find(
+        team => team.players && team.players.includes(player.reg_number)
       )
-    }
-
-    const updatedPlayers = []
-
-    // Process each player
-    for (const reg_number of reg_numbers) {
-      const player = playersMap.get(reg_number)
-      if (!player) {
-        errors.push(`Player with reg_number ${reg_number} not found`)
-        continue
-      }
-
-      // Initialize participated_in array if it doesn't exist
-      if (!player.participated_in) {
-        player.participated_in = []
-      }
-
-      // Check for duplicate sport entries
-      const sportSet = new Set(player.participated_in.map((p) => p.sport))
-      if (sportSet.size !== player.participated_in.length) {
-        errors.push(
-          `${player.full_name} (${reg_number}) has duplicate sport entries in participated_in array. Please fix the data first.`
+      if (existingTeam) {
+        return sendErrorResponse(
+          res,
+          400,
+          `${player.full_name} (${player.reg_number}) is already in a team (${existingTeam.team_name}) for ${sport}. A player can only belong to one team per sport.`
         )
-        continue
       }
-
-      // Check maximum limit
-      const currentParticipationsCount = player.participated_in.length
-      if (currentParticipationsCount >= MAX_PARTICIPATIONS) {
-        errors.push(
-          `${player.full_name} (${reg_number}) has reached maximum ${MAX_PARTICIPATIONS} participations (based on unique sport names). Please remove a participation first.`
-        )
-        continue
-      }
-
-      // Check if already participated in this sport
-      const existingParticipation = player.participated_in.find((p) => p.sport === sport)
-
-      if (existingParticipation) {
-        if (existingParticipation.team_name) {
-          const isCaptain = player.captain_in && Array.isArray(player.captain_in) && player.captain_in.includes(sport)
-
-          if (isCaptain) {
-            errors.push(
-              `${player.full_name} (${reg_number}) is a captain and has already created a team (${existingParticipation.team_name}) for ${sport}. A captain cannot create multiple teams for the same sport.`
-            )
-          } else {
-            errors.push(
-              `${player.full_name} (${reg_number}) is already in a team (${existingParticipation.team_name}) for ${sport}. A player can only belong to one team per sport.`
-            )
-          }
-        } else {
-          errors.push(`${player.full_name} (${reg_number}) is already registered for ${sport}`)
-        }
-        continue
-      }
-
-      // Check if this player is a captain for this sport
-      const isCaptainForSport = player.captain_in && Array.isArray(player.captain_in) && player.captain_in.includes(sport)
-
-      // Count team participations where sport IS in captain_in array
-      const captainTeamParticipations = player.participated_in.filter(
-        (p) =>
-          p.team_name &&
-          player.captain_in &&
-          Array.isArray(player.captain_in) &&
-          player.captain_in.includes(p.sport)
-      ).length
-
-      // Get captain count
-      const captainCount = player.captain_in && Array.isArray(player.captain_in) ? player.captain_in.length : 0
-
-      // Only check limit if this sport IS in captain_in array
-      if (isCaptainForSport) {
-        if (captainTeamParticipations >= captainCount) {
-          errors.push(
-            `${player.full_name} (${reg_number}) has reached maximum team participations for captain sports (${captainCount}). Maximum team participations allowed for sports in captain_in array is equal to captain roles (${captainCount}).`
-          )
-          continue
-        }
-      }
-
-      // Add sport to participated_in array with team_name
-      player.participated_in.push({ sport, team_name })
-      await player.save()
-      updatedPlayers.push(player.reg_number)
     }
 
-    if (errors.length > 0) {
-      return sendErrorResponse(res, 400, errors.join('; '), { updated_count: updatedPlayers.length })
+    // Add team to teams_participated array
+    const captain = captainsInTeam[0]
+    const newTeam = {
+      team_name: team_name.trim(),
+      captain: captain.reg_number,
+      players: reg_numbers
     }
+
+    if (!sportDoc.teams_participated) {
+      sportDoc.teams_participated = []
+    }
+    sportDoc.teams_participated.push(newTeam)
+    await sportDoc.save()
+
+    // Clear cache
+    clearCache(`/api/sports?year=${eventYear}`)
+    clearCache(`/api/sports/${sport}?year=${eventYear}`)
+    clearCache(`/api/teams/${sport}?year=${eventYear}`)
+    clearCache(`/api/sports-counts?year=${eventYear}`)
 
     return sendSuccessResponse(
       res,
-      { updated_count: updatedPlayers.length },
-      `Participation updated successfully for ${updatedPlayers.length} player(s)`
+      { team: newTeam, sport: sportDoc },
+      `Team "${team_name}" created successfully for ${sport}`
     )
   })
 )
@@ -472,6 +238,8 @@ router.post(
 /**
  * GET /api/teams/:sport
  * Get all teams for a specific sport
+ * Year Filter: Accepts ?year=2026 parameter (defaults to active year)
+ * Query Sports collection instead of Player collection
  */
 router.get(
   '/teams/:sport',
@@ -479,80 +247,107 @@ router.get(
   asyncHandler(async (req, res) => {
     // Decode the sport name from URL parameter
     let sport = decodeURIComponent(req.params.sport)
-    // Received request for teams
+    const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
 
     if (!sport) {
       return sendErrorResponse(res, 400, 'Sport name is required')
     }
 
-    // Query directly for players who have participated in this sport with a team_name
-    const playersInTeams = await Player.find({
-      reg_number: { $ne: ADMIN_REG_NUMBER },
-      participated_in: {
-        $elemMatch: {
-          sport: sport,
-          team_name: { $exists: true, $ne: null },
-        },
-      },
-    })
-      .select('-password')
-      .lean()
-
-    // Group players by team name
-    const teamsMap = new Map()
-
-    for (const player of playersInTeams) {
-      const participation = player.participated_in.find((p) => p.sport === sport && p.team_name)
-
-      if (participation && participation.team_name) {
-        const teamName = participation.team_name
-
-        if (!teamsMap.has(teamName)) {
-          teamsMap.set(teamName, [])
-        }
-
-        const { password: _, ...playerData } = player
-        teamsMap.get(teamName).push(playerData)
-      }
+    // Check cache
+    const cacheKey = `/api/teams/${sport}?year=${eventYear}`
+    const cached = getCache(cacheKey)
+    if (cached) {
+      return res.json(cached)
     }
 
-    // Convert map to array of teams
-    const teams = Array.from(teamsMap.entries()).map(([teamName, players]) => ({
-      team_name: teamName,
-      players: players,
-      player_count: players.length,
-    }))
+    // Find sport by name and event_year
+    const sportDoc = await findSportByNameAndYear(sport, eventYear)
+
+    // Get all unique player registration numbers from all teams
+    const allRegNumbers = new Set()
+    ;(sportDoc.teams_participated || []).forEach(team => {
+      if (team.players && Array.isArray(team.players)) {
+        team.players.forEach(regNumber => allRegNumbers.add(regNumber))
+      }
+    })
+
+    // Fetch all players at once for efficiency
+    const playersList = await Player.find({ reg_number: { $in: Array.from(allRegNumbers) } })
+      .select('-password')
+      .lean()
+    
+    // Create a map for quick lookup
+    const playersMap = new Map(playersList.map(p => [p.reg_number, p]))
+
+    // Get teams from teams_participated array and populate player details
+    const teams = (sportDoc.teams_participated || []).map(team => {
+      const playerRegNumbers = team.players || []
+      const playerDetails = playerRegNumbers
+        .map(regNumber => {
+          const player = playersMap.get(regNumber)
+          if (!player) return null
+          // Return player object with all necessary fields
+          return {
+            reg_number: player.reg_number,
+            full_name: player.full_name,
+            department_branch: player.department_branch,
+            year_of_admission: player.year_of_admission,
+            gender: player.gender,
+            mobile_number: player.mobile_number,
+            email_id: player.email_id,
+            captain_in: player.captain_in || []
+          }
+        })
+        .filter(p => p !== null) // Remove any null entries (players not found)
+      
+      return {
+        team_name: team.team_name,
+        captain: team.captain,
+        players: playerDetails,
+        player_count: playerDetails.length
+      }
+    })
 
     // Sort teams by team name
     teams.sort((a, b) => a.team_name.localeCompare(b.team_name))
 
-    // Teams fetched successfully
-
-    return sendSuccessResponse(res, {
+    const result = {
       sport: sport,
       teams: teams,
-      total_teams: teams.length,
-    })
+      total_teams: teams.length
+    }
+
+    // Cache the result
+    setCache(cacheKey, result)
+
+    return sendSuccessResponse(res, result)
   })
 )
 
 /**
  * POST /api/update-team-player
  * Update/replace a player in a team (admin only)
+ * Year Filter: Accepts ?year=2026 parameter (defaults to active year)
+ * Update Sports collection's teams_participated[].players array (for the specified year)
  */
 router.post(
   '/update-team-player',
   authenticateToken,
   requireAdmin,
+  requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
-    let { team_name, sport, old_reg_number, new_reg_number } = req.body
+    let { team_name, sport, old_reg_number, new_reg_number, event_year } = req.body
 
     // Trim fields
-    const trimmed = trimObjectFields({ team_name, sport, old_reg_number, new_reg_number })
+    const trimmed = trimObjectFields({ team_name, sport, old_reg_number, new_reg_number, event_year })
     sport = trimmed.sport
     team_name = trimmed.team_name
     old_reg_number = trimmed.old_reg_number
     new_reg_number = trimmed.new_reg_number
+    event_year = trimmed.event_year
+
+    // Get event year (default to active year if not provided)
+    const eventYear = await getEventYear(event_year ? parseInt(event_year) : null)
 
     // Validate required fields
     if (!team_name || !sport || !old_reg_number || !new_reg_number) {
@@ -563,128 +358,43 @@ router.post(
       )
     }
 
-    // Find old player
+    // Find sport by name and event_year
+    const sportDoc = await findSportByNameAndYear(sport, eventYear, { lean: false })
+
+    // Find the team
+    const team = sportDoc.teams_participated.find(
+      t => t.team_name.toLowerCase() === team_name.toLowerCase()
+    )
+    if (!team) {
+      return sendErrorResponse(res, 404, `Team "${team_name}" not found for ${sport}`)
+    }
+
+    // Check if old player is in the team
+    if (!team.players || !team.players.includes(old_reg_number)) {
+      return sendErrorResponse(res, 400, 'Old player is not in this team')
+    }
+
+    // Check if new player is already in this team
+    if (team.players.includes(new_reg_number)) {
+      return sendErrorResponse(res, 400, 'New player is already in this team')
+    }
+
+    // Find old and new players
     const oldPlayer = await Player.findOne({ reg_number: old_reg_number })
     if (!oldPlayer) {
       return handleNotFoundError(res, 'Old player')
     }
 
-    // Find new player
     const newPlayer = await Player.findOne({ reg_number: new_reg_number })
     if (!newPlayer) {
       return handleNotFoundError(res, 'New player')
     }
 
-    // Check if old player is in the team
-    if (!oldPlayer.participated_in || !Array.isArray(oldPlayer.participated_in)) {
-      return sendErrorResponse(res, 400, 'Old player is not registered for any sport')
-    }
-
-    const oldPlayerParticipation = oldPlayer.participated_in.find((p) => p.sport === sport && p.team_name === team_name)
-
-    if (!oldPlayerParticipation) {
-      return sendErrorResponse(res, 400, 'Old player is not in this team')
-    }
-
     // Get all current team members (excluding the old player)
+    const currentTeamMembersRegNumbers = team.players.filter(rn => rn !== old_reg_number)
     const currentTeamMembers = await Player.find({
-      participated_in: {
-        $elemMatch: {
-          sport: sport,
-          team_name: team_name,
-        },
-      },
-      reg_number: { $ne: old_reg_number },
-    })
-      .select('-password')
-      .lean()
-
-    // Check if new player is already in this team
-    if (currentTeamMembers.some((m) => m.reg_number === new_reg_number)) {
-      return sendErrorResponse(res, 400, 'New player is already in this team')
-    }
-
-    // Check if new player has already participated in this sport
-    if (newPlayer.participated_in && Array.isArray(newPlayer.participated_in)) {
-      const existingParticipation = newPlayer.participated_in.find((p) => p.sport === sport)
-      if (existingParticipation) {
-        if (existingParticipation.team_name) {
-          return sendErrorResponse(
-            res,
-            400,
-            `New player is already in a team (${existingParticipation.team_name}) for ${sport}. A player can only belong to one team per sport.`
-          )
-        } else {
-          return sendErrorResponse(res, 400, `New player is already registered for ${sport}`)
-        }
-      }
-    }
-
-    // Check for duplicate sport entries
-    if (newPlayer.participated_in && Array.isArray(newPlayer.participated_in)) {
-      const sportSet = new Set(newPlayer.participated_in.map((p) => p.sport))
-      if (sportSet.size !== newPlayer.participated_in.length) {
-        return sendErrorResponse(
-          res,
-          400,
-          'New player has duplicate sport entries in participated_in array. Please fix the data first.'
-        )
-      }
-
-      // Check maximum limit
-      if (newPlayer.participated_in.length >= MAX_PARTICIPATIONS) {
-        return sendErrorResponse(
-          res,
-          400,
-          `New player has reached maximum ${MAX_PARTICIPATIONS} participations (based on unique sport names). Please remove a participation first.`
-        )
-      }
-    }
-
-    // Count non-team participations
-    const nonTeamParticipations =
-      newPlayer.participated_in && Array.isArray(newPlayer.participated_in)
-        ? newPlayer.participated_in.filter((p) => !p.team_name).length
-        : 0
-
-    // Check if new player is a captain for this sport
-    const isNewPlayerCaptainForSport =
-      newPlayer.captain_in && Array.isArray(newPlayer.captain_in) && newPlayer.captain_in.includes(sport)
-
-    // Count team participations where sport IS in captain_in array
-    const captainTeamParticipations =
-      newPlayer.participated_in && Array.isArray(newPlayer.participated_in)
-        ? newPlayer.participated_in.filter(
-            (p) =>
-              p.team_name &&
-              newPlayer.captain_in &&
-              Array.isArray(newPlayer.captain_in) &&
-              newPlayer.captain_in.includes(p.sport)
-          ).length
-        : 0
-
-    // Get captain count
-    const captainCount = newPlayer.captain_in && Array.isArray(newPlayer.captain_in) ? newPlayer.captain_in.length : 0
-
-    // Only check limit if new player IS a captain for this sport
-    if (isNewPlayerCaptainForSport) {
-      if (captainTeamParticipations >= captainCount) {
-        return sendErrorResponse(
-          res,
-          400,
-          `New player has reached maximum team participations for captain sports (${captainCount}). Maximum team participations allowed for sports in captain_in array is equal to captain roles (${captainCount}).`
-        )
-      }
-    }
-
-    // Check maximum limit: (captain_in length + non-team participated_in) should not exceed 10
-    if (captainCount + nonTeamParticipations >= MAX_PARTICIPATIONS) {
-      return sendErrorResponse(
-        res,
-        400,
-        `New player has reached maximum limit. Total (captain roles + non-team participations) cannot exceed ${MAX_PARTICIPATIONS}. Current: ${captainCount} captain role(s) + ${nonTeamParticipations} non-team participation(s).`
-      )
-    }
+      reg_number: { $in: currentTeamMembersRegNumbers }
+    }).select('-password').lean()
 
     // Validate gender match with team
     if (currentTeamMembers.length > 0) {
@@ -697,48 +407,60 @@ router.post(
         )
       }
 
-      // Validate year match with team
-      const teamYear = currentTeamMembers[0].year
-      if (newPlayer.year !== teamYear) {
+      // CRITICAL: Validate same year of admission
+      const teamYearOfAdmission = currentTeamMembers[0].year_of_admission
+      if (newPlayer.year_of_admission !== teamYearOfAdmission) {
         return sendErrorResponse(
           res,
           400,
-          `Year mismatch: New player must be in the same year (${teamYear}) as other team members.`
+          `Year mismatch: New player must be in the same year of admission (${teamYearOfAdmission}) as other team members.`
         )
       }
     }
 
-    // Check for multiple captains in the team
-    const isNewPlayerCaptain = newPlayer.captain_in && Array.isArray(newPlayer.captain_in) && newPlayer.captain_in.includes(sport)
-
-    const existingCaptains = currentTeamMembers.filter(
-      (s) => s.captain_in && Array.isArray(s.captain_in) && s.captain_in.includes(sport)
+    // Check if new player is already in another team for this sport
+    const existingTeam = sportDoc.teams_participated.find(
+      t => t.players && t.players.includes(new_reg_number)
     )
-
-    if (existingCaptains.length > 0 && isNewPlayerCaptain) {
-      const existingCaptainName = existingCaptains[0].full_name
+    if (existingTeam) {
       return sendErrorResponse(
         res,
         400,
-        `Team already has a captain (${existingCaptainName}) for ${sport}. Cannot add another captain. A team can only have one captain.`
+        `New player is already in a team (${existingTeam.team_name}) for ${sport}. A player can only belong to one team per sport.`
       )
     }
 
-    // Remove old player from team
-    const oldPlayerPartIndex = oldPlayer.participated_in.findIndex((p) => p.sport === sport && p.team_name === team_name)
-    if (oldPlayerPartIndex !== -1) {
-      oldPlayer.participated_in.splice(oldPlayerPartIndex, 1)
-      await oldPlayer.save()
+    // Validate new player is eligible to participate
+    if (!canParticipateInEvents(newPlayer.year_of_admission)) {
+      return sendErrorResponse(
+        res,
+        400,
+        `New player is not eligible to participate. Only 1st to 5th year students can participate.`
+      )
     }
 
-    // Add new player to team
-    if (!newPlayer.participated_in) {
-      newPlayer.participated_in = []
+    // Cannot replace the captain - captain is immutable once team is created
+    if (team.captain === old_reg_number) {
+      return sendErrorResponse(
+        res,
+        400,
+        'Cannot replace the team captain. The captain cannot be changed once a team is created. To change the captain, you must delete the team and create a new one.'
+      )
     }
-    newPlayer.participated_in.push({ sport, team_name })
-    await newPlayer.save()
 
-    // Return updated data
+    // Replace player in team
+    const playerIndex = team.players.indexOf(old_reg_number)
+    if (playerIndex !== -1) {
+      team.players[playerIndex] = new_reg_number
+      await sportDoc.save()
+    }
+
+    // Clear cache
+    clearCache(`/api/sports?year=${eventYear}`)
+    clearCache(`/api/sports/${sport}?year=${eventYear}`)
+    clearCache(`/api/teams/${sport}?year=${eventYear}`)
+    clearCache(`/api/sports-counts?year=${eventYear}`)
+
     const newPlayerData = newPlayer.toObject()
     delete newPlayerData.password
 
@@ -747,6 +469,7 @@ router.post(
       {
         old_player: { reg_number: old_reg_number, full_name: oldPlayer.full_name },
         new_player: newPlayerData,
+        team: team
       },
       `Player updated successfully in team ${team_name}`
     )
@@ -755,71 +478,146 @@ router.post(
 
 /**
  * DELETE /api/delete-team
- * Delete a team (remove all players' associations to the team) (admin only)
+ * Delete a team (remove from teams_participated array) (admin only)
+ * Year Required: event_year field required in request body (defaults to active year)
  */
 router.delete(
   '/delete-team',
   authenticateToken,
   requireAdmin,
+  requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
-    let { team_name, sport } = req.body
+    let { team_name, sport, event_year } = req.body
 
     // Trim fields
-    const trimmed = trimObjectFields({ team_name, sport })
+    const trimmed = trimObjectFields({ team_name, sport, event_year })
     sport = trimmed.sport
     team_name = trimmed.team_name
+    event_year = trimmed.event_year
+
+    // Get event year (default to active year if not provided)
+    const eventYear = await getEventYear(event_year ? parseInt(event_year) : null)
 
     // Validate required fields
     if (!team_name || !sport) {
       return sendErrorResponse(res, 400, 'Team name and sport are required')
     }
 
-    // Find all players who are in this team
-    const playersInTeam = await Player.find({
-      participated_in: {
-        $elemMatch: {
-          sport: sport,
-          team_name: team_name,
-        },
-      },
-    }).select('-password')
+    // Find sport by name and event_year
+    const sportDoc = await findSportByNameAndYear(sport, eventYear, { lean: false })
 
-    if (playersInTeam.length === 0) {
+    // Find the team
+    const teamIndex = sportDoc.teams_participated.findIndex(
+      t => t.team_name.toLowerCase() === team_name.toLowerCase()
+    )
+    if (teamIndex === -1) {
       return handleNotFoundError(res, 'Team')
     }
 
-    const teamMembers = []
-    let deletedCount = 0
+    const team = sportDoc.teams_participated[teamIndex]
 
-    // Remove participation from each player
-    for (const player of playersInTeam) {
-      if (!player.participated_in || !Array.isArray(player.participated_in)) {
-        continue
-      }
+    // Get team members info
+    const teamMembers = await Player.find({
+      reg_number: { $in: team.players || [] }
+    }).select('reg_number full_name').lean()
 
-      const participationIndex = player.participated_in.findIndex((p) => p.sport === sport && p.team_name === team_name)
+    // Remove team from teams_participated array
+    sportDoc.teams_participated.splice(teamIndex, 1)
+    await sportDoc.save()
 
-      if (participationIndex !== -1) {
-        player.participated_in.splice(participationIndex, 1)
-        await player.save()
-        teamMembers.push({
-          reg_number: player.reg_number,
-          full_name: player.full_name,
-        })
-        deletedCount++
-      }
-    }
+    // Clear cache
+    clearCache(`/api/sports?year=${eventYear}`)
+    clearCache(`/api/sports/${sport}?year=${eventYear}`)
+    clearCache(`/api/teams/${sport}?year=${eventYear}`)
+    clearCache(`/api/sports-counts?year=${eventYear}`)
 
     return sendSuccessResponse(
       res,
       {
-        deleted_count: deletedCount,
-        team_members: teamMembers,
+        deleted_count: teamMembers.length,
+        team_members: teamMembers
       },
-      `Team "${team_name}" deleted successfully. Removed ${deletedCount} player(s) from the team.`
+      `Team "${team_name}" deleted successfully. Removed ${teamMembers.length} player(s) from the team.`
     )
   })
 )
 
-export default router
+/**
+ * POST /api/validate-participations
+ * Validate participations before team registration
+ * Updated to use Sports collection
+ */
+router.post(
+  '/validate-participations',
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    let { reg_numbers, sport, event_year } = req.body
 
+    // Trim fields
+    sport = sport?.trim()
+    event_year = event_year ? parseInt(event_year) : null
+    if (Array.isArray(reg_numbers)) {
+      reg_numbers = reg_numbers.map((rn) => rn?.trim()).filter((rn) => rn)
+    }
+
+    // Validate required fields
+    if (!reg_numbers || !Array.isArray(reg_numbers) || reg_numbers.length === 0 || !sport) {
+      return sendErrorResponse(res, 400, 'Registration numbers array and sport are required')
+    }
+
+    // Get event year (default to active year if not provided)
+    const eventYear = await getEventYear(event_year ? parseInt(event_year) : null)
+
+    // Find sport by name and event_year
+    const sportDoc = await findSportByNameAndYear(sport, eventYear)
+
+    const errors = []
+
+    // Fetch all players at once
+    const players = await Player.find({ reg_number: { $in: reg_numbers } }).select('-password').lean()
+    const playersMap = new Map(players.map((p) => [p.reg_number, p]))
+
+    // Validate each player
+    for (const reg_number of reg_numbers) {
+      const player = playersMap.get(reg_number)
+      if (!player) {
+        errors.push(`Player with reg_number ${reg_number} not found`)
+        continue
+      }
+
+      // Check if already in a team for this sport
+      const existingTeam = sportDoc.teams_participated.find(
+        team => team.players && team.players.includes(reg_number)
+      )
+      if (existingTeam) {
+        const isCaptain = existingTeam.captain === reg_number
+        if (isCaptain) {
+          errors.push(
+            `${player.full_name} (${reg_number}) is a captain and has already created a team (${existingTeam.team_name}) for ${sport}. A captain cannot create multiple teams for the same sport.`
+          )
+        } else {
+          errors.push(
+            `${player.full_name} (${reg_number}) is already in a team (${existingTeam.team_name}) for ${sport}. A player can only belong to one team per sport.`
+          )
+        }
+        continue
+      }
+
+      // Validate participation eligibility
+      if (!canParticipateInEvents(player.year_of_admission)) {
+        errors.push(
+          `${player.full_name} (${reg_number}) is not eligible to participate. Only 1st to 5th year students can participate.`
+        )
+        continue
+      }
+    }
+
+    if (errors.length > 0) {
+      return sendErrorResponse(res, 400, errors.join('; '))
+    }
+
+    return sendSuccessResponse(res, { valid: true }, 'All players are valid for team registration')
+  })
+)
+
+export default router

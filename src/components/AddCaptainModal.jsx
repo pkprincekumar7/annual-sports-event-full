@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react'
 import { Modal, Button, Input, EmptyState } from './ui'
-import { useApi } from '../hooks'
+import { useApi, useEventYearWithFallback } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
+import { buildApiUrlWithYear } from '../utils/apiHelpers'
+import { formatSportName } from '../utils/stringHelpers'
 import logger from '../utils/logger'
 
-function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
+function AddCaptainModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   const [players, setPlayers] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedPlayer, setSelectedPlayer] = useState(null)
   const [selectedSport, setSelectedSport] = useState('')
   const [sports, setSports] = useState([])
   const { loading, execute } = useApi()
+  const eventYear = useEventYearWithFallback(selectedYear)
 
   // Fetch players list and sports (with cancellation)
   useEffect(() => {
@@ -27,8 +30,8 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
       try {
         // Fetch both in parallel
         const [playersRes, sportsRes] = await Promise.all([
-          fetchWithAuth('/api/players', { signal: abortController.signal }),
-          fetchWithAuth('/api/sports', { signal: abortController.signal }),
+          fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear), { signal: abortController.signal }),
+          fetchWithAuth(buildApiUrlWithYear('/api/sports', eventYear), { signal: abortController.signal }),
         ])
 
         if (!isMounted) return
@@ -51,18 +54,22 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
             (p) => p.reg_number !== 'admin'
           )
           setPlayers(filteredPlayers)
-        } else {
-          logger.warn('Failed to fetch players:', playersData.error)
         }
 
-        if (sportsData.success) {
-          setSports(sportsData.sports || [])
+        // Sports API now returns array directly (not wrapped in success object)
+        if (Array.isArray(sportsData)) {
+          // Filter only team sports (dual_team and multi_team)
+          const teamSports = sportsData.filter(s => s.type === 'dual_team' || s.type === 'multi_team')
+          setSports(teamSports)
+        } else if (sportsData.success) {
+          // Fallback for old API format
+          const teamSports = (sportsData.sports || []).filter(s => s.type === 'dual_team' || s.type === 'multi_team')
+          setSports(teamSports)
         } else {
-          logger.warn('Failed to fetch sports:', sportsData.error)
+          setSports([])
         }
       } catch (err) {
         if (!isMounted || err.name === 'AbortError') return
-        logger.error('Error fetching data:', err)
         setPlayers([])
         setSports([])
       }
@@ -74,7 +81,7 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
       isMounted = false
       abortController.abort()
     }
-  }, [isOpen])
+  }, [isOpen, eventYear])
 
   // Reset state when modal closes
   useEffect(() => {
@@ -115,6 +122,7 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
           body: JSON.stringify({
             reg_number: selectedPlayer.reg_number,
             sport: selectedSport.trim(),
+            event_year: eventYear,
           }),
         }),
         {
@@ -136,16 +144,16 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
             onClose()
           },
           onError: (err) => {
-            const errorMessage = err.message || 'Error adding captain. Please try again.'
+            // The useApi hook extracts the error message from the API response
+            const errorMessage = err?.message || err?.error || 'Error adding captain. Please try again.'
             onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
           },
         }
       )
     } catch (err) {
       // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
       logger.error('Error adding captain:', err)
-      const errorMessage = err.message || 'Error adding captain. Please try again.'
-      onStatusPopup(`❌ ${errorMessage}`, 'error', 2500)
     }
   }
 
@@ -212,7 +220,7 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup }) {
           value={selectedSport}
           onChange={(e) => setSelectedSport(e.target.value)}
           required
-          options={sports.map((sport) => ({ value: sport, label: sport }))}
+          options={sports.map((sport) => ({ value: sport.name, label: formatSportName(sport.name) }))}
         />
 
         <div className="flex gap-[0.6rem] mt-[0.8rem]">

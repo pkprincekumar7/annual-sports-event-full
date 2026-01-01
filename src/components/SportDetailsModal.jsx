@@ -3,14 +3,47 @@ import TeamDetailsModal from './TeamDetailsModal'
 import RegisterModal from './RegisterModal'
 import ParticipantDetailsModal from './ParticipantDetailsModal'
 import EventScheduleModal from './EventScheduleModal'
-import { CULTURAL_SPORTS } from '../constants/app'
+import PointsTableModal from './PointsTableModal'
+import { formatSportName } from '../utils/stringHelpers'
+import { isTeamSport, getSportType, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual } from '../utils/sportHelpers'
+import { fetchWithAuth } from '../utils/api'
+import { buildSportApiUrl } from '../utils/apiHelpers'
+import { useEventYearWithFallback } from '../hooks'
+import logger from '../utils/logger'
 
-function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onStatusPopup, onUserUpdate, onEventScheduleClick }) {
+function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onStatusPopup, onUserUpdate, onEventScheduleClick, selectedYear }) {
   const [activeTab, setActiveTab] = useState(null)
   const hasSetInitialTabRef = useRef(false)
   const lastSportRef = useRef(null)
   const initialTabSetRef = useRef(false)
+  const [sportDetails, setSportDetails] = useState(null) // Store fetched sport details with type
+  const eventYear = useEventYearWithFallback(selectedYear)
   
+  // Fetch sport details to get the type
+  useEffect(() => {
+    if (!isOpen || !selectedSport?.name || !eventYear) {
+      setSportDetails(null)
+      return
+    }
+
+    const fetchSportDetails = async () => {
+      try {
+        const response = await fetchWithAuth(buildSportApiUrl('sports', selectedSport.name, eventYear))
+        if (response.ok) {
+          const data = await response.json()
+          if (data && data.name) {
+            setSportDetails(data)
+          }
+        }
+      } catch (err) {
+        logger.error('Error fetching sport details:', err)
+        setSportDetails(null)
+      }
+    }
+
+    fetchSportDetails()
+  }, [isOpen, selectedSport?.name, eventYear])
+
   // All hooks must be called before any early returns
   // Reset active tab when modal closes
   useEffect(() => {
@@ -19,6 +52,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       hasSetInitialTabRef.current = false
       lastSportRef.current = null
       initialTabSetRef.current = false
+      setSportDetails(null)
     } else {
       // Reset initial tab flag when modal opens to ensure fresh tab selection
       initialTabSetRef.current = false
@@ -31,7 +65,8 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
     
     // Wait for loggedInUser to be available before determining tabs
     // This prevents Events tab from showing when user data is still loading
-    if (loggedInUser === undefined) {
+    // Check for both undefined and null
+    if (loggedInUser === undefined || loggedInUser === null) {
       // User data is still loading, don't set tab yet
       return
     }
@@ -45,23 +80,22 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       setActiveTab(null)
     }
     
-    // If we've already set the initial tab for this sport, don't do it again
-    if (initialTabSetRef.current) return
-    
     const isAdmin = loggedInUser?.reg_number === 'admin'
-    const isTeam = selectedSport.type === 'team'
+    // Get sport type from fetched sportDetails (most reliable) or from selectedSport
+    const sportType = sportDetails?.type || getSportType(selectedSport)
+    const isTeam = isTeamSport(sportType)
     
     // Check if user is a captain for this sport
-    const isCaptainForSport = !isAdmin && loggedInUser?.captain_in && 
-      Array.isArray(loggedInUser.captain_in) && 
-      loggedInUser.captain_in.includes(selectedSport.name)
+    const isCaptainForThisSport = !isAdmin && isCaptainForSport(loggedInUser, selectedSport.name)
     
     // Check if user is enrolled in this team event
-    const isEnrolledInTeamEvent = !isAdmin && loggedInUser?.participated_in && 
-      Array.isArray(loggedInUser.participated_in) &&
-      loggedInUser.participated_in.some(p => 
-        p.sport === selectedSport.name && p.team_name
-      )
+    const isEnrolledInTeam = !isAdmin && isEnrolledInTeamEvent(loggedInUser, selectedSport.name)
+    
+    // Check if user has participated in individual event (recompute on every loggedInUser change)
+    const hasParticipatedInIndividualEvent = selectedSport?.name && hasParticipatedInIndividual(loggedInUser, selectedSport.name)
+    
+    // Check if sport is dual_team or dual_player (for Points Table tab)
+    const isDualSport = sportType === 'dual_team' || sportType === 'dual_player'
     
     // Determine available tabs
     let availableTabs = []
@@ -77,70 +111,83 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
           { id: 'events', label: 'Events' }
         ]
       }
-    } else if (isTeam) {
-      if (isCaptainForSport && !isEnrolledInTeamEvent) {
-        availableTabs.push({ id: 'create', label: 'Create Team' })
+      // Add Points Table tab for dual sports (admin)
+      if (isDualSport) {
+        availableTabs.push({ id: 'points', label: 'Points Table' })
       }
-      if (isEnrolledInTeamEvent) {
+    } else if (isTeam) {
+      // For team sports: 
+      // - If captain and not enrolled: Show "Create Team" and "View Events" only
+      // - If enrolled (team created): Show "View Team" and "View Events" only
+      // - If not captain and not enrolled: Show "View Team" (to see all teams) and "View Events"
+      if (isCaptainForThisSport && !isEnrolledInTeam) {
+        // Captain can create team - show Create Team tab only (no View Team tab)
+        availableTabs.push({ id: 'create', label: 'Create Team' })
+      } else {
+        // User is enrolled OR not captain - show View Team tab
         availableTabs.push({ id: 'view', label: 'View Team' })
       }
       availableTabs.push({ id: 'events', label: 'View Events' })
-    } else {
-      const hasParticipatedInIndividual = loggedInUser?.participated_in && 
-        Array.isArray(loggedInUser.participated_in) &&
-        loggedInUser.participated_in.some(p => p.sport === selectedSport.name && !p.team_name)
-      
-      if (!hasParticipatedInIndividual) {
-        availableTabs.push({ id: 'enroll', label: 'Enroll Now' })
-      } else {
-        availableTabs.push({ id: 'view', label: 'View Enrollment' })
+      // Add Points Table tab for dual_team sports (non-admin)
+      if (isDualSport) {
+        availableTabs.push({ id: 'points', label: 'Points Table' })
       }
+    } else {
+      // For individual sports, always show "View Enrollment" first, then "Enroll Now" if not participated
+      // Always show "View Enrollment" tab first for non-team sports
+      availableTabs.push({ id: 'view', label: 'View Enrollment' })
+      
+      // Show "Enroll Now" tab only if user hasn't participated yet
+      if (!hasParticipatedInIndividualEvent) {
+        availableTabs.push({ id: 'enroll', label: 'Enroll Now' })
+      }
+      
       availableTabs.push({ id: 'events', label: 'View Events' })
+      // Add Points Table tab for dual_player sports (non-admin)
+      if (isDualSport) {
+        availableTabs.push({ id: 'points', label: 'Points Table' })
+      }
     }
     
-    // Set active tab synchronously - always set to first non-events tab when sport changes
-    // Skip 'events' tab if it's the only tab (since it's disabled)
+    // Set active tab synchronously - set to first tab when sport changes or when participation status changes
     if (availableTabs.length > 0) {
-      // Find first non-events tab, or use first tab if events is the only one
-      const firstNonEventsTab = availableTabs.find(t => t.id !== 'events')
-      const firstTab = firstNonEventsTab ? firstNonEventsTab.id : availableTabs[0].id
+      // Use first available tab
+      const firstTab = availableTabs[0].id
       
-      // Always set the tab when sport changes to ensure first non-events tab is selected
-      // Also set if current tab is not in available tabs or if we haven't set initial tab yet
-      if (sportChanged || !activeTab || !availableTabs.find(t => t.id === activeTab)) {
-        // Sport changed or no valid tab - always set to first non-events tab
+      // Set the tab when sport changes, participation status changes, or if current tab is not in available tabs
+      const currentTabInvalid = !activeTab || !availableTabs.find(t => t.id === activeTab)
+      if (sportChanged || currentTabInvalid) {
+        // Sport changed or no valid tab - set to first tab
         initialTabSetRef.current = true
         hasSetInitialTabRef.current = true
         setActiveTab(firstTab)
+      } else if (!isTeam && activeTab === 'enroll' && hasParticipatedInIndividualEvent) {
+        // If user just participated and "enroll" tab is active, switch to "view" tab
+        initialTabSetRef.current = true
+        setActiveTab('view')
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, selectedSport?.name, loggedInUser])
+  }, [isOpen, selectedSport?.name, loggedInUser, sportDetails])
 
   // Compute values needed for useMemo (must be before useMemo hook)
   const isAdmin = loggedInUser?.reg_number === 'admin'
-  const isTeam = selectedSport?.type === 'team'
+  // Get sport type from fetched sportDetails (most reliable) or from selectedSport
+  const sportType = sportDetails?.type || getSportType(selectedSport)
+  const isTeam = isTeamSport(sportType)
   
-  // Check if user is a captain for this sport
-  const isCaptainForSport = !isAdmin && loggedInUser?.captain_in && 
-    Array.isArray(loggedInUser.captain_in) && 
-    loggedInUser.captain_in.includes(selectedSport?.name)
+  // Check if user is a captain for this sport (only if selectedSport exists)
+  const isCaptainForThisSport = !isAdmin && selectedSport?.name && isCaptainForSport(loggedInUser, selectedSport.name)
   
-  // Check if user is enrolled in this team event
-  const isEnrolledInTeamEvent = !isAdmin && loggedInUser?.participated_in && 
-    Array.isArray(loggedInUser.participated_in) &&
-    loggedInUser.participated_in.some(p => 
-      p.sport === selectedSport?.name && p.team_name
-    )
+  // Check if user is enrolled in this team event (only if selectedSport exists)
+  const isEnrolledInTeam = !isAdmin && selectedSport?.name && isEnrolledInTeamEvent(loggedInUser, selectedSport.name)
   
-  // Check if user has participated in individual event
-  const hasParticipatedInIndividual = !isAdmin && loggedInUser?.participated_in && 
-    Array.isArray(loggedInUser.participated_in) &&
-    loggedInUser.participated_in.some(p => p.sport === selectedSport?.name && !p.team_name)
+  // Check if user has participated in individual event (only if selectedSport exists)
+  const hasParticipatedInIndividualEvent = !isAdmin && selectedSport?.name && hasParticipatedInIndividual(loggedInUser, selectedSport.name)
 
-  // Determine sport type for EventScheduleModal
-  const isCultural = selectedSport && CULTURAL_SPORTS.includes(selectedSport.name)
-  const sportType = isTeam ? 'team' : (isCultural ? 'cultural' : 'individual')
+  // Determine sport type for EventScheduleModal (legacy format for compatibility)
+  const isCultural = selectedSport && selectedSport.category === 'literary and cultural activities'
+  const legacySportType = isTeam ? 'team' : (isCultural ? 'cultural' : 'individual')
 
   // Memoize tab content to prevent unnecessary remounts
   // This hook MUST be called before any early returns
@@ -149,6 +196,13 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
     
     switch (activeTab) {
       case 'create':
+        // Only show create team form if user is a captain and not enrolled
+        // Recompute here to ensure we have the latest values
+        if (isTeam) {
+          const isCaptain = !isAdmin && isCaptainForSport(loggedInUser, selectedSport?.name)
+          const isEnrolled = !isAdmin && isEnrolledInTeamEvent(loggedInUser, selectedSport?.name)
+          
+          if (isCaptain && !isEnrolled) {
         return (
           <RegisterModal
             key={`create-${selectedSport.name}`}
@@ -162,8 +216,13 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             loggedInUser={loggedInUser}
             onUserUpdate={onUserUpdate}
             embedded={true}
+            selectedYear={selectedYear}
           />
         )
+          }
+        }
+        // If somehow this tab is active but user is not eligible, show nothing
+        return null
       
       case 'view':
         if (isTeam) {
@@ -176,6 +235,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
               loggedInUser={loggedInUser}
               onStatusPopup={onStatusPopup}
               embedded={true}
+              selectedYear={selectedYear}
             />
           )
         } else {
@@ -190,6 +250,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
               loggedInUser={loggedInUser}
               onUserUpdate={onUserUpdate}
               embedded={true}
+              selectedYear={selectedYear}
             />
           )
         }
@@ -204,6 +265,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
+            selectedYear={selectedYear}
           />
         )
       
@@ -217,6 +279,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
+            selectedYear={selectedYear}
           />
         )
       
@@ -227,86 +290,147 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             isOpen={true}
             onClose={onClose}
             sport={selectedSport.name}
-            sportType={sportType}
+            sportType={legacySportType}
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
+            selectedYear={selectedYear}
           />
         )
       
       case 'enroll':
         return (
           <RegisterModal
-            key={`enroll-${selectedSport.name}`}
+            key={`enroll-${selectedSport.name}-${hasParticipatedInIndividualEvent ? 'participated' : 'not-participated'}`}
             isOpen={true}
             onClose={() => {
-              // After successful individual participation, close the parent modal
+              // After successful individual participation, switch to view tab instead of closing
+              // This ensures the UI reflects the updated participation status
+              const hasParticipated = hasParticipatedInIndividual(loggedInUser, selectedSport?.name)
+              if (hasParticipated) {
+                setActiveTab('view')
+              } else {
               onClose()
+              }
             }}
             selectedSport={selectedSport}
             onStatusPopup={onStatusPopup}
             loggedInUser={loggedInUser}
-            onUserUpdate={onUserUpdate}
+            onUserUpdate={(updatedUser) => {
+              // Update user and force tab re-evaluation
+              if (onUserUpdate) {
+                onUserUpdate(updatedUser)
+              }
+              // After user update, check if they participated and switch to view tab
+              // Use a small delay to ensure state has propagated
+              setTimeout(() => {
+                const hasParticipated = hasParticipatedInIndividual(updatedUser, selectedSport?.name)
+                if (hasParticipated && activeTab === 'enroll') {
+                  setActiveTab('view')
+                }
+              }, 200)
+            }}
             embedded={true}
+            selectedYear={selectedYear}
+          />
+        )
+      
+      case 'points':
+        return (
+          <PointsTableModal
+            key="points"
+            isOpen={true}
+            onClose={onClose}
+            sport={selectedSport.name}
+            loggedInUser={loggedInUser}
+            embedded={true}
+            selectedYear={selectedYear}
           />
         )
       
       default:
         return null
     }
-  }, [activeTab, selectedSport?.name, isTeam, sportType, isOpen, onClose, loggedInUser, onStatusPopup, onUserUpdate])
+  }, [activeTab, selectedSport?.name, isTeam, legacySportType, isOpen, onClose, loggedInUser, onStatusPopup, onUserUpdate, isCaptainForThisSport, isEnrolledInTeam, selectedYear])
 
   // Determine available tabs based on user type and sport type
   const getAvailableTabs = () => {
     if (!selectedSport) return []
     
-    if (isAdmin) {
-      if (isTeam) {
-        return [
-          { id: 'teams', label: 'View Teams' },
-          { id: 'events', label: 'Events' }
-        ]
-      } else {
-        return [
-          { id: 'participants', label: 'View Participants' },
-          { id: 'events', label: 'Events' }
-        ]
-      }
+    // Wait for loggedInUser to be available (check for both undefined and null)
+    if (loggedInUser === undefined || loggedInUser === null) {
+      return []
     }
     
-    if (isTeam) {
+    // Get sport type from fetched sportDetails (most reliable) or from selectedSport
+    const currentSportType = sportDetails?.type || getSportType(selectedSport)
+    const currentIsTeam = isTeamSport(currentSportType)
+    const isDualSport = currentSportType === 'dual_team' || currentSportType === 'dual_player'
+    
+    if (isAdmin) {
+      const tabs = []
+      if (currentIsTeam) {
+        tabs.push({ id: 'teams', label: 'View Teams' })
+      } else {
+        tabs.push({ id: 'participants', label: 'View Participants' })
+      }
+      tabs.push({ id: 'events', label: 'Events' })
+      // Add Points Table tab for dual sports (admin)
+      if (isDualSport) {
+        tabs.push({ id: 'points', label: 'Points Table' })
+      }
+      return tabs
+    }
+    
+    if (currentIsTeam) {
       const tabs = []
       // Can create team if captain and not enrolled
-      if (isCaptainForSport && !isEnrolledInTeamEvent) {
+      // Recompute here to ensure we have the latest values
+      const isCaptain = !isAdmin && isCaptainForSport(loggedInUser, selectedSport?.name)
+      const isEnrolled = !isAdmin && isEnrolledInTeamEvent(loggedInUser, selectedSport?.name)
+      
+      // For team sports: 
+      // - If captain and not enrolled: Show "Create Team" and "View Events" only
+      // - If enrolled (team created): Show "View Team" and "View Events" only
+      // - If not captain and not enrolled: Show "View Team" (to see all teams) and "View Events"
+      if (isCaptain && !isEnrolled) {
+        // Captain can create team - show Create Team tab only (no View Team tab)
         tabs.push({ id: 'create', label: 'Create Team' })
-      }
-      // Can view team if enrolled
-      if (isEnrolledInTeamEvent) {
+      } else {
+        // User is enrolled OR not captain - show View Team tab
         tabs.push({ id: 'view', label: 'View Team' })
       }
-      // Always show events (even if it's the only tab)
+      // Always show events
       tabs.push({ id: 'events', label: 'View Events' })
+      // Add Points Table tab for dual_team sports (non-admin)
+      if (isDualSport) {
+        tabs.push({ id: 'points', label: 'Points Table' })
+      }
       return tabs
     } else {
       // Individual/cultural events
       const tabs = []
-      if (!hasParticipatedInIndividual) {
+      // Always show "View Enrollment" tab first for non-team sports
+      tabs.push({ id: 'view', label: 'View Enrollment' })
+      
+      // Show "Enroll Now" tab only if user hasn't participated yet
+      const hasParticipated = !isAdmin && hasParticipatedInIndividual(loggedInUser, selectedSport?.name)
+      if (!hasParticipated) {
         tabs.push({ id: 'enroll', label: 'Enroll Now' })
-      } else {
-        tabs.push({ id: 'view', label: 'View Enrollment' })
       }
+      
       tabs.push({ id: 'events', label: 'View Events' })
+      // Add Points Table tab for dual_player sports (non-admin)
+      if (isDualSport) {
+        tabs.push({ id: 'points', label: 'Points Table' })
+      }
       return tabs
     }
   }
 
   const availableTabs = getAvailableTabs()
 
-  // Don't show popup if "View Events" is the only tab (since it's disabled)
-  const isOnlyEventsTab = availableTabs.length === 1 && availableTabs[0].id === 'events'
-  if (isOnlyEventsTab) {
-    return null
-  }
+  // Events tab is now enabled, so we can show the popup even if Events is the only tab
 
   if (!isOpen || !selectedSport) return null
 
@@ -321,11 +445,8 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
         {/* Header */}
         <div className="px-6 py-4 border-b border-[rgba(255,255,255,0.1)] flex items-center justify-between">
           <div>
-            <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1">
-              {isAdmin ? 'Admin Panel' : 'Sport Details'}
-            </div>
             <div className="text-[1.25rem] font-extrabold uppercase tracking-[0.14em] text-[#ffe66d]">
-              {selectedSport.name}
+              {formatSportName(selectedSport.name)}
             </div>
           </div>
           <button
@@ -342,18 +463,13 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
         {availableTabs.length > 0 && (
           <div className="px-6 py-3 border-b border-[rgba(255,255,255,0.1)] flex gap-2">
             {availableTabs.map((tab) => {
-              const isEventsTab = tab.id === 'events'
-              const isDisabled = isEventsTab // Disable View Events tab (functionality preserved for future use)
               return (
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => !isDisabled && setActiveTab(tab.id)}
-                  disabled={isDisabled}
+                  onClick={() => setActiveTab(tab.id)}
                   className={`px-4 py-2 rounded-lg text-[0.85rem] font-bold transition-all duration-200 ${
-                    isDisabled
-                      ? 'bg-[rgba(148,163,184,0.1)] text-[rgba(148,163,184,0.5)] border border-transparent cursor-not-allowed opacity-50'
-                      : activeTab === tab.id
+                    activeTab === tab.id
                       ? 'bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.3)]'
                       : 'bg-[rgba(255,255,255,0.05)] text-[#cbd5ff] hover:bg-[rgba(255,255,255,0.1)] border border-transparent'
                   }`}

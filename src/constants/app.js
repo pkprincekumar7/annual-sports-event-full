@@ -22,34 +22,11 @@ export const EVENT_INFO = {
 
 // Form Options
 export const GENDER_OPTIONS = [
-  { value: '', label: 'Select' },
   { value: 'Male', label: 'Male' },
   { value: 'Female', label: 'Female' },
 ]
 
-export const DEPARTMENT_OPTIONS = [
-  { value: '', label: 'Select' },
-  { value: 'CSE', label: 'CSE' },
-  { value: 'CSE (AI)', label: 'CSE (AI)' },
-  { value: 'ECE', label: 'ECE' },
-  { value: 'EE', label: 'EE' },
-  { value: 'CE', label: 'CE' },
-  { value: 'ME', label: 'ME' },
-  { value: 'MTE', label: 'MTE' },
-]
-
-// Cultural Sports List (used in multiple places)
-export const CULTURAL_SPORTS = [
-  'Essay Writing',
-  'Story Writing',
-  'Group Discussion',
-  'Debate',
-  'Extempore',
-  'Quiz',
-  'Dumb Charades',
-  'Painting',
-  'Singing',
-]
+// DEPARTMENT_OPTIONS and CULTURAL_SPORTS removed - now fetched dynamically from API
 
 // Admin Registration Number
 export const ADMIN_REG_NUMBER = 'admin'

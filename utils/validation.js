@@ -5,15 +5,11 @@
 
 import {
   VALID_GENDERS,
-  VALID_DEPARTMENTS,
-  VALID_YEARS,
-  TEAM_SPORTS,
-  INDIVIDUAL_SPORTS,
-  CULTURAL_SPORTS,
   MATCH_TYPES,
   MATCH_STATUSES,
   SPORT_TYPES,
 } from '../constants/index.js'
+import { validateDepartmentExists, canParticipateInEvents } from './playerHelpers.js'
 
 /**
  * Validate email format
@@ -33,8 +29,9 @@ export const isValidPhone = (phone) => {
 
 /**
  * Validate player registration data
+ * Updated to use year_of_admission and validate against Department collection
  */
-export const validatePlayerData = (data) => {
+export const validatePlayerData = async (data) => {
   const errors = []
 
   if (!data.reg_number?.trim()) {
@@ -53,14 +50,33 @@ export const validatePlayerData = (data) => {
 
   if (!data.department_branch?.trim()) {
     errors.push('Department/branch is required')
-  } else if (!VALID_DEPARTMENTS.includes(data.department_branch.trim())) {
-    errors.push(`Invalid department/branch. Must be one of: ${VALID_DEPARTMENTS.join(', ')}`)
+  } else {
+    // Validate against Department collection
+    const deptValidation = await validateDepartmentExists(data.department_branch)
+    if (!deptValidation.exists) {
+      errors.push(`Department "${data.department_branch}" does not exist`)
+    }
   }
 
-  if (!data.year?.trim()) {
-    errors.push('Year is required')
-  } else if (!VALID_YEARS.includes(data.year.trim())) {
-    errors.push(`Invalid year. Must be one of: ${VALID_YEARS.join(', ')}`)
+  // Validate year_of_admission (numeric)
+  if (data.year_of_admission === undefined || data.year_of_admission === null) {
+    errors.push('Year of admission is required')
+  } else {
+    const yearOfAdmission = parseInt(data.year_of_admission)
+    if (isNaN(yearOfAdmission)) {
+      errors.push('Year of admission must be a valid number')
+    } else {
+      // Validate reasonable range (e.g., 2015-2030)
+      const currentYear = new Date().getFullYear()
+      if (yearOfAdmission < 2015 || yearOfAdmission > currentYear + 1) {
+        errors.push(`Year of admission must be between 2015 and ${currentYear + 1}`)
+      } else {
+        // Validate participation eligibility (1st to 5th year only)
+        if (!canParticipateInEvents(yearOfAdmission)) {
+          errors.push('Only 1st to 5th year students can register and participate in events')
+        }
+      }
+    }
   }
 
   if (!data.mobile_number?.trim()) {
@@ -86,12 +102,13 @@ export const validatePlayerData = (data) => {
 }
 
 /**
- * Validate sport name
+ * Validate sport name (deprecated - use Sports collection)
+ * @deprecated Use Sports collection to validate sport names
  */
 export const isValidSport = (sport) => {
-  return TEAM_SPORTS.includes(sport) || 
-         INDIVIDUAL_SPORTS.includes(sport) || 
-         CULTURAL_SPORTS.includes(sport)
+  // This function is deprecated - sports are now dynamic
+  // Keeping for backward compatibility but should not be used
+  return true
 }
 
 /**
@@ -116,16 +133,20 @@ export const isValidSportType = (sportType) => {
 }
 
 /**
- * Validate team sport
+ * Validate team sport (deprecated - use Sports collection)
+ * @deprecated Use Sports collection to determine sport type
  */
 export const isTeamSport = (sport) => {
-  return TEAM_SPORTS.includes(sport)
+  // This function is deprecated - sports are now dynamic
+  // Keeping for backward compatibility but should not be used
+  return false
 }
 
 /**
  * Validate player update data (without password)
+ * Updated to use year_of_admission and validate against Department collection
  */
-export const validateUpdatePlayerData = (data) => {
+export const validateUpdatePlayerData = async (data) => {
   const errors = []
 
   if (!data.reg_number?.trim()) {
@@ -144,15 +165,15 @@ export const validateUpdatePlayerData = (data) => {
 
   if (!data.department_branch?.trim()) {
     errors.push('Department/branch is required')
-  } else if (!VALID_DEPARTMENTS.includes(data.department_branch.trim())) {
-    errors.push(`Invalid department/branch. Must be one of: ${VALID_DEPARTMENTS.join(', ')}`)
+  } else {
+    // Validate against Department collection
+    const deptValidation = await validateDepartmentExists(data.department_branch)
+    if (!deptValidation.exists) {
+      errors.push(`Department "${data.department_branch}" does not exist`)
+    }
   }
 
-  if (!data.year?.trim()) {
-    errors.push('Year is required')
-  } else if (!VALID_YEARS.includes(data.year.trim())) {
-    errors.push(`Invalid year. Must be one of: ${VALID_YEARS.join(', ')}`)
-  }
+  // year_of_admission cannot be modified (validation will be done in route handler)
 
   if (!data.mobile_number?.trim()) {
     errors.push('Mobile number is required')
@@ -183,9 +204,7 @@ export const validateCaptainAssignment = (data) => {
   }
 
   if (!data.sport?.trim()) {
-    errors.push('Sport is required')
-  } else if (!isTeamSport(data.sport.trim())) {
-    errors.push(`Invalid sport. Only team sports can have captains: ${TEAM_SPORTS.join(', ')}`)
+    errors.push('Sport name is required')
   }
 
   return {
@@ -195,17 +214,25 @@ export const validateCaptainAssignment = (data) => {
 }
 
 /**
- * Trim string fields in an object
+ * Trim all string fields in an object
  */
 export const trimObjectFields = (obj) => {
+  if (!obj || typeof obj !== 'object') {
+    return obj
+  }
+
   const trimmed = {}
-  for (const [key, value] of Object.entries(obj)) {
-    if (typeof value === 'string') {
-      trimmed[key] = value.trim()
-    } else {
-      trimmed[key] = value
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const value = obj[key]
+      if (typeof value === 'string') {
+        trimmed[key] = value.trim()
+      } else if (Array.isArray(value)) {
+        trimmed[key] = value.map((item) => (typeof item === 'string' ? item.trim() : item))
+      } else {
+        trimmed[key] = value
+      }
     }
   }
   return trimmed
 }
-

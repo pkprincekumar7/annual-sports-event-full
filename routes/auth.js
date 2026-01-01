@@ -6,9 +6,12 @@
 import express from 'express'
 import jwt from 'jsonwebtoken'
 import Player from '../models/Player.js'
+import EventYear from '../models/EventYear.js'
 import logger from '../utils/logger.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
+import { computePlayerParticipation, computeYearDisplay } from '../utils/playerHelpers.js'
+import { getCache, setCache } from '../utils/cache.js'
 import { JWT_EXPIRES_IN } from '../constants/index.js'
 
 const router = express.Router()
@@ -45,14 +48,29 @@ router.post(
       return sendErrorResponse(res, 401, 'Invalid registration number or password')
     }
 
-    // Initialize participated_in and captain_in if they don't exist
-    if (!player.participated_in) {
-      player.participated_in = []
+    // Get active event year for computed fields
+    let eventYear = null
+    const cachedActiveYear = getCache('/api/event-years/active')
+    if (cachedActiveYear) {
+      eventYear = cachedActiveYear.year
+    } else {
+      const activeYear = await EventYear.findOne({ is_active: true }).lean()
+      if (activeYear) {
+        eventYear = activeYear.year
+        setCache('/api/event-years/active', activeYear)
+      } else {
+        eventYear = new Date().getFullYear()
+      }
     }
-    if (!player.captain_in) {
-      player.captain_in = []
+
+    // Compute participation data
+    const participation = await computePlayerParticipation(player.reg_number, eventYear)
+    
+    // Compute year display format
+    let yearDisplay = null
+    if (player.year_of_admission) {
+      yearDisplay = computeYearDisplay(player.year_of_admission, eventYear)
     }
-    await player.save()
 
     // Generate JWT token
     const tokenPayload = {
@@ -66,6 +84,11 @@ router.post(
     // Return player data (excluding password for security) and token
     const playerData = player.toObject()
     delete playerData.password
+    
+    // Add computed fields
+    playerData.participated_in = participation.participated_in
+    playerData.captain_in = participation.captain_in
+    playerData.year = yearDisplay
 
     return sendSuccessResponse(
       res,

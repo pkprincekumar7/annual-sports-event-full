@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
-import { useApi, useModal } from '../hooks'
-import { fetchWithAuth, clearCache } from '../utils/api'
+import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
+import { fetchWithAuth } from '../utils/api'
+import { clearIndividualParticipationCaches } from '../utils/cacheHelpers'
 import logger from '../utils/logger'
-import { EVENT_INFO } from '../constants/app'
+import { computeYearDisplay } from '../utils/yearHelpers'
 
-function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false }) {
+function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
+  const { eventYearConfig } = useEventYear()
+  const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [participants, setParticipants] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -14,6 +17,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
   const currentSportRef = useRef(null)
   const abortControllerRef = useRef(null)
   const { loading: deleting, execute } = useApi()
+  const eventYear = useEventYearWithFallback(selectedYear)
   const deleteConfirmModal = useModal(false)
 
   useEffect(() => {
@@ -81,7 +85,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
     try {
       // URL encode the sport name to handle special characters
       const encodedSport = encodeURIComponent(sport)
-      const url = `/api/participants/${encodedSport}`
+      const url = `/api/participants/${encodedSport}${eventYear ? `?year=${eventYear}` : ''}`
       // Fetching participants for sport
       
       const response = await fetchWithAuth(url, { signal })
@@ -138,13 +142,16 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
   }
 
   const toggleParticipant = (regNumber) => {
-    const newExpanded = new Set(expandedParticipants)
-    if (newExpanded.has(regNumber)) {
-      newExpanded.delete(regNumber)
-    } else {
-      newExpanded.add(regNumber)
-    }
-    setExpandedParticipants(newExpanded)
+    setExpandedParticipants(prev => {
+      // If clicking on an already expanded participant, collapse it
+      if (prev.has(regNumber)) {
+        const newExpanded = new Set(prev)
+        newExpanded.delete(regNumber)
+        return newExpanded
+      }
+      // Otherwise, expand this participant and collapse all others
+      return new Set([regNumber])
+    })
   }
 
   const handleDeleteClick = (participant) => {
@@ -163,6 +170,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
           body: JSON.stringify({
             reg_number: participantToDelete.reg_number,
             sport: sport,
+            event_year: eventYear,
           }),
         }),
         {
@@ -175,13 +183,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
               )
             }
             // Clear cache before refreshing to ensure we get fresh data
-            const encodedSport = encodeURIComponent(sport)
-            clearCache(`/api/participants/${encodedSport}`)
-            clearCache(`/api/participants-count/${encodedSport}`)
-            clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
-            clearCache('/api/players') // Player participation data changes
-            clearCache('/api/me') // If this was the logged-in user
-            clearCache('/api/sports-counts') // Participant count changes
+            clearIndividualParticipationCaches(sport, eventYear)
             // Remove deleted participant from expanded participants if it was expanded
             setExpandedParticipants(prev => {
               const newSet = new Set(prev)
@@ -193,7 +195,8 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
             setParticipantToDelete(null)
           },
           onError: (err) => {
-            const errorMessage = err.message || 'Error removing participation. Please try again.'
+            // The useApi hook extracts the error message from the API response
+            const errorMessage = err?.message || err?.error || 'Error removing participation. Please try again.'
             if (onStatusPopup) {
               onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
             }
@@ -203,11 +206,9 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
       )
     } catch (err) {
       // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
       logger.error('Error removing participation:', err)
-      const errorMessage = err.message || 'Error removing participation. Please try again.'
-      if (onStatusPopup) {
-        onStatusPopup(`❌ ${errorMessage}`, 'error', 2500)
-      }
+      setParticipantToDelete(null)
       setParticipantToDelete(null)
     }
   }
@@ -225,7 +226,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
         isOpen={isOpen}
         onClose={onClose}
         title="Participant Details"
-        subtitle={sport ? `${sport.toUpperCase()} • ${EVENT_INFO.fullName}` : undefined}
+        subtitle={sport ? `${sport.toUpperCase()} • ${eventHighlight}` : undefined}
         embedded={embedded}
         maxWidth="max-w-[700px]"
       >
@@ -296,7 +297,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
                       <div className="px-4 pb-4 pt-2 border-t border-[rgba(148,163,184,0.2)]">
                         <div className="text-[#cbd5ff] text-[0.85rem] ml-6 space-y-1">
                           <div>Department: <span className="text-[#e5e7eb]">{participant.department_branch}</span></div>
-                          <div>Year: <span className="text-[#e5e7eb]">{participant.year}</span></div>
+                          <div>Year: <span className="text-[#e5e7eb]">{participant.year || (participant.year_of_admission ? computeYearDisplay(participant.year_of_admission, eventYear) : '')}</span></div>
                           <div>Gender: <span className="text-[#e5e7eb]">{participant.gender}</span></div>
                           <div>Mobile: <span className="text-[#e5e7eb]">{participant.mobile_number}</span></div>
                           <div>Email: <span className="text-[#e5e7eb]">{participant.email_id}</span></div>

@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input } from './ui'
-import { useApi } from '../hooks'
+import { useApi, useDepartments, useEventYearWithFallback } from '../hooks'
 import { fetchWithAuth, API_URL, clearCache } from '../utils/api'
+import { clearTeamParticipationCaches, clearIndividualParticipationCaches } from '../utils/cacheHelpers'
+import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
-import { EVENT_INFO, GENDER_OPTIONS, DEPARTMENT_OPTIONS } from '../constants/app'
+import { EVENT_INFO, GENDER_OPTIONS } from '../constants/app'
+import { generateYearOfAdmissionOptions, canParticipateInEvents } from '../utils/yearHelpers'
+import { formatSportName } from '../utils/stringHelpers'
+import { isTeamSport, getSportType, getTeamSize, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual } from '../utils/sportHelpers'
 
-function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate, embedded = false }) {
-  const [registrationCountdown, setRegistrationCountdown] = useState('')
+function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate, embedded = false, selectedYear }) {
   const [players, setPlayers] = useState([])
   const [selectedPlayers, setSelectedPlayers] = useState({})
   const [totalTeams, setTotalTeams] = useState(0)
@@ -17,12 +21,18 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   const { loading: isSubmitting, execute: executeGeneral } = useApi()
   const { loading: isSubmittingTeam, execute: executeTeam } = useApi()
   const { loading: isSubmittingIndividual, execute: executeIndividual } = useApi()
+  const { departments: departmentOptions, loading: loadingDepartments } = useDepartments()
+  const eventYear = useEventYearWithFallback(selectedYear)
 
-  const isTeam = selectedSport?.type === 'team'
-  const playerCount = isTeam ? selectedSport?.players || 0 : 0
+  const sportType = getSportType(selectedSport)
+  const isTeam = isTeamSport(sportType)
+  const playerCount = isTeam ? getTeamSize(selectedSport) : 0
   const isGeneralRegistration = !selectedSport
   const prevSportNameRef = useRef(null)
   const isMountedRef = useRef(true)
+  
+  // Generate year of admission options
+  const yearOfAdmissionOptions = generateYearOfAdmissionOptions(eventYear)
 
   // Fetch players list for team player dropdowns
   useEffect(() => {
@@ -39,7 +49,17 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     }
 
     const currentSportName = selectedSport?.name
-    const currentIsTeam = selectedSport?.type === 'team'
+    const currentSportType = getSportType(selectedSport)
+    const currentIsTeam = isTeamSport(currentSportType)
+
+    // Don't fetch if eventYear is not available
+    if (!eventYear) {
+      if (!currentIsTeam) {
+        setLoadingParticipants(false)
+        setTotalParticipants(0)
+      }
+      return
+    }
 
     // Don't fetch if sport is not yet available
     if (currentIsTeam && !currentSportName) {
@@ -85,8 +105,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         
         setLoadingParticipants(true)
         try {
-          const encodedSport = encodeURIComponent(currentSportName)
-          const response = await fetchWithAuth(`/api/participants-count/${encodedSport}`)
+          const response = await fetchWithAuth(buildSportApiUrl('participants-count', currentSportName, eventYear))
           
           if (!isMountedRef.current) {
             return
@@ -101,7 +120,8 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           const data = await response.json()
           
           if (data.success && isMountedRef.current) {
-            const count = data.total_participants || 0
+            // API returns count in data.count field (not data.total_participants)
+            const count = data.count !== undefined ? data.count : 0
             setTotalParticipants(count)
           } else if (isMountedRef.current) {
             logger.warn('Failed to fetch participants count:', data.error)
@@ -127,7 +147,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       // For team events, fetch players and teams
       const fetchPlayers = async () => {
         try {
-          const response = await fetchWithAuth('/api/players')
+          const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear))
           
           if (!isMountedRef.current) {
             logger.warn('Component unmounted, skipping players update')
@@ -157,12 +177,11 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       }
 
       const fetchTotalTeams = async () => {
-        if (!currentSportName) return
+        if (!currentSportName || !eventYear) return
         
         setLoadingTeams(true)
         try {
-          const encodedSport = encodeURIComponent(currentSportName)
-          const response = await fetchWithAuth(`/api/teams/${encodedSport}`)
+          const response = await fetchWithAuth(buildSportApiUrl('teams', currentSportName, eventYear))
           
           if (!isMountedRef.current) return
 
@@ -196,7 +215,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     return () => {
       isMountedRef.current = false
     }
-  }, [isOpen, selectedSport?.name, selectedSport?.type])
+  }, [isOpen, selectedSport?.name, selectedSport?.type, eventYear])
 
   // Reset selected players when modal opens/closes or sport changes
   useEffect(() => {
@@ -216,35 +235,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     // Reset state when modal closes is handled by useApi hook
   }, [isOpen, isTeam, playerCount, loggedInUser])
 
-  // Registration countdown
-  useEffect(() => {
-    if (!isOpen) return
-
-    const targetTime = new Date(EVENT_INFO.registrationDates.start).getTime()
-
-    const update = () => {
-      const now = Date.now()
-      const diff = targetTime - now
-
-      if (diff > 0) {
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-        const hours = Math.floor((diff / (1000 * 60 * 60)) % 24)
-        const minutes = Math.floor((diff / (1000 * 60)) % 60)
-        const seconds = Math.floor((diff / 1000) % 60)
-
-        setRegistrationCountdown(
-          `Registration opens in: ${days}d ${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`
-        )
-      } else {
-        setRegistrationCountdown('Registration is OPEN!')
-      }
-    }
-
-    update()
-    const timer = setInterval(update, 1000)
-
-    return () => clearInterval(timer)
-  }, [isOpen])
 
   const handlePlayerSelect = (playerIndex, regNumber) => {
     setSelectedPlayers((prev) => ({
@@ -264,13 +254,19 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     const fullName = form.querySelector('[name="full_name"]')?.value?.trim()
     const gender = form.querySelector('[name="gender"]')?.value?.trim()
     const dept = form.querySelector('[name="department_branch"]')?.value?.trim()
-    const year = form.querySelector('[name="year"]')?.value?.trim()
+    const yearOfAdmission = form.querySelector('[name="year_of_admission"]')?.value?.trim()
     const phone = form.querySelector('[name="mobile_number"]')?.value?.trim()
     const email = form.querySelector('[name="email_id"]')?.value?.trim()
     const password = form.querySelector('[name="password"]')?.value?.trim()
 
-    if (!regNumber || !fullName || !gender || !dept || !year || !phone || !email || !password) {
+    if (!regNumber || !fullName || !gender || !dept || !yearOfAdmission || !phone || !email || !password) {
       onStatusPopup('❌ Please fill all required fields.', 'error', 2500)
+      return
+    }
+
+    // Validate participation eligibility (1st to 5th year only)
+    if (!canParticipateInEvents(parseInt(yearOfAdmission), eventYear)) {
+      onStatusPopup('❌ Only 1st to 5th year students can register and participate in events.', 'error', 4000)
       return
     }
 
@@ -286,7 +282,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             full_name: fullName,
             gender: gender,
             department_branch: dept,
-            year: year,
+            year_of_admission: parseInt(yearOfAdmission),
             mobile_number: phone,
             email_id: email,
             password: password,
@@ -303,31 +299,17 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             }, 2500)
           },
           onError: async (err) => {
-            // Try to extract a more detailed error message from the response
-            let errorMessage = err.message || 'Error while saving. Please try again.'
-            
-            // If error has status 409, it's a duplicate registration number
-            if (err.status === 409) {
-              errorMessage = 'Registration number already exists. Please use a different registration number.'
-            } else if (err.message && err.message.includes('already exists')) {
-              errorMessage = err.message
-            }
-            
+            // The useApi hook extracts the error message from the API response
+            // Prioritize err.message which contains the backend error message
+            const errorMessage = err?.message || err?.error || 'Error while saving. Please try again.'
             onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
           },
         }
       )
     } catch (err) {
       // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
       logger.error('Error while saving player:', err)
-      
-      // Check if it's a duplicate registration number error
-      let errorMessage = 'Error while saving. Please try again.'
-      if (err.status === 409 || (err.message && err.message.includes('already exists'))) {
-        errorMessage = 'Registration number already exists. Please use a different registration number.'
-      }
-      
-      onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
     }
   }
 
@@ -339,6 +321,15 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
     if (!loggedInUser) {
       onStatusPopup('❌ Please login to register a team.', 'error', 2500)
+      return
+    }
+
+    // Validate user is a captain for this specific sport
+    const isCaptainForThisSport = loggedInUser?.captain_in && 
+      Array.isArray(loggedInUser.captain_in) && 
+      loggedInUser.captain_in.includes(selectedSport?.name)
+    if (!isCaptainForThisSport) {
+      onStatusPopup('❌ You can only create teams for sports where you are assigned as captain. Please contact admin to assign you as captain for this sport.', 'error', 4000)
       return
     }
 
@@ -408,19 +399,19 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       return
     }
 
-    // Validate that all selected players have the same year as logged-in user
+    // CRITICAL: Validate that all selected players have the same year_of_admission as logged-in user
     const yearMismatches = []
     for (let i = 1; i <= playerCount; i++) {
       if (selectedPlayers[i]) {
         const player = players.find(p => p.reg_number === selectedPlayers[i])
-        if (player && player.year !== loggedInUser.year) {
+        if (player && player.year_of_admission !== loggedInUser.year_of_admission) {
           yearMismatches.push(`${player.full_name} (${player.reg_number})`)
         }
       }
     }
 
     if (yearMismatches.length > 0) {
-      onStatusPopup(`❌ Year mismatch: ${yearMismatches.join(', ')} must be in the same year (${loggedInUser.year}) as you.`, 'error', 5000)
+      onStatusPopup(`❌ Year mismatch: ${yearMismatches.join(', ')} must be in the same year of admission (${loggedInUser.year_of_admission}) as you.`, 'error', 5000)
       return
     }
 
@@ -431,6 +422,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         body: JSON.stringify({
           reg_numbers: playerRegNumbers,
           sport: selectedSport.name,
+          event_year: eventYear,
         }),
       })
 
@@ -452,36 +444,29 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         await executeTeam(
           () => fetchWithAuth('/api/update-team-participation', {
             method: 'POST',
-            body: JSON.stringify({
-              reg_numbers: playerRegNumbers,
-              sport: selectedSport.name,
-              team_name: teamName,
-            }),
+          body: JSON.stringify({
+            reg_numbers: playerRegNumbers,
+            sport: selectedSport.name,
+            team_name: teamName,
+            event_year: eventYear,
+          }),
           }),
           {
             onSuccess: async (data) => {
               // Clear caches to ensure UI reflects the new team enrollment
-              const encodedSport = encodeURIComponent(selectedSport.name)
-              clearCache(`/api/teams/${encodedSport}`)
-              clearCache(`/api/participants-count/${encodedSport}`)
-              clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
-              clearCache('/api/players')
-              clearCache('/api/me') // Current user's participation data changes
-              clearCache('/api/sports-counts') // Team count changes
+              clearTeamParticipationCaches(selectedSport.name, eventYear)
               
               // Update logged-in user data if they are one of the players
+              // Use /api/me instead of /api/players for efficiency (only need current user's data)
               if (loggedInUser && playerRegNumbers.includes(loggedInUser.reg_number) && onUserUpdate) {
                 try {
-                  // Fetch updated player data (cache already cleared above)
-                  const playerResponse = await fetchWithAuth('/api/players')
-                  if (playerResponse.ok) {
-                    const playerData = await playerResponse.json()
-                    if (playerData.success) {
-                      const updatedPlayer = playerData.players.find(p => p.reg_number === loggedInUser.reg_number)
-                      if (updatedPlayer) {
-                        const { password: _, ...playerWithoutPassword } = updatedPlayer
-                        onUserUpdate(playerWithoutPassword)
-                      }
+                  // Fetch updated user data (cache already cleared above)
+                  const userResponse = await fetchWithAuth('/api/me')
+                  if (userResponse.ok) {
+                    const userData = await userResponse.json()
+                    if (userData.success && userData.player) {
+                      const { password: _, ...playerWithoutPassword } = userData.player
+                      onUserUpdate(playerWithoutPassword)
                     }
                   }
                 } catch (updateError) {
@@ -490,7 +475,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                 }
               }
 
-              onStatusPopup(`✅ Your team registration for ${selectedSport.name.toUpperCase()} has been saved!`, 'success', 2500)
+              onStatusPopup(`✅ Your team registration for ${formatSportName(selectedSport.name)} has been saved!`, 'success', 2500)
               form.reset()
               setSelectedPlayers({})
               
@@ -500,15 +485,16 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
               }, 500) // Reduced delay to close faster
             },
             onError: (err) => {
-              const errorMessage = err.message || 'Error updating player participations. Please try again.'
+              // The useApi hook extracts the error message from the API response
+              const errorMessage = err?.message || err?.error || 'Error updating player participations. Please try again.'
               onStatusPopup(`❌ ${errorMessage}`, 'error', 5000)
             },
           }
         )
       } catch (err) {
         // This catch handles cases where execute throws before onError is called
+        // Don't show duplicate error message - onError should have handled it
         logger.error('Error updating participation:', err)
-        onStatusPopup('❌ Error updating player participations. Please try again.', 'error', 4000)
       }
     }
   }
@@ -534,23 +520,33 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           body: JSON.stringify({
             reg_number: loggedInUser.reg_number,
             sport: selectedSport.name,
+            event_year: eventYear,
           }),
         }),
         {
-          onSuccess: (data) => {
+          onSuccess: async (data) => {
             // Clear caches to ensure UI reflects the new participant enrollment
-            const encodedSport = encodeURIComponent(selectedSport.name)
-            clearCache(`/api/participants/${encodedSport}`)
-            clearCache(`/api/participants-count/${encodedSport}`)
-            clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
-            clearCache('/api/players')
-            clearCache('/api/me') // Current user's participation data changes
-            clearCache('/api/sports-counts') // Participant count changes
+            clearIndividualParticipationCaches(selectedSport.name, eventYear)
 
             // Update logged-in user data with latest information
             if (data.player && onUserUpdate) {
               const { password: _, ...updatedPlayer } = data.player
               onUserUpdate(updatedPlayer)
+            } else if (onUserUpdate) {
+              // If backend doesn't return player data, fetch it explicitly
+              try {
+                const userResponse = await fetchWithAuth('/api/me')
+                if (userResponse.ok) {
+                  const userData = await userResponse.json()
+                  if (userData.success && userData.player) {
+                    const { password: _, ...playerWithoutPassword } = userData.player
+                    onUserUpdate(playerWithoutPassword)
+                  }
+                }
+              } catch (updateError) {
+                logger.error('Error updating user data:', updateError)
+                // Don't block success message if user update fails
+              }
             }
 
             // Set just participated flag to show success message instead of "Already Participated"
@@ -558,30 +554,39 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             
             onStatusPopup(`✅ Participated Successfully!`, 'success', 2500)
 
-            // Close the popup immediately after successful participation
-            setTimeout(() => {
-              onClose()
-            }, 500) // Reduced delay to close faster
+            // For embedded modals (inside SportDetailsModal), don't close immediately
+            // Let the parent handle tab switching based on updated user data
+            if (embedded) {
+              // Give parent component time to update and re-evaluate tabs
+              // The parent's onUserUpdate will handle tab switching
+              setTimeout(() => {
+                onClose()
+              }, 300)
+            } else {
+              // For standalone modals, close after delay
+              setTimeout(() => {
+                onClose()
+              }, 500)
+            }
           },
           onError: (err) => {
-            const errorMessage = err.message || 'Error updating participation. Please try again.'
+            // The useApi hook extracts the error message from the API response
+            const errorMessage = err?.message || err?.error || 'Error updating participation. Please try again.'
             onStatusPopup(`❌ ${errorMessage}`, 'error', 5000)
           },
         }
       )
     } catch (err) {
       // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
       logger.error('Error while submitting individual registration:', err)
-      onStatusPopup('❌ Error while submitting. Please try again.', 'error', 2500)
     }
   }
 
   if (!isOpen) return null
 
   // Check if user has already participated in this non-team event
-  const hasAlreadyParticipated = !isTeam && loggedInUser?.participated_in && 
-    Array.isArray(loggedInUser.participated_in) &&
-    loggedInUser.participated_in.some(p => p.sport === selectedSport?.name)
+  const hasAlreadyParticipated = !isTeam && hasParticipatedInIndividual(loggedInUser, selectedSport?.name)
 
   // Individual/Cultural Events - Confirmation Dialog or Already Participated View
   if (selectedSport && !isTeam) {
@@ -591,8 +596,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         <Modal
           isOpen={isOpen}
           onClose={onClose}
-          title={selectedSport.name.toUpperCase()}
-          subtitle={EVENT_INFO.fullName}
+          title={formatSportName(selectedSport.name)}
           embedded={embedded}
           maxWidth="max-w-[420px]"
         >
@@ -628,9 +632,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           Total Players Participated: <span className="text-[#ffe66d] font-bold">{loadingParticipants ? '...' : totalParticipants}</span>
         </div>
 
-        {registrationCountdown && (
-          <div className="my-2 mb-6 text-center text-base font-semibold text-red-500">{registrationCountdown}</div>
-        )}
 
         <div className="text-center text-[1.1rem] font-semibold text-[#e5e7eb] mb-8">
           Are you sure you want to participate?
@@ -661,20 +662,38 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   }
 
   // Team Events - Team Name + Player Dropdowns
-  // Only show for logged-in users with captain_in (non-empty array)
+  // Only show for logged-in users who are captains for THIS specific sport
   if (selectedSport && isTeam) {
-    // Check if user is logged in and has captain role
-    const hasCaptainRole = loggedInUser?.captain_in && Array.isArray(loggedInUser.captain_in) && loggedInUser.captain_in.length > 0
-    if (!loggedInUser || !hasCaptainRole) {
-      // Don't show form if user is not a captain
+    // Check if user is logged in and is a captain for THIS specific sport
+    const isCaptainForThisSport = isCaptainForSport(loggedInUser, selectedSport.name)
+    if (!loggedInUser || !isCaptainForThisSport) {
+      // Don't show form if user is not a captain for this sport
       return null
     }
+    
+    // Validate playerCount is available
+    if (playerCount === 0 || !playerCount) {
+      return (
+        <Modal
+          isOpen={isOpen}
+          onClose={onClose}
+          title="Team Registration"
+          embedded={embedded}
+          maxWidth="max-w-[420px]"
+        >
+          <div className="text-center text-[#cbd5ff] py-4">
+            Team size is not configured for this sport. Please contact admin.
+          </div>
+        </Modal>
+      )
+    }
+    
     return (
       <Modal
         isOpen={isOpen}
         onClose={onClose}
         title="Team Registration"
-        subtitle={`${selectedSport.name.toUpperCase()} • ${EVENT_INFO.fullName}`}
+        subtitle={`${formatSportName(selectedSport.name)} • ${EVENT_INFO.fullName}`}
         embedded={embedded}
         maxWidth="max-w-[420px]"
       >
@@ -682,9 +701,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           Total Teams Participated: <span className="text-[#ffe66d] font-bold">{loadingTeams ? '...' : totalTeams}</span>
         </div>
 
-        {registrationCountdown && (
-          <div className="my-2 mb-[0.9rem] text-center text-base font-semibold text-red-500">{registrationCountdown}</div>
-        )}
 
         <form id="teamRegistrationForm" onSubmit={handleTeamSubmit}>
           <Input
@@ -700,9 +716,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                 .filter(([key, value]) => key !== String(index) && value)
                 .map(([_, value]) => value)
 
-              // Get team gender and year for filtering
+              // Get team gender and year_of_admission for filtering
               const teamGender = loggedInUser?.gender
-              const teamYear = loggedInUser?.year
+              const teamYearOfAdmission = loggedInUser?.year_of_admission
 
               // Filter players for this dropdown
               const filteredPlayers = players.length === 0 ? [] : (() => {
@@ -724,7 +740,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                   // Basic filters
                   if (player.reg_number === 'admin') return false
                   if (player.gender !== teamGender) return false
-                  if (player.year !== teamYear) return false
+                  if (player.year_of_admission !== teamYearOfAdmission) return false
                   
                   // Allow currently selected player to remain in list
                   if (player.reg_number === selectedPlayers[index]) return true
@@ -776,22 +792,12 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                 })
               })()
 
-              if (index === 1 && filteredPlayers.length === 0 && players.length > 0) {
-                logger.warn('No players available after filtering:', {
-                  totalPlayers: players.length,
-                  userGender: loggedInUser?.gender,
-                  userYear: loggedInUser?.year,
-                  filteredCount: filteredPlayers.length
-                })
-              }
-
-              const playerOptions = [
-                { value: '', label: players.length === 0 ? 'Loading players...' : 'Select Player' },
-                ...filteredPlayers.map((player) => ({
-                  value: player.reg_number,
-                  label: `${player.full_name} (${player.reg_number})`
-                }))
-              ]
+              const playerOptions = players.length === 0 
+                ? [{ value: '', label: 'Loading players...' }]
+                : filteredPlayers.map((player) => ({
+                    value: player.reg_number,
+                    label: `${player.full_name} (${player.reg_number})`
+                  }))
 
               return (
                 <Input
@@ -849,9 +855,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       embedded={embedded}
       maxWidth="max-w-[420px]"
     >
-      {registrationCountdown && (
-        <div className="my-2 mb-[0.9rem] text-center text-base font-semibold text-red-500">{registrationCountdown}</div>
-      )}
 
       <form id="generalRegistrationForm" onSubmit={handleGeneralSubmit}>
         <Input
@@ -883,22 +886,17 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           name="department_branch"
           type="select"
           required
-          options={DEPARTMENT_OPTIONS}
+          options={loadingDepartments ? [] : departmentOptions}
+          disabled={loadingDepartments}
         />
 
         <Input
-          label="Year"
-          id="year"
-          name="year"
+          label="Year Of Admission"
+          id="year_of_admission"
+          name="year_of_admission"
           type="select"
           required
-          options={[
-            { value: '', label: 'Select' },
-            { value: '1st Year (2025)', label: '1st Year (2025)' },
-            { value: '2nd Year (2024)', label: '2nd Year (2024)' },
-            { value: '3rd Year (2023)', label: '3rd Year (2023)' },
-            { value: '4th Year (2022)', label: '4th Year (2022)' },
-          ]}
+          options={yearOfAdmissionOptions}
         />
 
         <Input

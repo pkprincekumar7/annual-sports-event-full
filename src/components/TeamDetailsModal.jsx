@@ -1,11 +1,15 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Modal, Button, Input, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
-import { useApi, useModal } from '../hooks'
+import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
+import { clearSportCaches } from '../utils/cacheHelpers'
+import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
-import { EVENT_INFO } from '../constants/app'
+import { computeYearDisplay } from '../utils/yearHelpers'
 
-function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false }) {
+function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
+  const { eventYearConfig } = useEventYear()
+  const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [teams, setTeams] = useState([])
   const [totalTeams, setTotalTeams] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -19,6 +23,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
   const abortControllerRef = useRef(null)
   const { loading: updating, execute: executeUpdate } = useApi()
   const { loading: deleting, execute: executeDelete } = useApi()
+  const eventYear = useEventYearWithFallback(selectedYear)
   const deleteConfirmModal = useModal(false)
   
   const isAdmin = loggedInUser?.reg_number === 'admin'
@@ -55,12 +60,13 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
       return
     }
 
-    // Only fetch if sport changed or we haven't fetched yet
-    if (currentSportRef.current === sport) {
+    // Only fetch if sport or eventYear changed or we haven't fetched yet
+    const currentKey = `${sport}-${eventYear}`
+    if (currentSportRef.current === currentKey) {
       return
     }
 
-    currentSportRef.current = sport
+    currentSportRef.current = currentKey
 
     // Abort previous request if it exists
     if (abortControllerRef.current) {
@@ -82,8 +88,9 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
 
     return () => {
       isMounted = false
-      // Only abort if sport changed
-      if (currentSportRef.current !== sport) {
+      // Only abort if sport or eventYear changed
+      const currentKey = `${sport}-${eventYear}`
+      if (currentSportRef.current !== currentKey) {
         abortController.abort()
       }
       if (abortControllerRef.current === abortController) {
@@ -91,11 +98,11 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, sport])
+  }, [isOpen, sport, eventYear])
 
   const fetchPlayers = async (signal) => {
     try {
-      const response = await fetchWithAuth('/api/players', signal ? { signal } : {})
+      const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear), signal ? { signal } : {})
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -133,8 +140,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
     
     try {
       // URL encode the sport name to handle special characters like ×
-      const encodedSport = encodeURIComponent(sport)
-      const url = `/api/teams/${encodedSport}`
+      const url = buildSportApiUrl('teams', sport, eventYear)
       // Fetching teams for sport
       
       const response = await fetchWithAuth(url, signal ? { signal } : {})
@@ -213,17 +219,20 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
     }
   }
 
-  const toggleTeam = (teamName) => {
-    const newExpanded = new Set(expandedTeams)
-    if (newExpanded.has(teamName)) {
-      newExpanded.delete(teamName)
-    } else {
-      newExpanded.add(teamName)
-    }
-    setExpandedTeams(newExpanded)
-  }
+  const toggleTeam = useCallback((teamName) => {
+    setExpandedTeams(prev => {
+      // If clicking on an already expanded team, collapse it
+      if (prev.has(teamName)) {
+        const newExpanded = new Set(prev)
+        newExpanded.delete(teamName)
+        return newExpanded
+      }
+      // Otherwise, expand this team and collapse all others
+      return new Set([teamName])
+    })
+  }, [])
 
-  const handleEditPlayer = async (teamName, regNumber) => {
+  const handleEditPlayer = useCallback(async (teamName, regNumber) => {
     setEditingPlayer({ team_name: teamName, old_reg_number: regNumber })
     setSelectedReplacementPlayer('')
     
@@ -238,12 +247,12 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
         }
       }
     }
-  }
+  }, [isAdmin, players.length, fetchPlayers, onStatusPopup])
 
-  const handleCancelEdit = () => {
+  const handleCancelEdit = useCallback(() => {
     setEditingPlayer(null)
     setSelectedReplacementPlayer('')
-  }
+  }, [])
 
   const handleUpdatePlayer = async () => {
     if (!selectedReplacementPlayer) {
@@ -288,11 +297,11 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
         return
       }
 
-      // Validate year match
-      const teamYear = currentTeam.players[0].year
-      if (newPlayer.year !== teamYear) {
+      // CRITICAL: Validate year_of_admission match
+      const teamYearOfAdmission = currentTeam.players[0].year_of_admission
+      if (newPlayer.year_of_admission !== teamYearOfAdmission) {
         if (onStatusPopup) {
-          onStatusPopup(`❌ Year mismatch: New player must be in the same year (${teamYear}) as other team members.`, 'error', 4000)
+          onStatusPopup(`❌ Year mismatch: New player must be in the same year of admission (${teamYearOfAdmission}) as other team members.`, 'error', 4000)
         }
         return
       }
@@ -316,6 +325,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
             sport: sport,
             old_reg_number: editingPlayer.old_reg_number,
             new_reg_number: selectedReplacementPlayer,
+            event_year: eventYear,
           }),
         }),
         {
@@ -324,17 +334,16 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
               onStatusPopup(`✅ Player updated successfully!`, 'success', 2500)
             }
             // Clear cache before refreshing to ensure we get fresh data
-            const encodedSport = encodeURIComponent(sport)
-            clearCache(`/api/teams/${encodedSport}`)
-            clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
-            clearCache('/api/players') // Player data may have changed
+            clearSportCaches(sport, eventYear)
+            clearCache('/api/me') // Current user's data may have changed
             // Refresh team data (no signal needed for manual refresh)
             fetchTeamDetails(null)
             setEditingPlayer(null)
             setSelectedReplacementPlayer('')
           },
           onError: (err) => {
-            const errorMessage = err.message || 'Failed to update player. Please try again.'
+            // The useApi hook extracts the error message from the API response
+            const errorMessage = err?.message || err?.error || 'Failed to update player. Please try again.'
             if (onStatusPopup) {
               onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
             }
@@ -343,11 +352,8 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
       )
     } catch (err) {
       // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
       logger.error('Error updating player:', err)
-      const errorMessage = err.message || 'Error updating player. Please try again.'
-      if (onStatusPopup) {
-        onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
-      }
     }
   }
 
@@ -360,6 +366,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
           body: JSON.stringify({
             team_name: teamName,
             sport: sport,
+            event_year: eventYear,
           }),
         }),
         {
@@ -368,11 +375,8 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
               onStatusPopup(`✅ Team "${teamName}" deleted successfully! ${data.deleted_count || 0} player(s) removed.`, 'success', 3000)
             }
             // Clear cache before refreshing to ensure we get fresh data
-            clearCache(`/api/teams/${encodedSport}`)
-            clearCache(`/api/event-schedule/${encodedSport}/teams-players`) // Update dropdowns in event schedule
-            clearCache('/api/players') // Player participation data changes
+            clearSportCaches(sport, eventYear)
             clearCache('/api/me') // If any logged-in user was in this team
-            clearCache('/api/sports-counts') // Team count changes
             // Remove deleted team from expanded teams if it was expanded
             setExpandedTeams(prev => {
               const newSet = new Set(prev)
@@ -384,7 +388,8 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
             setDeletingTeam(null)
           },
           onError: (err) => {
-            const errorMessage = err.message || 'Failed to delete team. Please try again.'
+            // The useApi hook extracts the error message from the API response
+            const errorMessage = err?.message || err?.error || 'Failed to delete team. Please try again.'
             if (onStatusPopup) {
               onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
             }
@@ -394,11 +399,8 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
       )
     } catch (err) {
       // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
       logger.error('Error deleting team:', err)
-      const errorMessage = err.message || 'Error deleting team. Please try again.'
-      if (onStatusPopup) {
-        onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
-      }
       setDeletingTeam(null)
     }
   }
@@ -409,7 +411,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
         isOpen={isOpen}
         onClose={onClose}
         title="Team Details"
-        subtitle={sport ? `${sport.toUpperCase()} • ${EVENT_INFO.fullName}` : undefined}
+        subtitle={sport ? `${sport.toUpperCase()} • ${eventHighlight}` : undefined}
         embedded={embedded}
         maxWidth="max-w-[700px]"
       >
@@ -505,14 +507,18 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                             editingPlayer.team_name === team.team_name && 
                             editingPlayer.old_reg_number === player.reg_number
                           
+                          // Check if this player is the captain (use team.captain field which is more reliable)
+                          const isCaptain = team.captain === player.reg_number
+                          
                           // Get other selected reg_numbers in the team (for filtering dropdown)
                           const otherSelectedRegNumbers = team.players
                             .filter(p => p.reg_number !== player.reg_number)
                             .map(p => p.reg_number)
                           
-                          // Get team gender and year for filtering
+                          // Get team gender and year_of_admission for filtering
                           const teamGender = team.players.length > 0 ? team.players[0].gender : null
-                          const teamYear = team.players.length > 0 ? team.players[0].year : null
+                          const teamYearOfAdmission = team.players.length > 0 ? team.players[0].year_of_admission : null
+                          const teamYearDisplay = teamYearOfAdmission ? computeYearDisplay(teamYearOfAdmission, eventYear) : null
 
                           return (
                             <div
@@ -529,7 +535,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                       <span className="text-[#e5e7eb] font-semibold text-[0.9rem]">
                                         {player.full_name}
                                       </span>
-                                      {player.captain_in && Array.isArray(player.captain_in) && player.captain_in.includes(sport) && (
+                                      {isCaptain && (
                                         <span className="px-2 py-0.5 rounded text-[0.7rem] font-bold bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.4)]">
                                           CAPTAIN
                                         </span>
@@ -538,11 +544,11 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                     <div className="text-[#cbd5ff] text-[0.8rem] ml-6 space-y-0.5">
                                       <div>Reg. No: <span className="text-[#e5e7eb]">{player.reg_number}</span></div>
                                       <div>Department: <span className="text-[#e5e7eb]">{player.department_branch}</span></div>
-                                      <div>Year: <span className="text-[#e5e7eb]">{player.year}</span></div>
+                                      <div>Year: <span className="text-[#e5e7eb]">{player.year || (player.year_of_admission ? computeYearDisplay(player.year_of_admission, eventYear) : '')}</span></div>
                                       <div>Gender: <span className="text-[#e5e7eb]">{player.gender}</span></div>
                                     </div>
                                   </div>
-                                  {isAdmin && !(player.captain_in && Array.isArray(player.captain_in) && player.captain_in.includes(sport)) && (
+                                  {isAdmin && !isCaptain && (
                                     <Button
                                       type="button"
                                       onClick={() => handleEditPlayer(team.team_name, player.reg_number)}
@@ -564,21 +570,20 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                     value={selectedReplacementPlayer}
                                     onChange={(e) => setSelectedReplacementPlayer(e.target.value)}
                                     required
-                                    options={[
-                                      { value: '', label: players.length === 0 ? 'Loading players...' : 'Select Player' },
-                                      ...(players.length === 0 ? [] : players
+                                    options={players.length === 0 
+                                      ? [{ value: '', label: 'Loading players...' }]
+                                      : players
                                         .filter((player) => 
                                           player.reg_number !== 'admin' && 
                                           player.gender === teamGender &&
-                                          player.year === teamYear &&
+                                          player.year_of_admission === teamYearOfAdmission &&
                                           (player.reg_number === selectedReplacementPlayer || !otherSelectedRegNumbers.includes(player.reg_number))
                                         )
                                         .map((player) => ({
                                           value: player.reg_number,
                                           label: `${player.full_name} (${player.reg_number})`
                                         }))
-                                      )
-                                    ]}
+                                    }
                                   />
                                   <div className="flex gap-2">
                                     <Button
@@ -586,7 +591,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                       onClick={handleUpdatePlayer}
                                       disabled={updating || !selectedReplacementPlayer}
                                       loading={updating}
-                                      className="flex-1 px-4 py-2 text-[0.85rem] font-semibold rounded-[8px]"
+                                      className="flex-1 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-[0.85rem] font-semibold rounded-[8px]"
                                     >
                                       {updating ? 'Updating...' : 'Update'}
                                     </Button>
@@ -595,7 +600,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                       onClick={handleCancelEdit}
                                       disabled={updating}
                                       variant="secondary"
-                                      className="flex-1 px-4 py-2 text-[0.85rem] font-semibold rounded-[8px]"
+                                      className="flex-1 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-[0.85rem] font-semibold rounded-[8px]"
                                     >
                                       Cancel
                                     </Button>

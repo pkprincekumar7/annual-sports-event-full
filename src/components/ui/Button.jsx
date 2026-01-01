@@ -16,6 +16,7 @@ function Button({
 }) {
   const baseClasses = `
     rounded-full 
+    px-6 
     py-[9px] 
     text-[0.9rem] 
     font-bold 

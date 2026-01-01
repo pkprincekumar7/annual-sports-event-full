@@ -10,7 +10,7 @@ import Sport from '../models/Sport.js'
 import EventYear from '../models/EventYear.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { asyncHandler, sendErrorResponse } from '../utils/errorHandler.js'
-import { computePlayerParticipation, computeYearDisplay } from '../utils/playerHelpers.js'
+import { computePlayerParticipation } from '../utils/playerHelpers.js'
 import { getCache, setCache } from '../utils/cache.js'
 import { ADMIN_REG_NUMBER } from '../constants/index.js'
 import logger from '../utils/logger.js'
@@ -23,7 +23,7 @@ const router = express.Router()
  * Year Filter: Accepts ?year=2026 parameter (defaults to active year)
  * Query Sports collection to get all sports dynamically (filtered by year)
  * Compute participation from Sports collection (filtered by year)
- * Use computeYearDisplay() helper to generate "1st Year (2025)" format from year_of_admission
+ * Use year field directly (already formatted as "1st Year (2025)")
  */
 router.get(
   '/export-excel',
@@ -78,10 +78,8 @@ router.get(
         // Compute participation data for this player
         const participation = await computePlayerParticipation(player.reg_number, eventYear)
         
-        // Compute year display format
-        const yearDisplay = player.year_of_admission
-          ? computeYearDisplay(player.year_of_admission, eventYear)
-          : ''
+        // Year is already stored directly
+        const yearDisplay = player.year || ''
 
         const row = {
           'REG Number': player.reg_number || '',

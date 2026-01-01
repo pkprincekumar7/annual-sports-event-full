@@ -780,7 +780,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
             ) : (
               <div className="space-y-2">
                 {eventYears.map((year) => (
-                  <div key={year._id} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div key={year._id || year.year} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div className="flex flex-row items-center justify-start gap-2">
                       <div>
                         <span className="font-bold text-[#ffe66d]">{year.year}</span>
@@ -958,7 +958,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
             ) : (
               <div className="space-y-2">
                 {sports.map((sport) => (
-                  <div key={sport._id} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div key={sport._id || sport.name} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div>
                       <span className="font-bold text-[#ffe66d]">{formatSportName(sport.name)}</span>
                       <span className="ml-2 text-[#94a3b8] text-sm">
@@ -1062,7 +1062,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
             ) : (
               <div className="space-y-2">
                 {departments.sort((a, b) => (a.display_order || 0) - (b.display_order || 0)).map((dept) => (
-                  <div key={dept._id} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div key={dept._id || dept.name} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div>
                       <span className="font-bold text-[#ffe66d]">{dept.name}</span>
                       {dept.code && <span className="ml-2 text-[#94a3b8]">({dept.code})</span>}

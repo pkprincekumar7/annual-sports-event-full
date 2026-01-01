@@ -10,7 +10,6 @@ import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError, handleForbiddenError } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
-import { canParticipateInEvents } from '../utils/playerHelpers.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
 import { getEventYear } from '../utils/yearHelpers.js'
 import { findSportByNameAndYear } from '../utils/sportHelpers.js'
@@ -116,28 +115,17 @@ router.post(
       }
     }
 
-    // CRITICAL: Validate that all players have the same year_of_admission
+    // CRITICAL: Validate that all players have the same year
     if (playerData.length > 0) {
-      const firstYearOfAdmission = playerData[0].year_of_admission
-      const yearMismatches = playerData.filter((p) => p.year_of_admission !== firstYearOfAdmission).map((p) => `${p.full_name} (${p.reg_number})`)
+      const firstYear = playerData[0].year
+      const yearMismatches = playerData.filter((p) => p.year !== firstYear).map((p) => `${p.full_name} (${p.reg_number})`)
 
       if (yearMismatches.length > 0) {
         return sendErrorResponse(
           res,
           400,
-          `Year mismatch: ${yearMismatches.join(', ')} must be in the same year of admission (${firstYearOfAdmission}) as other team members.`
+          `Year mismatch: ${yearMismatches.join(', ')} must be in the same year (${firstYear}) as other team members.`
         )
-      }
-
-      // Validate all team members are 1st to 5th year students
-      for (const player of playerData) {
-        if (!canParticipateInEvents(player.year_of_admission)) {
-          return sendErrorResponse(
-            res,
-            400,
-            `${player.full_name} (${player.reg_number}) is not eligible to participate. Only 1st to 5th year students can participate.`
-          )
-        }
       }
     }
 
@@ -291,7 +279,7 @@ router.get(
             reg_number: player.reg_number,
             full_name: player.full_name,
             department_branch: player.department_branch,
-            year_of_admission: player.year_of_admission,
+            year: player.year,
             gender: player.gender,
             mobile_number: player.mobile_number,
             email_id: player.email_id,
@@ -407,13 +395,13 @@ router.post(
         )
       }
 
-      // CRITICAL: Validate same year of admission
-      const teamYearOfAdmission = currentTeamMembers[0].year_of_admission
-      if (newPlayer.year_of_admission !== teamYearOfAdmission) {
+      // CRITICAL: Validate same year
+      const teamYear = currentTeamMembers[0].year
+      if (newPlayer.year !== teamYear) {
         return sendErrorResponse(
           res,
           400,
-          `Year mismatch: New player must be in the same year of admission (${teamYearOfAdmission}) as other team members.`
+          `Year mismatch: New player must be in the same year (${teamYear}) as other team members.`
         )
       }
     }
@@ -427,15 +415,6 @@ router.post(
         res,
         400,
         `New player is already in a team (${existingTeam.team_name}) for ${sport}. A player can only belong to one team per sport.`
-      )
-    }
-
-    // Validate new player is eligible to participate
-    if (!canParticipateInEvents(newPlayer.year_of_admission)) {
-      return sendErrorResponse(
-        res,
-        400,
-        `New player is not eligible to participate. Only 1st to 5th year students can participate.`
       )
     }
 
@@ -603,13 +582,6 @@ router.post(
         continue
       }
 
-      // Validate participation eligibility
-      if (!canParticipateInEvents(player.year_of_admission)) {
-        errors.push(
-          `${player.full_name} (${reg_number}) is not eligible to participate. Only 1st to 5th year students can participate.`
-        )
-        continue
-      }
     }
 
     if (errors.length > 0) {

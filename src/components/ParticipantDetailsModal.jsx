@@ -4,7 +4,6 @@ import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hoo
 import { fetchWithAuth } from '../utils/api'
 import { clearIndividualParticipationCaches } from '../utils/cacheHelpers'
 import logger from '../utils/logger'
-import { computeYearDisplay } from '../utils/yearHelpers'
 
 function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
   const { eventYearConfig } = useEventYear()
@@ -297,7 +296,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
                       <div className="px-4 pb-4 pt-2 border-t border-[rgba(148,163,184,0.2)]">
                         <div className="text-[#cbd5ff] text-[0.85rem] ml-6 space-y-1">
                           <div>Department: <span className="text-[#e5e7eb]">{participant.department_branch}</span></div>
-                          <div>Year: <span className="text-[#e5e7eb]">{participant.year || (participant.year_of_admission ? computeYearDisplay(participant.year_of_admission, eventYear) : '')}</span></div>
+                          <div>Year: <span className="text-[#e5e7eb]">{participant.year || ''}</span></div>
                           <div>Gender: <span className="text-[#e5e7eb]">{participant.gender}</span></div>
                           <div>Mobile: <span className="text-[#e5e7eb]">{participant.mobile_number}</span></div>
                           <div>Email: <span className="text-[#e5e7eb]">{participant.email_id}</span></div>

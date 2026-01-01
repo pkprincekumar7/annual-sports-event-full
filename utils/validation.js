@@ -9,7 +9,7 @@ import {
   MATCH_STATUSES,
   SPORT_TYPES,
 } from '../constants/index.js'
-import { validateDepartmentExists, canParticipateInEvents } from './playerHelpers.js'
+import { validateDepartmentExists } from './playerHelpers.js'
 
 /**
  * Validate email format
@@ -29,7 +29,7 @@ export const isValidPhone = (phone) => {
 
 /**
  * Validate player registration data
- * Updated to use year_of_admission and validate against Department collection
+ * Updated to use year field (formatted string) and validate against Department collection
  */
 export const validatePlayerData = async (data) => {
   const errors = []
@@ -58,24 +58,14 @@ export const validatePlayerData = async (data) => {
     }
   }
 
-  // Validate year_of_admission (numeric)
-  if (data.year_of_admission === undefined || data.year_of_admission === null) {
-    errors.push('Year of admission is required')
+  // Validate year (formatted string like "1st Year (2025)")
+  if (!data.year?.trim()) {
+    errors.push('Year is required')
   } else {
-    const yearOfAdmission = parseInt(data.year_of_admission)
-    if (isNaN(yearOfAdmission)) {
-      errors.push('Year of admission must be a valid number')
-    } else {
-      // Validate reasonable range (e.g., 2015-2030)
-      const currentYear = new Date().getFullYear()
-      if (yearOfAdmission < 2015 || yearOfAdmission > currentYear + 1) {
-        errors.push(`Year of admission must be between 2015 and ${currentYear + 1}`)
-      } else {
-        // Validate participation eligibility (1st to 5th year only)
-        if (!canParticipateInEvents(yearOfAdmission)) {
-          errors.push('Only 1st to 5th year students can register and participate in events')
-        }
-      }
+    // Validate format: should match pattern like "1st Year (2025)", "2nd Year (2024)", etc.
+    const yearPattern = /^(1st|2nd|3rd|4th|5th)\s+Year\s+\(\d{4}\)$/
+    if (!yearPattern.test(data.year.trim())) {
+      errors.push('Year must be in the format "1st Year (2025)", "2nd Year (2024)", etc.')
     }
   }
 
@@ -144,7 +134,7 @@ export const isTeamSport = (sport) => {
 
 /**
  * Validate player update data (without password)
- * Updated to use year_of_admission and validate against Department collection
+ * Updated to use year field and validate against Department collection
  */
 export const validateUpdatePlayerData = async (data) => {
   const errors = []
@@ -173,7 +163,7 @@ export const validateUpdatePlayerData = async (data) => {
     }
   }
 
-  // year_of_admission cannot be modified (validation will be done in route handler)
+  // year cannot be modified (validation will be done in route handler)
 
   if (!data.mobile_number?.trim()) {
     errors.push('Mobile number is required')

@@ -24,11 +24,11 @@ const playerSchema = new mongoose.Schema({
     trim: true
     // No enum restriction - validated against Department collection
   },
-  year_of_admission: {
-    type: Number,
-    required: true
-    // No enum restriction - accepts any numeric year
-    // Display format "1st Year (2025)" computed dynamically
+  year: {
+    type: String,
+    required: true,
+    trim: true
+    // Stores formatted year string like "1st Year (2025)", "2nd Year (2024)", etc.
   },
   mobile_number: {
     type: String,
@@ -55,7 +55,7 @@ const playerSchema = new mongoose.Schema({
 // Create indexes for faster lookups
 playerSchema.index({ reg_number: 1 }) // Already unique, but explicit index for performance
 playerSchema.index({ department_branch: 1 }) // For queries filtering by department
-playerSchema.index({ year_of_admission: 1 }) // For queries filtering by year of admission
+playerSchema.index({ year: 1 }) // For queries filtering by year
 
 const Player = mongoose.model('Player', playerSchema)
 

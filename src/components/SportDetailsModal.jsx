@@ -445,9 +445,6 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
         {/* Header */}
         <div className="px-6 py-4 border-b border-[rgba(255,255,255,0.1)] flex items-center justify-between">
           <div>
-            <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1">
-              {isAdmin ? 'Admin Panel' : 'Sport Details'}
-            </div>
             <div className="text-[1.25rem] font-extrabold uppercase tracking-[0.14em] text-[#ffe66d]">
               {formatSportName(selectedSport.name)}
             </div>

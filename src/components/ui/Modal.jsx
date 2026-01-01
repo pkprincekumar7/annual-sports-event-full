@@ -10,7 +10,7 @@ function Modal({
   onClose, 
   title, 
   subtitle,
-  headerLabel = 'Admin Panel',
+  headerLabel = null,
   children, 
   embedded = false,
   maxWidth = 'max-w-[700px]',

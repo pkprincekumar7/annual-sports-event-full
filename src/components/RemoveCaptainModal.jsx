@@ -19,7 +19,12 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
       fetchWithAuth(buildApiUrlWithYear('/api/captains-by-sport', eventYear))
         .then((res) => {
           if (!res.ok) {
-            throw new Error(`HTTP error! status: ${res.status}`)
+            // Only throw error for server errors (5xx), not for empty data (200/400)
+            if (res.status >= 500) {
+              throw new Error(`HTTP error! status: ${res.status}`)
+            }
+            // For other status codes, treat as empty data
+            return res.json().then(data => ({ success: true, captainsBySport: {} }))
           }
           return res.json()
         })
@@ -28,16 +33,16 @@ function RemoveCaptainModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
             setCaptainsBySport(data.captainsBySport || {})
           } else {
             setCaptainsBySport({})
-            // Don't show error if we're refreshing after removal
-            if (!isRefreshingRef.current && onStatusPopup) {
-              onStatusPopup(`❌ ${data.error || 'Error fetching captains. Please try again.'}`, 'error', 2500)
+            // Only show error for actual errors, not for empty data
+            if (!isRefreshingRef.current && onStatusPopup && data.error) {
+              onStatusPopup(`❌ ${data.error}`, 'error', 2500)
             }
           }
         })
         .catch((err) => {
           setCaptainsBySport({})
-          // Don't show error if we're refreshing after removal
-          if (!isRefreshingRef.current && onStatusPopup) {
+          // Only show error for actual network/server errors, not for empty data
+          if (!isRefreshingRef.current && onStatusPopup && err.message && !err.message.includes('HTTP error')) {
             onStatusPopup('❌ Error fetching captains. Please try again.', 'error', 2500)
           }
         })

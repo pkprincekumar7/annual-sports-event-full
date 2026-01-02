@@ -43,14 +43,14 @@ router.get(
           eventYear = activeYear.year
           setCache('/api/event-years/active', activeYear)
         } else {
-          return sendErrorResponse(res, 404, 'No active event year found')
+          return sendErrorResponse(res, 400, 'No active event year found')
         }
       }
     } else {
       // Validate year exists
       const yearExists = await EventYear.findOne({ year: eventYear })
       if (!yearExists) {
-        return sendErrorResponse(res, 404, 'Event year not found')
+        return sendErrorResponse(res, 400, 'Event year not found')
       }
     }
 

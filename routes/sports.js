@@ -305,11 +305,31 @@ router.get('/sports/:name', asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 404, 'Route not found')
   }
   
-  const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+  let eventYear
   
-  const sport = await findSportByNameAndYear(name, eventYear)
+  try {
+    // Try to get event year - if it doesn't exist, return 400 error
+    eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+  } catch (error) {
+    // If event year not found, return 400 error
+    if (error.message === 'Event year not found' || error.message === 'No active event year found') {
+      return sendErrorResponse(res, 400, error.message)
+    }
+    // Re-throw other errors to be handled by asyncHandler
+    throw error
+  }
   
-  res.json(sport)
+  try {
+    const sport = await findSportByNameAndYear(name, eventYear)
+    res.json(sport)
+  } catch (error) {
+    // If sport not found, return 404 error
+    if (error.message.includes('not found')) {
+      return sendErrorResponse(res, 404, error.message)
+    }
+    // Re-throw other errors to be handled by asyncHandler
+    throw error
+  }
 }))
 
 export default router

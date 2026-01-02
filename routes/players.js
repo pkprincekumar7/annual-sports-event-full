@@ -63,7 +63,13 @@ router.get(
     const cacheKey = `/api/me?year=${eventYear}`
     const cached = getCache(cacheKey)
     if (cached && cached.reg_number === req.user.reg_number) {
-      return res.json(cached)
+      // Always use sendSuccessResponse for consistency, even for cached data
+      // Note: cached data might be the player object directly, so wrap it
+      if (cached.player) {
+        return sendSuccessResponse(res, cached)
+      } else {
+        return sendSuccessResponse(res, { player: cached })
+      }
     }
 
     const user = await Player.findOne({ reg_number: req.user.reg_number })
@@ -76,7 +82,7 @@ router.get(
     // Add computed fields
     const userWithComputed = await addComputedFields(user, eventYear)
 
-    // Cache the result
+    // Cache the result (store as player object to match response format)
     setCache(cacheKey, userWithComputed)
 
     return sendSuccessResponse(res, { player: userWithComputed })
@@ -114,7 +120,8 @@ router.get(
     const cacheKey = `/api/players?year=${eventYear}`
     const cached = getCache(cacheKey)
     if (cached) {
-      return res.json(cached)
+      // Always use sendSuccessResponse for consistency, even for cached data
+      return sendSuccessResponse(res, cached)
     }
 
     const players = await Player.find({ reg_number: { $ne: 'admin' } })

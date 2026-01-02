@@ -48,7 +48,9 @@ router.get(
     const cacheKey = `/api/points-table/${sport}?year=${eventYear}`
     const cached = getCache(cacheKey)
     if (cached) {
-      return res.json(cached)
+      // Always use sendSuccessResponse for consistency, even for cached data
+      // sendSuccessResponse will add success: true, overriding any existing success field
+      return sendSuccessResponse(res, cached)
     }
 
     // Get points table entries for this sport and year
@@ -65,7 +67,7 @@ router.get(
       total_participants: pointsEntries.length
     }
 
-    // Cache the result
+    // Cache the result (without success field, as sendSuccessResponse adds it)
     setCache(cacheKey, result)
 
     return sendSuccessResponse(res, result)

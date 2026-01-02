@@ -263,7 +263,8 @@ router.get(
     const cacheKey = `/api/teams/${sport}?year=${eventYear}`
     const cached = getCache(cacheKey)
     if (cached) {
-      return res.json(cached)
+      // Always use sendSuccessResponse for consistency, even for cached data
+      return sendSuccessResponse(res, cached)
     }
 
     // Find sport by name and event_year

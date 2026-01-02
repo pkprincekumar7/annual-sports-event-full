@@ -149,8 +149,19 @@ router.get(
   authenticateToken,
   requireAdmin,
   asyncHandler(async (req, res) => {
-    // Get event year (default to active year if not provided)
-    const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+    let eventYear
+    
+    try {
+      // Try to get event year - if it doesn't exist, return empty object
+      eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+    } catch (error) {
+      // If event year not found, return empty object instead of error
+      if (error.message === 'Event year not found' || error.message === 'No active event year found') {
+        return sendSuccessResponse(res, { captainsBySport: {} })
+      }
+      // Re-throw other errors to be handled by asyncHandler
+      throw error
+    }
 
     // Get all sports with eligible captains for this year
     const sports = await Sport.find({
@@ -170,29 +181,31 @@ router.get(
       }
     })
 
-    // Fetch all captains at once
-    const captains = await Player.find({
-      reg_number: { $in: Array.from(captainRegNumbers) }
-    })
-      .select('-password')
-      .lean()
+    // Fetch all captains at once (only if there are any)
+    if (captainRegNumbers.size > 0) {
+      const captains = await Player.find({
+        reg_number: { $in: Array.from(captainRegNumbers) }
+      })
+        .select('-password')
+        .lean()
 
-    const captainsMap = new Map(captains.map(p => [p.reg_number, p]))
+      const captainsMap = new Map(captains.map(p => [p.reg_number, p]))
 
-    // Group captains by sport
-    sports.forEach(sport => {
-      if (sport.eligible_captains && Array.isArray(sport.eligible_captains)) {
-        if (!captainsBySport[sport.name]) {
-          captainsBySport[sport.name] = []
-        }
-        sport.eligible_captains.forEach(regNumber => {
-          const captain = captainsMap.get(regNumber)
-          if (captain) {
-            captainsBySport[sport.name].push(captain)
+      // Group captains by sport
+      sports.forEach(sport => {
+        if (sport.eligible_captains && Array.isArray(sport.eligible_captains)) {
+          if (!captainsBySport[sport.name]) {
+            captainsBySport[sport.name] = []
           }
-        })
-      }
-    })
+          sport.eligible_captains.forEach(regNumber => {
+            const captain = captainsMap.get(regNumber)
+            if (captain) {
+              captainsBySport[sport.name].push(captain)
+            }
+          })
+        }
+      })
+    }
 
     return sendSuccessResponse(res, { captainsBySport })
   })

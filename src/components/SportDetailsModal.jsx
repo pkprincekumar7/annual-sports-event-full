@@ -133,17 +133,21 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
         availableTabs.push({ id: 'points', label: 'Points Table' })
       }
     } else {
-      // For individual sports, always show "View Enrollment" first, then "Enroll Now" if not participated
-      // Always show "View Enrollment" tab first for non-team sports
-      availableTabs.push({ id: 'view', label: 'View Enrollment' })
+      // For individual sports:
+      // - If NOT participated: Show "Enroll Now" first, then "View Events", then "Points Table" (if dual)
+      // - If participated: Show "View Enrollment" first, then "View Events", then "Points Table" (if dual)
       
-      // Show "Enroll Now" tab only if user hasn't participated yet
       if (!hasParticipatedInIndividualEvent) {
+        // Not participated: "Enroll Now" should be first and auto-selected
         availableTabs.push({ id: 'enroll', label: 'Enroll Now' })
+      } else {
+        // Already participated: "View Enrollment" should be first and auto-selected
+        availableTabs.push({ id: 'view', label: 'View Enrollment' })
       }
       
+      // Always show "View Events" and "Points Table" (if dual sport)
       availableTabs.push({ id: 'events', label: 'View Events' })
-      // Add Points Table tab for dual_player sports (non-admin)
+      // Add Points Table tab for dual_player sports (non-admin) - always show if dual sport
       if (isDualSport) {
         availableTabs.push({ id: 'points', label: 'Points Table' })
       }
@@ -151,7 +155,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
     
     // Set active tab synchronously - set to first tab when sport changes or when participation status changes
     if (availableTabs.length > 0) {
-      // Use first available tab
+      // Use first available tab (which will be "Enroll Now" if not participated, "View Enrollment" if participated)
       const firstTab = availableTabs[0].id
       
       // Set the tab when sport changes, participation status changes, or if current tab is not in available tabs
@@ -162,9 +166,9 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
         hasSetInitialTabRef.current = true
         setActiveTab(firstTab)
       } else if (!isTeam && activeTab === 'enroll' && hasParticipatedInIndividualEvent) {
-        // If user just participated and "enroll" tab is active, switch to "view" tab
+        // If user just participated and "enroll" tab is active, close modal (will reopen with correct tabs next time)
         initialTabSetRef.current = true
-        setActiveTab('view')
+        // Don't switch tab - let modal close and reopen with correct tabs
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -304,31 +308,20 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             key={`enroll-${selectedSport.name}-${hasParticipatedInIndividualEvent ? 'participated' : 'not-participated'}`}
             isOpen={true}
             onClose={() => {
-              // After successful individual participation, switch to view tab instead of closing
-              // This ensures the UI reflects the updated participation status
-              const hasParticipated = hasParticipatedInIndividual(loggedInUser, selectedSport?.name)
-              if (hasParticipated) {
-                setActiveTab('view')
-              } else {
+              // After successful individual participation, close the modal
+              // Next time it opens, it will show "View Enrollment" tab first
               onClose()
-              }
             }}
             selectedSport={selectedSport}
             onStatusPopup={onStatusPopup}
             loggedInUser={loggedInUser}
             onUserUpdate={(updatedUser) => {
-              // Update user and force tab re-evaluation
+              // Update user data
               if (onUserUpdate) {
                 onUserUpdate(updatedUser)
               }
-              // After user update, check if they participated and switch to view tab
-              // Use a small delay to ensure state has propagated
-              setTimeout(() => {
-                const hasParticipated = hasParticipatedInIndividual(updatedUser, selectedSport?.name)
-                if (hasParticipated && activeTab === 'enroll') {
-                  setActiveTab('view')
-                }
-              }, 200)
+              // After successful participation, close the modal
+              // The modal will close automatically via RegisterModal's onClose after success
             }}
             embedded={true}
             selectedYear={selectedYear}
@@ -410,17 +403,21 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
     } else {
       // Individual/cultural events
       const tabs = []
-      // Always show "View Enrollment" tab first for non-team sports
-      tabs.push({ id: 'view', label: 'View Enrollment' })
       
-      // Show "Enroll Now" tab only if user hasn't participated yet
+      // Check participation status
       const hasParticipated = !isAdmin && hasParticipatedInIndividual(loggedInUser, selectedSport?.name)
+      
       if (!hasParticipated) {
+        // Not participated: "Enroll Now" should be first
         tabs.push({ id: 'enroll', label: 'Enroll Now' })
+      } else {
+        // Already participated: "View Enrollment" should be first
+        tabs.push({ id: 'view', label: 'View Enrollment' })
       }
       
+      // Always show "View Events" and "Points Table" (if dual sport)
       tabs.push({ id: 'events', label: 'View Events' })
-      // Add Points Table tab for dual_player sports (non-admin)
+      // Add Points Table tab for dual_player sports (non-admin) - always show if dual sport
       if (isDualSport) {
         tabs.push({ id: 'points', label: 'Points Table' })
       }

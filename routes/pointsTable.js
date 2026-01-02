@@ -24,13 +24,33 @@ router.get(
   authenticateToken,
   asyncHandler(async (req, res) => {
     const { sport } = req.params
-    const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+    
+    let eventYear
+    
+    try {
+      // Try to get event year - if it doesn't exist, return empty points table
+      eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+    } catch (error) {
+      // If event year not found, return empty points table instead of error
+      if (error.message === 'Event year not found' || error.message === 'No active event year found') {
+        const emptyResult = {
+          sport: sport,
+          points_table: [],
+          total_participants: 0
+        }
+        return sendSuccessResponse(res, emptyResult)
+      }
+      // Re-throw other errors to be handled by asyncHandler
+      throw error
+    }
 
     // Check cache
     const cacheKey = `/api/points-table/${sport}?year=${eventYear}`
     const cached = getCache(cacheKey)
     if (cached) {
-      return res.json(cached)
+      // Always use sendSuccessResponse for consistency, even for cached data
+      // sendSuccessResponse will add success: true, overriding any existing success field
+      return sendSuccessResponse(res, cached)
     }
 
     // Get points table entries for this sport and year
@@ -47,7 +67,7 @@ router.get(
       total_participants: pointsEntries.length
     }
 
-    // Cache the result
+    // Cache the result (without success field, as sendSuccessResponse adds it)
     setCache(cacheKey, result)
 
     return sendSuccessResponse(res, result)

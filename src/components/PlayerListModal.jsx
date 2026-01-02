@@ -4,7 +4,6 @@ import { useApi, useDepartments, useEventYearWithFallback } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { GENDER_OPTIONS } from '../constants/app'
-import { computeYearDisplay } from '../utils/yearHelpers'
 
 function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   const [players, setPlayers] = useState([])
@@ -97,7 +96,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
       full_name: player.full_name,
       gender: player.gender,
       department_branch: player.department_branch,
-      year_of_admission: player.year_of_admission, // Store numeric year_of_admission
+      year: player.year, // Store year string
       mobile_number: player.mobile_number,
       email_id: player.email_id,
     })
@@ -258,7 +257,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                           {player.full_name}
                         </div>
                         <div className="text-[#a5b4fc] text-[0.8rem] mt-1">
-                          Reg. No: {player.reg_number} • {player.department_branch} • {player.year || (player.year_of_admission ? computeYearDisplay(player.year_of_admission, eventYear) : '')}
+                          Reg. No: {player.reg_number} • {player.department_branch} • {player.year || ''}
                         </div>
                       </div>
                       <div className="text-[#ffe66d] text-sm">Click to edit</div>
@@ -298,9 +297,9 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                         />
 
                         <Input
-                          label="Year Of Admission"
+                          label="Year"
                           type="text"
-                          value={editedData.year_of_admission ? computeYearDisplay(editedData.year_of_admission, eventYear) : ''}
+                          value={editedData.year || ''}
                           disabled={true}
                           required
                         />

@@ -24,23 +24,36 @@ const router = express.Router()
  * IMPORTANT: This route must come before /:name to avoid conflicts
  */
 router.get('/sports', asyncHandler(async (req, res) => {
-  const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
-    
-    // Check cache
-    const cacheKey = `/api/sports?year=${eventYear}`
-    const cached = getCache(cacheKey)
-    if (cached) {
-      return res.json(cached)
+  let eventYear
+  
+  try {
+    // Try to get event year - if it doesn't exist, return empty array
+    eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+  } catch (error) {
+    // If event year not found, return empty array instead of error
+    if (error.message === 'Event year not found' || error.message === 'No active event year found') {
+      return res.json([])
     }
+    // Re-throw other errors to be handled by asyncHandler
+    throw error
+  }
     
-    const sports = await Sport.find({ event_year: eventYear })
-      .sort({ category: 1, name: 1 })
-      .lean()
-    
-    // Cache the result
-    setCache(cacheKey, sports)
-    
-    res.json(sports)
+  // Check cache
+  const cacheKey = `/api/sports?year=${eventYear}`
+  const cached = getCache(cacheKey)
+  if (cached) {
+    return res.json(cached)
+  }
+  
+  // Query database - this should never throw an error, just return empty array if no results
+  const sports = await Sport.find({ event_year: eventYear })
+    .sort({ category: 1, name: 1 })
+    .lean()
+  
+  // Cache the result
+  setCache(cacheKey, sports)
+  
+  res.json(sports)
 }))
 
 /**
@@ -220,39 +233,56 @@ router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistratio
  * IMPORTANT: This route must come BEFORE /:name to avoid route conflicts
  */
 router.get('/sports-counts', authenticateToken, asyncHandler(async (req, res) => {
-  const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
-    
-    // Check cache
-    const cacheKey = `/api/sports-counts?year=${eventYear}`
-    const cached = getCache(cacheKey)
-    if (cached) {
-      return res.json(cached)
-    }
-    
-    const sports = await Sport.find({ event_year: eventYear }).lean()
-    
-    const teamsCounts = {}
-    const participantsCounts = {}
-    
-    sports.forEach(sport => {
-      if (sport.type === 'dual_team' || sport.type === 'multi_team') {
-        // Count teams
-        teamsCounts[sport.name] = sport.teams_participated ? sport.teams_participated.length : 0
-      } else {
-        // Count participants
-        participantsCounts[sport.name] = sport.players_participated ? sport.players_participated.length : 0
+  let eventYear
+  
+  try {
+    // Try to get event year - if it doesn't exist, return empty arrays
+    eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+  } catch (error) {
+    // If event year not found, return empty arrays instead of error
+    if (error.message === 'Event year not found' || error.message === 'No active event year found') {
+      const emptyResult = {
+        teams_counts: [],
+        participants_counts: []
       }
-    })
-    
-    const result = {
-      teams_counts: teamsCounts,
-      participants_counts: participantsCounts
+      return res.json(emptyResult)
     }
-    
-    // Cache the result
-    setCache(cacheKey, result)
-    
-    res.json(result)
+    // Re-throw other errors to be handled by asyncHandler
+    throw error
+  }
+  
+  // Check cache
+  const cacheKey = `/api/sports-counts?year=${eventYear}`
+  const cached = getCache(cacheKey)
+  if (cached) {
+    return res.json(cached)
+  }
+  
+  // Query database - this should never throw an error, just return empty array if no results
+  const sports = await Sport.find({ event_year: eventYear }).lean()
+  
+  const teamsCounts = {}
+  const participantsCounts = {}
+  
+  sports.forEach(sport => {
+    if (sport.type === 'dual_team' || sport.type === 'multi_team') {
+      // Count teams
+      teamsCounts[sport.name] = sport.teams_participated ? sport.teams_participated.length : 0
+    } else {
+      // Count participants
+      participantsCounts[sport.name] = sport.players_participated ? sport.players_participated.length : 0
+    }
+  })
+  
+  const result = {
+    teams_counts: teamsCounts,
+    participants_counts: participantsCounts
+  }
+  
+  // Cache the result
+  setCache(cacheKey, result)
+  
+  res.json(result)
 }))
 
 /**
@@ -275,11 +305,31 @@ router.get('/sports/:name', asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 404, 'Route not found')
   }
   
-  const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+  let eventYear
   
-  const sport = await findSportByNameAndYear(name, eventYear)
+  try {
+    // Try to get event year - if it doesn't exist, return 400 error
+    eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+  } catch (error) {
+    // If event year not found, return 400 error
+    if (error.message === 'Event year not found' || error.message === 'No active event year found') {
+      return sendErrorResponse(res, 400, error.message)
+    }
+    // Re-throw other errors to be handled by asyncHandler
+    throw error
+  }
   
-  res.json(sport)
+  try {
+    const sport = await findSportByNameAndYear(name, eventYear)
+    res.json(sport)
+  } catch (error) {
+    // If sport not found, return 404 error
+    if (error.message.includes('not found')) {
+      return sendErrorResponse(res, 404, error.message)
+    }
+    // Re-throw other errors to be handled by asyncHandler
+    throw error
+  }
 }))
 
 export default router

@@ -18,7 +18,7 @@ export const SPORT_TYPES = ['dual_team', 'multi_team', 'dual_player', 'multi_pla
 // Note: Hardcoded sports arrays (TEAM_SPORTS, INDIVIDUAL_SPORTS, CULTURAL_SPORTS) removed
 // Sports are now fetched dynamically from the Sport model via API
 // Note: VALID_DEPARTMENTS removed - departments are now fetched dynamically from Department model via API
-// Note: VALID_YEARS removed - year_of_admission accepts any numeric year, display format computed dynamically
+// Note: VALID_YEARS removed - year field stores formatted string like "1st Year (2025)" directly
 
 // Participation Limits
 export const MAX_PARTICIPATIONS = 10

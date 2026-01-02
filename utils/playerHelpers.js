@@ -7,54 +7,6 @@ import EventYear from '../models/EventYear.js'
 import Sport from '../models/Sport.js'
 
 /**
- * Compute year display format from year_of_admission
- * @param {number} yearOfAdmission - Year of admission (e.g., 2025, 2024)
- * @param {number|null} currentYear - Current year (defaults to current year if not provided)
- * @returns {string} Display format like "1st Year (2025)" or "5th Year (2021)"
- */
-export function computeYearDisplay(yearOfAdmission, currentYear = null) {
-  // If currentYear not provided, use current year
-  if (!currentYear) {
-    currentYear = new Date().getFullYear()
-  }
-  
-  // Calculate year difference
-  const yearDifference = currentYear - yearOfAdmission
-  
-  // Map to display format (supports up to 5th year, but can display beyond)
-  const yearLabels = {
-    1: '1st Year',
-    2: '2nd Year',
-    3: '3rd Year',
-    4: '4th Year',
-    5: '5th Year'
-  }
-  
-  const label = yearLabels[yearDifference] || `${yearDifference}th Year`
-  
-  return `${label} (${yearOfAdmission})`
-}
-
-/**
- * Check if player can participate in events (1st to 5th year students only)
- * @param {number} yearOfAdmission - Year of admission (e.g., 2025, 2024)
- * @param {number|null} currentYear - Current year (defaults to current year if not provided)
- * @returns {boolean} True if player is in 1st to 5th year, false otherwise
- */
-export function canParticipateInEvents(yearOfAdmission, currentYear = null) {
-  // If currentYear not provided, use current year
-  if (!currentYear) {
-    currentYear = new Date().getFullYear()
-  }
-  
-  // Calculate year difference
-  const yearDifference = currentYear - yearOfAdmission
-  
-  // Only 1st to 5th year students can participate
-  return yearDifference >= 1 && yearDifference <= 5
-}
-
-/**
  * Compute player participation from Sports collection
  * @param {string} playerRegNumber - Player registration number
  * @param {number|null} eventYear - Event year (defaults to active year if not provided)

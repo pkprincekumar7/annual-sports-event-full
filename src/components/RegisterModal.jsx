@@ -6,7 +6,7 @@ import { clearTeamParticipationCaches, clearIndividualParticipationCaches } from
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
 import { EVENT_INFO, GENDER_OPTIONS } from '../constants/app'
-import { generateYearOfAdmissionOptions, canParticipateInEvents } from '../utils/yearHelpers'
+import { generateYearOfAdmissionOptions } from '../utils/yearHelpers'
 import { formatSportName } from '../utils/stringHelpers'
 import { isTeamSport, getSportType, getTeamSize, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual } from '../utils/sportHelpers'
 
@@ -254,19 +254,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     const fullName = form.querySelector('[name="full_name"]')?.value?.trim()
     const gender = form.querySelector('[name="gender"]')?.value?.trim()
     const dept = form.querySelector('[name="department_branch"]')?.value?.trim()
-    const yearOfAdmission = form.querySelector('[name="year_of_admission"]')?.value?.trim()
+    const year = form.querySelector('[name="year"]')?.value?.trim()
     const phone = form.querySelector('[name="mobile_number"]')?.value?.trim()
     const email = form.querySelector('[name="email_id"]')?.value?.trim()
     const password = form.querySelector('[name="password"]')?.value?.trim()
 
-    if (!regNumber || !fullName || !gender || !dept || !yearOfAdmission || !phone || !email || !password) {
+    if (!regNumber || !fullName || !gender || !dept || !year || !phone || !email || !password) {
       onStatusPopup('❌ Please fill all required fields.', 'error', 2500)
-      return
-    }
-
-    // Validate participation eligibility (1st to 5th year only)
-    if (!canParticipateInEvents(parseInt(yearOfAdmission), eventYear)) {
-      onStatusPopup('❌ Only 1st to 5th year students can register and participate in events.', 'error', 4000)
       return
     }
 
@@ -282,7 +276,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             full_name: fullName,
             gender: gender,
             department_branch: dept,
-            year_of_admission: parseInt(yearOfAdmission),
+            year: year,
             mobile_number: phone,
             email_id: email,
             password: password,
@@ -399,19 +393,19 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       return
     }
 
-    // CRITICAL: Validate that all selected players have the same year_of_admission as logged-in user
+    // CRITICAL: Validate that all selected players have the same year as logged-in user
     const yearMismatches = []
     for (let i = 1; i <= playerCount; i++) {
       if (selectedPlayers[i]) {
         const player = players.find(p => p.reg_number === selectedPlayers[i])
-        if (player && player.year_of_admission !== loggedInUser.year_of_admission) {
+        if (player && player.year !== loggedInUser.year) {
           yearMismatches.push(`${player.full_name} (${player.reg_number})`)
         }
       }
     }
 
     if (yearMismatches.length > 0) {
-      onStatusPopup(`❌ Year mismatch: ${yearMismatches.join(', ')} must be in the same year of admission (${loggedInUser.year_of_admission}) as you.`, 'error', 5000)
+      onStatusPopup(`❌ Year mismatch: ${yearMismatches.join(', ')} must be in the same year (${loggedInUser.year}) as you.`, 'error', 5000)
       return
     }
 
@@ -716,9 +710,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                 .filter(([key, value]) => key !== String(index) && value)
                 .map(([_, value]) => value)
 
-              // Get team gender and year_of_admission for filtering
+              // Get team gender and year for filtering
               const teamGender = loggedInUser?.gender
-              const teamYearOfAdmission = loggedInUser?.year_of_admission
+              const teamYear = loggedInUser?.year
 
               // Filter players for this dropdown
               const filteredPlayers = players.length === 0 ? [] : (() => {
@@ -740,7 +734,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                   // Basic filters
                   if (player.reg_number === 'admin') return false
                   if (player.gender !== teamGender) return false
-                  if (player.year_of_admission !== teamYearOfAdmission) return false
+                  if (player.year !== teamYear) return false
                   
                   // Allow currently selected player to remain in list
                   if (player.reg_number === selectedPlayers[index]) return true
@@ -891,9 +885,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         />
 
         <Input
-          label="Year Of Admission"
-          id="year_of_admission"
-          name="year_of_admission"
+          label="Year"
+          id="year"
+          name="year"
           type="select"
           required
           options={yearOfAdmissionOptions}

@@ -1,15 +1,12 @@
 import { Modal } from './ui'
 import { useEventYearWithFallback } from '../hooks'
-import { computeYearDisplay } from '../utils/yearHelpers'
 
 function ProfileModal({ isOpen, onClose, loggedInUser, selectedYear }) {
   const eventYear = useEventYearWithFallback(selectedYear)
   
   if (!loggedInUser) return null
 
-  const yearDisplay = loggedInUser.year_of_admission 
-    ? computeYearDisplay(loggedInUser.year_of_admission, eventYear)
-    : loggedInUser.year || 'N/A'
+  const yearDisplay = loggedInUser.year || 'N/A'
 
   return (
     <Modal

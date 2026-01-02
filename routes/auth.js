@@ -10,7 +10,7 @@ import EventYear from '../models/EventYear.js'
 import logger from '../utils/logger.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
-import { computePlayerParticipation, computeYearDisplay } from '../utils/playerHelpers.js'
+import { computePlayerParticipation } from '../utils/playerHelpers.js'
 import { getCache, setCache } from '../utils/cache.js'
 import { JWT_EXPIRES_IN } from '../constants/index.js'
 
@@ -66,11 +66,8 @@ router.post(
     // Compute participation data
     const participation = await computePlayerParticipation(player.reg_number, eventYear)
     
-    // Compute year display format
-    let yearDisplay = null
-    if (player.year_of_admission) {
-      yearDisplay = computeYearDisplay(player.year_of_admission, eventYear)
-    }
+    // Year is already stored directly
+    const yearDisplay = player.year || null
 
     // Generate JWT token
     const tokenPayload = {

@@ -22,7 +22,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const [playerOne, setPlayerOne] = useState('')
   const [playerTwo, setPlayerTwo] = useState('')
   const [matchDate, setMatchDate] = useState('')
-  const [teamsList, setTeamsList] = useState([])
+  const [teamsList, setTeamsList] = useState([]) // Array of team names (for backward compatibility)
+  const [teamsListWithGender, setTeamsListWithGender] = useState([]) // Array of { team_name, gender } objects
   const [playersList, setPlayersList] = useState([])
   const [allPlayersList, setAllPlayersList] = useState([]) // Store all players for gender filtering
   const [loadingOptions, setLoadingOptions] = useState(false)
@@ -182,7 +183,22 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       const data = await response.json()
       // Teams/players response received
       if (data.success) {
-        setTeamsList(data.teams || [])
+        // Handle teams (can be array of strings or array of objects with gender)
+        if (data.teams && data.teams.length > 0) {
+          if (typeof data.teams[0] === 'string') {
+            // Backward compatibility: array of team names
+            setTeamsList(data.teams || [])
+            setTeamsListWithGender(data.teams.map(name => ({ team_name: name, gender: null })))
+          } else {
+            // New format: array of objects with team_name and gender
+            setTeamsList(data.teams.map(t => t.team_name || t))
+            setTeamsListWithGender(data.teams)
+          }
+        } else {
+          setTeamsList([])
+          setTeamsListWithGender([])
+        }
+        
         // Store all players for gender filtering
         if (data.players) {
           setAllPlayersList(data.players || [])
@@ -196,17 +212,54 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       } else {
         logger.warn('Failed to fetch teams/players:', data.error)
         setTeamsList([])
+        setTeamsListWithGender([])
         setPlayersList([])
         setAllPlayersList([])
       }
     } catch (err) {
       logger.error('Error fetching teams/players:', err)
       setTeamsList([])
+      setTeamsListWithGender([])
       setPlayersList([])
       setAllPlayersList([])
     } finally {
       setLoadingOptions(false)
     }
+  }
+  
+  // Filter teams for dropdowns based on selected team's gender
+  // This helps filter teamsList for dual_team and multi_team dropdowns
+  // currentTeamValue: the current value of the dropdown being filtered (teamOne or teamTwo)
+  const getFilteredTeams = (excludeTeam = '', currentTeamValue = '') => {
+    if (!teamsListWithGender || teamsListWithGender.length === 0) {
+      return teamsList.filter(team => team !== excludeTeam)
+    }
+    
+    // Count how many teams are selected
+    const selectedCount = (teamOne ? 1 : 0) + (teamTwo ? 1 : 0)
+    
+    // If no teams selected, show all teams
+    if (selectedCount === 0) {
+      return teamsList.filter(team => team !== excludeTeam)
+    }
+    
+    // Get the selected team's gender
+    const selectedTeamName = teamOne || teamTwo
+    const selectedTeam = teamsListWithGender.find(t => t.team_name === selectedTeamName)
+    
+    if (selectedTeam && selectedTeam.gender) {
+      // If exactly one team is selected and this dropdown has that value, show both genders
+      if (selectedCount === 1 && currentTeamValue === selectedTeamName) {
+        return teamsList.filter(team => team !== excludeTeam)
+      }
+      // Otherwise, filter by same gender
+      return teamsListWithGender
+        .filter(t => t.team_name !== excludeTeam && t.gender === selectedTeam.gender)
+        .map(t => t.team_name)
+    }
+    
+    // Fallback: show all teams
+    return teamsList.filter(team => team !== excludeTeam)
   }
   
   // Filter players for dropdowns based on selected player's gender
@@ -492,7 +545,13 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const handleAddMatch = () => {
     setShowAddForm(true)
     // Reset form
-    setMatchType('league')
+    // Set default match type based on sport type
+    // League is not allowed for multi_team and multi_player, so default to 'knockout'
+    if (sportDetails && (sportDetails.type === 'multi_team' || sportDetails.type === 'multi_player')) {
+      setMatchType('knockout')
+    } else {
+      setMatchType('league')
+    }
     setTeamOne('')
     setTeamTwo('')
     setPlayerOne('')
@@ -501,6 +560,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
     setNumberOfParticipants('')
     setMultiTeams([])
     setMultiPlayers([])
+    // Reset playersList to show all players when form opens
+    setPlayersList(allPlayersList)
   }
   
   // Handle number of participants change for multi sports
@@ -800,7 +861,12 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             clearCache(buildEventScheduleApiUrl(sport, '', eventYear))
             fetchMatches()
             // Reset form
-            setMatchType('league')
+            // Set default match type based on sport type
+            if (sportDetails && (sportDetails.type === 'multi_team' || sportDetails.type === 'multi_player')) {
+              setMatchType('knockout')
+            } else {
+              setMatchType('league')
+            }
             setTeamOne('')
             setTeamTwo('')
             setPlayerOne('')
@@ -874,7 +940,11 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                 onChange={(e) => setMatchType(e.target.value)}
                 required
                 options={[
-                  { value: 'league', label: 'League' },
+                  // League is not allowed for multi_team and multi_player sports
+                  ...(sportDetails && (sportDetails.type === 'multi_team' || sportDetails.type === 'multi_player') 
+                    ? [] 
+                    : [{ value: 'league', label: 'League' }]
+                  ),
                   { value: 'knockout', label: 'Knockout' },
                   { value: 'final', label: 'Final' },
                 ]}
@@ -901,49 +971,98 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
               {isMultiSport && numberOfParticipants && (
                 <>
                   {sportDetails.type === 'multi_team' ? (
-                    multiTeams.map((team, index) => (
-                      <Input
-                        key={index}
-                        label={`Team ${index + 1}`}
-                        type="select"
-                        value={team}
-                        onChange={(e) => handleMultiTeamChange(index, e.target.value)}
-                        required
-                        disabled={loadingOptions}
-                        options={teamsList
-                          .filter(t => {
-                            // Show current selection or teams not selected in other dropdowns
-                            return t === team || !multiTeams.includes(t) || multiTeams.indexOf(t) === index
+                    multiTeams.map((team, index) => {
+                      // Count how many teams are selected
+                      const selectedCount = multiTeams.filter(t => t).length
+                      
+                      // Get gender from ANY selected team to filter others
+                      const selectedTeam = multiTeams.find(t => t && t !== team)
+                      const selectedTeamGender = selectedTeam && teamsListWithGender.length > 0
+                        ? teamsListWithGender.find(t => t.team_name === selectedTeam)?.gender
+                        : null
+                      
+                      // Filter teams: exclude already selected
+                      let availableTeams = teamsList.filter(t => {
+                        // Show current selection or teams not selected in other dropdowns
+                        return t === team || !multiTeams.includes(t) || multiTeams.indexOf(t) === index
+                      })
+                      
+                      // If teams are selected and have gender
+                      if (selectedTeamGender) {
+                        // If exactly one team is selected and this is that dropdown, show both genders
+                        if (selectedCount === 1 && team) {
+                          // Don't filter by gender for this dropdown
+                        } else {
+                          // Otherwise, filter by same gender
+                          availableTeams = availableTeams.filter(t => {
+                            const teamData = teamsListWithGender.find(teamData => teamData.team_name === t)
+                            return teamData && teamData.gender === selectedTeamGender
                           })
-                          .map((teamName) => ({
+                        }
+                      }
+                      
+                      return (
+                        <Input
+                          key={index}
+                          label={`Team ${index + 1}`}
+                          type="select"
+                          value={team}
+                          onChange={(e) => handleMultiTeamChange(index, e.target.value)}
+                          required
+                          disabled={loadingOptions}
+                          options={availableTeams.map((teamName) => ({
                             value: teamName,
                             label: teamName
                           }))}
-                        className="mb-3"
-                      />
-                    ))
+                          className="mb-3"
+                        />
+                      )
+                    })
                   ) : (
-                    multiPlayers.map((player, index) => (
-                      <Input
-                        key={index}
-                        label={`Player ${index + 1}`}
-                        type="select"
-                        value={player}
-                        onChange={(e) => handleMultiPlayerChange(index, e.target.value)}
-                        required
-                        disabled={loadingOptions}
-                        options={allPlayersList
-                          .filter(p => {
-                            // Show current selection or players not selected in other dropdowns
-                            return p.reg_number === player || !multiPlayers.includes(p.reg_number) || multiPlayers.indexOf(p.reg_number) === index
-                          })
-                          .map((player) => ({
+                    multiPlayers.map((player, index) => {
+                      // Count how many players are selected
+                      const selectedCount = multiPlayers.filter(p => p).length
+                      
+                      // Get gender from ANY selected player to filter others
+                      const selectedPlayer = multiPlayers.find(p => p && p !== player)
+                      const selectedPlayerGender = selectedPlayer && allPlayersList.length > 0
+                        ? allPlayersList.find(p => p.reg_number === selectedPlayer)?.gender
+                        : null
+                      
+                      // Filter players: exclude already selected
+                      let availablePlayers = allPlayersList.filter(p => {
+                        // Show current selection or players not selected in other dropdowns
+                        return p.reg_number === player || !multiPlayers.includes(p.reg_number) || multiPlayers.indexOf(p.reg_number) === index
+                      })
+                      
+                      // If players are selected and have gender
+                      if (selectedPlayerGender) {
+                        // If exactly one player is selected and this is that dropdown, show both genders
+                        if (selectedCount === 1 && player) {
+                          // Don't filter by gender for this dropdown
+                        } else {
+                          // Otherwise, filter by same gender
+                          availablePlayers = availablePlayers.filter(p => p.gender === selectedPlayerGender)
+                        }
+                      }
+                      
+                      return (
+                        <Input
+                          key={index}
+                          label={`Player ${index + 1}`}
+                          type="select"
+                          value={player}
+                          onChange={(e) => handleMultiPlayerChange(index, e.target.value)}
+                          required
+                          disabled={loadingOptions}
+                          options={availablePlayers.map((player) => ({
                             value: player.reg_number,
                             label: `${player.full_name} (${player.reg_number})`
                           }))}
-                        className="mb-3"
-                      />
-                    ))
+                          className="mb-3"
+                        />
+                      )
+                    })
                   )}
                 </>
               )}
@@ -964,7 +1083,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                     }}
                     required
                     disabled={loadingOptions}
-                    options={teamsList.filter(team => team !== teamTwo).map((team) => ({
+                    options={getFilteredTeams(teamTwo, teamOne).map((team) => ({
                       value: team,
                       label: team
                     }))}
@@ -983,7 +1102,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                     }}
                     required
                     disabled={loadingOptions}
-                    options={teamsList.filter(team => team !== teamOne).map((team) => ({
+                    options={getFilteredTeams(teamOne, teamTwo).map((team) => ({
                       value: team,
                       label: team
                     }))}
@@ -1009,16 +1128,43 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                     required
                     disabled={loadingOptions}
                     options={(() => {
-                      // If player two is selected first, use playersList (filtered by gender)
-                      if (playerTwo && !playerOne) {
-                        return playersList
+                      // Count how many players are selected
+                      const selectedCount = (playerOne ? 1 : 0) + (playerTwo ? 1 : 0)
+                      
+                      // If no players selected, show all players except player two
+                      if (selectedCount === 0) {
+                        return allPlayersList
                           .filter(player => player.reg_number !== playerTwo)
                           .map((player) => ({
                             value: player.reg_number,
                             label: `${player.full_name} (${player.reg_number})`
                           }))
                       }
-                      // Otherwise, show all players except player two
+                      
+                      // Get the selected player's gender
+                      const selectedPlayerRegNumber = playerOne || playerTwo
+                      const selectedPlayer = allPlayersList.find(p => p.reg_number === selectedPlayerRegNumber)
+                      
+                      if (selectedPlayer && selectedPlayer.gender) {
+                        // If exactly one player is selected and this is that dropdown (playerOne), show both genders
+                        if (selectedCount === 1 && playerOne) {
+                          return allPlayersList
+                            .filter(player => player.reg_number !== playerTwo)
+                            .map((player) => ({
+                              value: player.reg_number,
+                              label: `${player.full_name} (${player.reg_number})`
+                            }))
+                        }
+                        // Otherwise, filter by same gender
+                        return allPlayersList
+                          .filter(player => player.reg_number !== playerTwo && player.gender === selectedPlayer.gender)
+                          .map((player) => ({
+                            value: player.reg_number,
+                            label: `${player.full_name} (${player.reg_number})`
+                          }))
+                      }
+                      
+                      // Fallback: show all players except player two
                       return allPlayersList
                         .filter(player => player.reg_number !== playerTwo)
                         .map((player) => ({
@@ -1042,16 +1188,43 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                     required
                     disabled={loadingOptions}
                     options={(() => {
-                      // If player one is selected first, use playersList (filtered by gender)
-                      if (playerOne && !playerTwo) {
-                        return playersList
+                      // Count how many players are selected
+                      const selectedCount = (playerOne ? 1 : 0) + (playerTwo ? 1 : 0)
+                      
+                      // If no players selected, show all players except player one
+                      if (selectedCount === 0) {
+                        return allPlayersList
                           .filter(player => player.reg_number !== playerOne)
                           .map((player) => ({
                             value: player.reg_number,
                             label: `${player.full_name} (${player.reg_number})`
                           }))
                       }
-                      // Otherwise, show all players except player one
+                      
+                      // Get the selected player's gender
+                      const selectedPlayerRegNumber = playerOne || playerTwo
+                      const selectedPlayer = allPlayersList.find(p => p.reg_number === selectedPlayerRegNumber)
+                      
+                      if (selectedPlayer && selectedPlayer.gender) {
+                        // If exactly one player is selected and this is that dropdown (playerTwo), show both genders
+                        if (selectedCount === 1 && playerTwo) {
+                          return allPlayersList
+                            .filter(player => player.reg_number !== playerOne)
+                            .map((player) => ({
+                              value: player.reg_number,
+                              label: `${player.full_name} (${player.reg_number})`
+                            }))
+                        }
+                        // Otherwise, filter by same gender
+                        return allPlayersList
+                          .filter(player => player.reg_number !== playerOne && player.gender === selectedPlayer.gender)
+                          .map((player) => ({
+                            value: player.reg_number,
+                            label: `${player.full_name} (${player.reg_number})`
+                          }))
+                      }
+                      
+                      // Fallback: show all players except player one
                       return allPlayersList
                         .filter(player => player.reg_number !== playerOne)
                         .map((player) => ({
@@ -1087,7 +1260,12 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                   type="button"
                   onClick={() => {
                     setShowAddForm(false)
-                    setMatchType('league')
+                    // Reset to default match type based on sport type
+                    if (sportDetails && (sportDetails.type === 'multi_team' || sportDetails.type === 'multi_player')) {
+                      setMatchType('knockout')
+                    } else {
+                      setMatchType('league')
+                    }
                     setTeamOne('')
                     setTeamTwo('')
                     setPlayerOne('')
@@ -1168,17 +1346,10 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                     }}
                                     disabled={
                                       updatingStatus || 
-                                      updatingMatchId === match._id || 
-                                      (match.winner && match.status === 'completed') || 
-                                      (match.qualifiers && match.qualifiers.length > 0 && match.status === 'completed')
+                                      updatingMatchId === match._id
                                     }
                                     onClick={(e) => e.stopPropagation()}
-                                    title={
-                                      (match.winner && match.status === 'completed') || 
-                                      (match.qualifiers && match.qualifiers.length > 0 && match.status === 'completed')
-                                        ? 'Cannot change status when winner/qualifiers are set'
-                                        : 'Update Result'
-                                    }
+                                    title="Update Match Status"
                                     options={[
                                       { value: 'scheduled', label: 'Scheduled' },
                                       { value: 'completed', label: 'Completed' },

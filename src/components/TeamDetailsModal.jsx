@@ -5,7 +5,6 @@ import { fetchWithAuth, clearCache } from '../utils/api'
 import { clearSportCaches } from '../utils/cacheHelpers'
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
-import { computeYearDisplay } from '../utils/yearHelpers'
 
 function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
   const { eventYearConfig } = useEventYear()
@@ -297,11 +296,11 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
         return
       }
 
-      // CRITICAL: Validate year_of_admission match
-      const teamYearOfAdmission = currentTeam.players[0].year_of_admission
-      if (newPlayer.year_of_admission !== teamYearOfAdmission) {
+      // CRITICAL: Validate year match
+      const teamYear = currentTeam.players[0].year
+      if (newPlayer.year !== teamYear) {
         if (onStatusPopup) {
-          onStatusPopup(`❌ Year mismatch: New player must be in the same year of admission (${teamYearOfAdmission}) as other team members.`, 'error', 4000)
+          onStatusPopup(`❌ Year mismatch: New player must be in the same year (${teamYear}) as other team members.`, 'error', 4000)
         }
         return
       }
@@ -515,10 +514,9 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                             .filter(p => p.reg_number !== player.reg_number)
                             .map(p => p.reg_number)
                           
-                          // Get team gender and year_of_admission for filtering
+                          // Get team gender and year for filtering
                           const teamGender = team.players.length > 0 ? team.players[0].gender : null
-                          const teamYearOfAdmission = team.players.length > 0 ? team.players[0].year_of_admission : null
-                          const teamYearDisplay = teamYearOfAdmission ? computeYearDisplay(teamYearOfAdmission, eventYear) : null
+                          const teamYear = team.players.length > 0 ? team.players[0].year : null
 
                           return (
                             <div
@@ -544,7 +542,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                     <div className="text-[#cbd5ff] text-[0.8rem] ml-6 space-y-0.5">
                                       <div>Reg. No: <span className="text-[#e5e7eb]">{player.reg_number}</span></div>
                                       <div>Department: <span className="text-[#e5e7eb]">{player.department_branch}</span></div>
-                                      <div>Year: <span className="text-[#e5e7eb]">{player.year || (player.year_of_admission ? computeYearDisplay(player.year_of_admission, eventYear) : '')}</span></div>
+                                      <div>Year: <span className="text-[#e5e7eb]">{player.year || ''}</span></div>
                                       <div>Gender: <span className="text-[#e5e7eb]">{player.gender}</span></div>
                                     </div>
                                   </div>
@@ -576,7 +574,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                         .filter((player) => 
                                           player.reg_number !== 'admin' && 
                                           player.gender === teamGender &&
-                                          player.year_of_admission === teamYearOfAdmission &&
+                                          player.year === teamYear &&
                                           (player.reg_number === selectedReplacementPlayer || !otherSelectedRegNumbers.includes(player.reg_number))
                                         )
                                         .map((player) => ({

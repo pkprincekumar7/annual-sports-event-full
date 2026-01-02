@@ -10,7 +10,6 @@ import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
-import { canParticipateInEvents } from '../utils/playerHelpers.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
 import { getEventYear } from '../utils/yearHelpers.js'
 import { findSportByNameAndYear } from '../utils/sportHelpers.js'
@@ -132,14 +131,6 @@ router.post(
       return handleNotFoundError(res, 'Player')
     }
 
-    // Validate participation eligibility
-    if (!canParticipateInEvents(player.year_of_admission)) {
-      return sendErrorResponse(
-        res,
-        400,
-        'Player is not eligible to participate. Only 1st to 5th year students can participate.'
-      )
-    }
 
     // Find sport by name and event_year
     const sportDoc = await findSportByNameAndYear(sport, eventYear, { lean: false })

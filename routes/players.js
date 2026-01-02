@@ -10,7 +10,7 @@ import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { validateUpdatePlayerData, validatePlayerData, trimObjectFields } from '../utils/validation.js'
-import { computePlayerParticipation, computeYearDisplay, canParticipateInEvents, validateDepartmentExists } from '../utils/playerHelpers.js'
+import { computePlayerParticipation, validateDepartmentExists } from '../utils/playerHelpers.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
 import logger from '../utils/logger.js'
 
@@ -27,11 +27,7 @@ async function addComputedFields(player, eventYear = null) {
   playerObj.participated_in = participation.participated_in
   playerObj.captain_in = participation.captain_in
   
-  // Compute year display format
-  if (playerObj.year_of_admission) {
-    const currentYear = eventYear || new Date().getFullYear()
-    playerObj.year = computeYearDisplay(playerObj.year_of_admission, currentYear)
-  }
+  // Year is already stored directly, no computation needed
   
   return playerObj
 }
@@ -67,7 +63,13 @@ router.get(
     const cacheKey = `/api/me?year=${eventYear}`
     const cached = getCache(cacheKey)
     if (cached && cached.reg_number === req.user.reg_number) {
-      return res.json(cached)
+      // Always use sendSuccessResponse for consistency, even for cached data
+      // Note: cached data might be the player object directly, so wrap it
+      if (cached.player) {
+        return sendSuccessResponse(res, cached)
+      } else {
+        return sendSuccessResponse(res, { player: cached })
+      }
     }
 
     const user = await Player.findOne({ reg_number: req.user.reg_number })
@@ -80,7 +82,7 @@ router.get(
     // Add computed fields
     const userWithComputed = await addComputedFields(user, eventYear)
 
-    // Cache the result
+    // Cache the result (store as player object to match response format)
     setCache(cacheKey, userWithComputed)
 
     return sendSuccessResponse(res, { player: userWithComputed })
@@ -118,7 +120,8 @@ router.get(
     const cacheKey = `/api/players?year=${eventYear}`
     const cached = getCache(cacheKey)
     if (cached) {
-      return res.json(cached)
+      // Always use sendSuccessResponse for consistency, even for cached data
+      return sendSuccessResponse(res, cached)
     }
 
     const players = await Player.find({ reg_number: { $ne: 'admin' } })
@@ -142,24 +145,14 @@ router.get(
 /**
  * POST /api/save-player
  * Register a new player (no authentication required)
- * Update to accept year_of_admission instead of year
+ * Accepts year field (formatted string like "1st Year (2025)")
  * Validate department exists and is active
- * Validate participation eligibility (1st to 5th year only)
  */
 router.post(
   '/save-player',
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
-    
-    // Convert year to year_of_admission if provided (for backward compatibility during transition)
-    if (trimmed.year && !trimmed.year_of_admission) {
-      // Try to extract year from formatted string like "1st Year (2025)"
-      const yearMatch = trimmed.year.match(/\((\d{4})\)/)
-      if (yearMatch) {
-        trimmed.year_of_admission = parseInt(yearMatch[1])
-      }
-    }
 
     const validation = await validatePlayerData(trimmed)
 
@@ -167,7 +160,7 @@ router.post(
       return sendErrorResponse(res, 400, validation.errors.join('; '))
     }
 
-    const { reg_number, year_of_admission } = trimmed
+    const { reg_number } = trimmed
 
     // Check if player with same reg_number already exists
     const existingPlayer = await Player.findOne({ reg_number })
@@ -183,21 +176,8 @@ router.post(
       return sendErrorResponse(res, 400, `Department "${trimmed.department_branch}" does not exist`)
     }
 
-    // Validate participation eligibility
-    if (!canParticipateInEvents(year_of_admission)) {
-      return sendErrorResponse(
-        res,
-        400,
-        'Only 1st to 5th year students can register and participate in events'
-      )
-    }
-
-    // Create new player object (remove year field, use year_of_admission)
-    const { year, ...playerData } = trimmed
-    const newPlayer = new Player({
-      ...playerData,
-      year_of_admission: parseInt(year_of_admission)
-    })
+    // Create new player object
+    const newPlayer = new Player(trimmed)
 
     await newPlayer.save()
 
@@ -214,7 +194,7 @@ router.post(
 /**
  * POST /api/save-players
  * Register multiple players (for team events) (no authentication required)
- * Updated to use year_of_admission
+ * Accepts year field (formatted string like "1st Year (2025)")
  */
 router.post(
   '/save-players',
@@ -232,14 +212,6 @@ router.post(
       const player = players[i]
       const trimmed = trimObjectFields(player)
       
-      // Convert year to year_of_admission if provided
-      if (trimmed.year && !trimmed.year_of_admission) {
-        const yearMatch = trimmed.year.match(/\((\d{4})\)/)
-        if (yearMatch) {
-          trimmed.year_of_admission = parseInt(yearMatch[1])
-        }
-      }
-
       const validation = await validatePlayerData(trimmed)
 
       if (!validation.isValid) {
@@ -274,14 +246,8 @@ router.post(
       })
     }
 
-    // Create player documents (remove year field, use year_of_admission)
-    const playerDocuments = players.map((player) => {
-      const { year, ...playerData } = player
-      return {
-        ...playerData,
-        year_of_admission: parseInt(player.year_of_admission)
-      }
-    })
+    // Create player documents
+    const playerDocuments = players
 
     // Add new players to database
     await Player.insertMany(playerDocuments)
@@ -296,8 +262,8 @@ router.post(
 /**
  * PUT /api/update-player
  * Update player data (admin only)
- * Update to accept year_of_admission instead of year
- * year_of_admission cannot be modified
+ * Accepts year field (formatted string like "1st Year (2025)")
+ * year cannot be modified
  * Validate department exists and is active
  */
 router.put(
@@ -313,7 +279,7 @@ router.put(
       return sendErrorResponse(res, 400, validation.errors.join('; '))
     }
 
-    const { reg_number, full_name, department_branch, mobile_number, email_id, gender, year_of_admission } = trimmed
+    const { reg_number, full_name, department_branch, mobile_number, email_id, gender, year } = trimmed
 
     const player = await Player.findOne({ reg_number })
     if (!player) {
@@ -325,12 +291,9 @@ router.put(
       return sendErrorResponse(res, 400, 'Gender cannot be modified. Please keep the original gender value.')
     }
 
-    // Check if year_of_admission is being changed (not allowed)
-    if (year_of_admission !== undefined && year_of_admission !== null) {
-      const newYearOfAdmission = parseInt(year_of_admission)
-      if (!isNaN(newYearOfAdmission) && player.year_of_admission !== newYearOfAdmission) {
-        return sendErrorResponse(res, 400, 'Year of admission cannot be modified. Please keep the original year of admission value.')
-      }
+    // Check if year is being changed (not allowed)
+    if (year !== undefined && year !== null && player.year !== year) {
+      return sendErrorResponse(res, 400, 'Year cannot be modified. Please keep the original year value.')
     }
 
     // Validate department exists

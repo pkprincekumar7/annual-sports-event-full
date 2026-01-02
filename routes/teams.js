@@ -235,10 +235,28 @@ router.get(
   asyncHandler(async (req, res) => {
     // Decode the sport name from URL parameter
     let sport = decodeURIComponent(req.params.sport)
-    const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
 
     if (!sport) {
       return sendErrorResponse(res, 400, 'Sport name is required')
+    }
+
+    let eventYear
+    
+    try {
+      // Try to get event year - if it doesn't exist, return empty teams array
+      eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+    } catch (error) {
+      // If event year not found, return empty teams array instead of error
+      if (error.message === 'Event year not found' || error.message === 'No active event year found') {
+        const emptyResult = {
+          sport: sport,
+          teams: [],
+          total_teams: 0
+        }
+        return sendSuccessResponse(res, emptyResult)
+      }
+      // Re-throw other errors to be handled by asyncHandler
+      throw error
     }
 
     // Check cache
@@ -249,7 +267,22 @@ router.get(
     }
 
     // Find sport by name and event_year
-    const sportDoc = await findSportByNameAndYear(sport, eventYear)
+    let sportDoc
+    try {
+      sportDoc = await findSportByNameAndYear(sport, eventYear)
+    } catch (error) {
+      // If sport not found, return empty teams array
+      if (error.message.includes('not found')) {
+        const emptyResult = {
+          sport: sport,
+          teams: [],
+          total_teams: 0
+        }
+        return sendSuccessResponse(res, emptyResult)
+      }
+      // Re-throw other errors to be handled by asyncHandler
+      throw error
+    }
 
     // Get all unique player registration numbers from all teams
     const allRegNumbers = new Set()

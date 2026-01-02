@@ -100,17 +100,37 @@ router.get(
         } else {
           // For multi types: participants not in qualifiers are knocked out
           if (match.qualifiers && match.qualifiers.length > 0) {
-            const qualifierParticipants = new Set(match.qualifiers.map(q => q.participant))
-            if (match.teams) {
+            const qualifierParticipants = new Set(match.qualifiers.map(q => (q.participant || '').trim()))
+            if (match.teams && match.teams.length > 0) {
               match.teams.forEach(team => {
-                if (!qualifierParticipants.has(team)) {
-                  knockedOutParticipants.add(team)
+                const trimmedTeam = (team || '').trim()
+                if (trimmedTeam && !qualifierParticipants.has(trimmedTeam)) {
+                  knockedOutParticipants.add(trimmedTeam)
                 }
               })
-            } else if (match.players) {
+            } else if (match.players && match.players.length > 0) {
               match.players.forEach(player => {
-                if (!qualifierParticipants.has(player)) {
-                  knockedOutParticipants.add(player)
+                const trimmedPlayer = (player || '').trim()
+                if (trimmedPlayer && !qualifierParticipants.has(trimmedPlayer)) {
+                  knockedOutParticipants.add(trimmedPlayer)
+                }
+              })
+            }
+          } else {
+            // If match is completed but has no qualifiers, mark all participants as knocked out
+            // This handles edge cases where qualifiers weren't set properly
+            if (match.teams && match.teams.length > 0) {
+              match.teams.forEach(team => {
+                const trimmedTeam = (team || '').trim()
+                if (trimmedTeam) {
+                  knockedOutParticipants.add(trimmedTeam)
+                }
+              })
+            } else if (match.players && match.players.length > 0) {
+              match.players.forEach(player => {
+                const trimmedPlayer = (player || '').trim()
+                if (trimmedPlayer) {
+                  knockedOutParticipants.add(trimmedPlayer)
                 }
               })
             }
@@ -119,18 +139,80 @@ router.get(
       }
     })
 
+    // Get all scheduled knockout matches to exclude participants already in matches
+    // Note: 'draw' and 'cancelled' matches don't block participants - they can be rescheduled
+    const scheduledKnockoutMatches = await EventSchedule.find({
+      sports_name: normalizeSportName(decodedSport),
+      event_year: eventYear,
+      match_type: { $in: ['knockout', 'final'] },
+      status: 'scheduled'
+    }).lean()
+
+    const participantsInScheduledMatches = new Set()
+    scheduledKnockoutMatches.forEach(match => {
+      if (match.teams && match.teams.length > 0) {
+        match.teams.forEach(team => {
+          const trimmedTeam = (team || '').trim()
+          if (trimmedTeam) {
+            participantsInScheduledMatches.add(trimmedTeam)
+          }
+        })
+      }
+      if (match.players && match.players.length > 0) {
+        match.players.forEach(player => {
+          const trimmedPlayer = (player || '').trim()
+          if (trimmedPlayer) {
+            participantsInScheduledMatches.add(trimmedPlayer)
+          }
+        })
+      }
+    })
+
     if (sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team') {
-      // Get teams from teams_participated
-      const teams = (sportDoc.teams_participated || [])
-        .map(team => team.team_name)
-        .filter(teamName => !knockedOutParticipants.has(teamName))
-        .sort()
+      // Get teams from teams_participated with gender information
+      // Exclude: 1) knocked out teams, 2) teams already in scheduled knockout matches
+      const eligibleTeams = (sportDoc.teams_participated || [])
+        .filter(team => !knockedOutParticipants.has(team.team_name) && !participantsInScheduledMatches.has(team.team_name))
+      
+      // Get first player from each team to determine gender (teams already have same gender players)
+      const teamPlayerRegNumbers = []
+      const teamMap = new Map()
+      
+      eligibleTeams.forEach(team => {
+        if (team.players && team.players.length > 0) {
+          teamPlayerRegNumbers.push(team.players[0])
+          teamMap.set(team.players[0], team.team_name)
+        }
+      })
+      
+      // Fetch gender for first player of each team
+      const teamPlayers = await Player.find({
+        reg_number: { $in: teamPlayerRegNumbers }
+      })
+        .select('reg_number gender')
+        .lean()
+      
+      // Create teams list with gender information
+      const teams = eligibleTeams
+        .map(team => {
+          const firstPlayerRegNumber = team.players && team.players.length > 0 ? team.players[0] : null
+          const playerData = teamPlayers.find(p => p.reg_number === firstPlayerRegNumber)
+          return {
+            team_name: team.team_name,
+            gender: playerData ? playerData.gender : null
+          }
+        })
+        .sort((a, b) => a.team_name.localeCompare(b.team_name))
 
       return sendSuccessResponse(res, { teams, players: [] })
     } else {
       // Get players from players_participated
+      // Exclude: 1) knocked out players, 2) players already in scheduled knockout matches
       const playerRegNumbers = (sportDoc.players_participated || [])
-        .filter(regNumber => !knockedOutParticipants.has(regNumber))
+        .filter(regNumber => {
+          const trimmedRegNumber = (regNumber || '').trim()
+          return trimmedRegNumber && !knockedOutParticipants.has(trimmedRegNumber) && !participantsInScheduledMatches.has(trimmedRegNumber)
+        })
 
       // Fetch player details
       const players = await Player.find({
@@ -318,6 +400,131 @@ router.post(
       }
     }
 
+    // For knockout/final matches, validate that participants are not already in another scheduled knockout match
+    // Note: 'draw' and 'cancelled' matches don't block participants - they can be rescheduled
+    if (match_type === 'knockout' || match_type === 'final') {
+      const participantsToCheck = sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team' ? teams : players
+      
+      // Get all scheduled knockout matches for this sport (only 'scheduled' status blocks participants)
+      const scheduledKnockoutMatches = await EventSchedule.find({
+        sports_name: normalizeSportName(sports_name),
+        event_year: eventYear.year,
+        match_type: { $in: ['knockout', 'final'] },
+        status: 'scheduled'
+      }).lean()
+
+      // Check if any participant is already in a scheduled knockout match
+      const participantsInScheduledMatches = new Set()
+      scheduledKnockoutMatches.forEach(match => {
+        if (match.teams && match.teams.length > 0) {
+          match.teams.forEach(team => {
+            const trimmedTeam = (team || '').trim()
+            if (trimmedTeam) {
+              participantsInScheduledMatches.add(trimmedTeam)
+            }
+          })
+        }
+        if (match.players && match.players.length > 0) {
+          match.players.forEach(player => {
+            const trimmedPlayer = (player || '').trim()
+            if (trimmedPlayer) {
+              participantsInScheduledMatches.add(trimmedPlayer)
+            }
+          })
+        }
+      })
+
+      // Also check for knocked out participants from completed matches
+      const completedKnockoutMatches = await EventSchedule.find({
+        sports_name: normalizeSportName(sports_name),
+        event_year: eventYear.year,
+        status: 'completed',
+        match_type: { $in: ['knockout', 'final'] }
+      }).lean()
+
+      const knockedOutParticipants = new Set()
+      completedKnockoutMatches.forEach(match => {
+        if (sportDoc.type === 'dual_team' || sportDoc.type === 'dual_player') {
+          // For dual types: loser is knocked out
+          if (match.winner && match.teams) {
+            match.teams.forEach(team => {
+              const trimmedTeam = (team || '').trim()
+              if (trimmedTeam && trimmedTeam !== match.winner) {
+                knockedOutParticipants.add(trimmedTeam)
+              }
+            })
+          } else if (match.winner && match.players) {
+            match.players.forEach(player => {
+              const trimmedPlayer = (player || '').trim()
+              if (trimmedPlayer && trimmedPlayer !== match.winner) {
+                knockedOutParticipants.add(trimmedPlayer)
+              }
+            })
+          }
+        } else {
+          // For multi types: participants not in qualifiers are knocked out
+          if (match.qualifiers && match.qualifiers.length > 0) {
+            const qualifierParticipants = new Set(match.qualifiers.map(q => (q.participant || '').trim()))
+            if (match.teams && match.teams.length > 0) {
+              match.teams.forEach(team => {
+                const trimmedTeam = (team || '').trim()
+                if (trimmedTeam && !qualifierParticipants.has(trimmedTeam)) {
+                  knockedOutParticipants.add(trimmedTeam)
+                }
+              })
+            } else if (match.players && match.players.length > 0) {
+              match.players.forEach(player => {
+                const trimmedPlayer = (player || '').trim()
+                if (trimmedPlayer && !qualifierParticipants.has(trimmedPlayer)) {
+                  knockedOutParticipants.add(trimmedPlayer)
+                }
+              })
+            }
+          } else {
+            // If match is completed but has no qualifiers, mark all participants as knocked out
+            if (match.teams && match.teams.length > 0) {
+              match.teams.forEach(team => {
+                const trimmedTeam = (team || '').trim()
+                if (trimmedTeam) {
+                  knockedOutParticipants.add(trimmedTeam)
+                }
+              })
+            } else if (match.players && match.players.length > 0) {
+              match.players.forEach(player => {
+                const trimmedPlayer = (player || '').trim()
+                if (trimmedPlayer) {
+                  knockedOutParticipants.add(trimmedPlayer)
+                }
+              })
+            }
+          }
+        }
+      })
+
+      // Check if any participant in the new match is already in a scheduled knockout match or is knocked out
+      const conflictingParticipants = participantsToCheck.filter(p => {
+        const trimmedP = (p || '').trim()
+        return participantsInScheduledMatches.has(trimmedP) || knockedOutParticipants.has(trimmedP)
+      })
+      if (conflictingParticipants.length > 0) {
+        const participantType = sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team' ? 'team(s)' : 'player(s)'
+        // Check if conflict is due to scheduled match or knocked out
+        const inScheduled = conflictingParticipants.filter(p => participantsInScheduledMatches.has((p || '').trim()))
+        const isKnockedOut = conflictingParticipants.filter(p => knockedOutParticipants.has((p || '').trim()))
+        
+        let errorMessage = `Cannot schedule knockout match. `
+        if (inScheduled.length > 0) {
+          errorMessage += `The following ${participantType} are already in a scheduled knockout match: ${inScheduled.join(', ')}. `
+        }
+        if (isKnockedOut.length > 0) {
+          errorMessage += `The following ${participantType} have been knocked out in previous matches: ${isKnockedOut.join(', ')}. `
+        }
+        errorMessage += `Please select eligible participants.`
+        
+        return sendErrorResponse(res, 400, errorMessage)
+      }
+    }
+
     // Validate league vs knockout restrictions
     if (match_type === 'league') {
       // Check if any knockout match exists for this sport
@@ -399,15 +606,16 @@ router.post(
       }
     }
 
-    // Prevent scheduling if 'final' match is already completed
-    const completedFinalMatch = await EventSchedule.findOne({
+    // Prevent scheduling if 'final' match exists with status 'scheduled' or 'completed'
+    // If final match is 'draw' or 'cancelled', another final match can be scheduled
+    const existingFinalMatch = await EventSchedule.findOne({
       sports_name: normalizeSportName(sports_name),
       event_year: eventYear.year,
       match_type: 'final',
-      status: 'completed'
+      status: { $in: ['scheduled', 'completed'] }
     })
-    if (completedFinalMatch) {
-      return sendErrorResponse(res, 400, 'Cannot schedule new matches. Final match is already completed for this sport.')
+    if (existingFinalMatch) {
+      return sendErrorResponse(res, 400, 'Cannot schedule new matches. A final match already exists for this sport.')
     }
 
     // Validate match date (date-only comparison)
@@ -424,7 +632,7 @@ router.post(
     // Get next match number for this sport and year
     const lastMatch = await EventSchedule.findOne({
       sports_name: normalizeSportName(sports_name),
-      event_year: eventYear
+      event_year: eventYear.year
     }).sort({ match_number: -1 }).lean()
 
     const match_number = lastMatch ? lastMatch.match_number + 1 : 1
@@ -486,6 +694,11 @@ router.put(
     // Get sport details
     const sportDoc = await findSportByNameAndYear(match.sports_name, match.event_year)
 
+    // Initialize update data object
+    const previousStatus = match.status
+    const previousWinner = match.winner || null
+    const updateData = {}
+
     // Validate match_date update if provided
     if (match_date !== undefined) {
       // Validate match_date is within event date range
@@ -510,16 +723,18 @@ router.put(
     }
 
     // Check if match date is in the future (date-only comparison)
-    const currentMatchDate = match_date !== undefined ? match_date : match.match_date
-    const matchDateObj = new Date(currentMatchDate.includes('T') ? currentMatchDate : currentMatchDate + 'T00:00:00')
+    let matchDateObj
+    if (match_date !== undefined) {
+      // match_date from request body is a string
+      matchDateObj = new Date(match_date.includes('T') ? match_date : match_date + 'T00:00:00')
+    } else {
+      // match.match_date from database is a Date object
+      matchDateObj = new Date(match.match_date)
+    }
     const now = new Date()
     matchDateObj.setHours(0, 0, 0, 0)
     now.setHours(0, 0, 0, 0)
     const isFutureMatch = matchDateObj > now
-
-    const previousStatus = match.status
-    const previousWinner = match.winner || null
-    const updateData = {}
 
     // Validate and set status
     if (status !== undefined) {
@@ -528,6 +743,15 @@ router.put(
       }
       if (!['completed', 'draw', 'cancelled', 'scheduled'].includes(status)) {
         return sendErrorResponse(res, 400, 'Invalid status')
+      }
+      
+      // Prevent status changes from completed/draw/cancelled to other statuses
+      if (['completed', 'draw', 'cancelled'].includes(match.status) && status !== match.status) {
+        return sendErrorResponse(
+          res,
+          400,
+          `Cannot change status from "${match.status}". Once a match is ${match.status}, the status cannot be changed.`
+        )
       }
       
       // Validate status changes to completed/draw/cancelled only happen within event date range
@@ -553,16 +777,6 @@ router.put(
             400,
             `Match status can only be set to "${status}" within event date range (${formatDate(eventStart)} to ${formatDate(eventEnd)})`
           )
-        }
-      }
-      
-      // Prevent status change from 'completed' to another status if winner/qualifiers are set
-      if (match.status === 'completed' && status !== 'completed') {
-        if (match.winner) {
-          return sendErrorResponse(res, 400, 'Cannot change status when winner is set. Please clear the winner first.')
-        }
-        if (match.qualifiers && match.qualifiers.length > 0) {
-          return sendErrorResponse(res, 400, 'Cannot change status when qualifiers are set. Please clear the qualifiers first.')
         }
       }
       

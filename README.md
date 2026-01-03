@@ -117,7 +117,8 @@ The application uses environment variables for configuration:
 - `PORT` - Backend server port (default: `3001`)
 - `MONGODB_URI` - MongoDB connection string (default: `mongodb://localhost:27017/annual-sports-event`)
 - `JWT_SECRET` - Secret key for JWT token signing (default: `your-secret-key-change-in-production`)
-- `REGISTRATION_DEADLINE` - Registration deadline date (default: `2026-01-07T00:00:00`)
+
+**Note:** Registration and event periods are now managed per event year through the Event Year management interface. The `REGISTRATION_DEADLINE` environment variable is no longer used.
 
 Create a `.env` file in the root directory to set these values. For production builds, set these variables in your hosting platform's environment settings.
 
@@ -156,9 +157,30 @@ Create a `.env` file in the root directory to set these values. For production b
 │   └── database.js      # MongoDB connection configuration
 ├── models/
 │   ├── Player.js        # Player Mongoose model with indexes
-│   └── EventSchedule.js  # Event schedule Mongoose model
+│   ├── Sport.js          # Sport Mongoose model (dual_team, multi_team, dual_player, multi_player)
+│   ├── EventYear.js      # Event year Mongoose model
+│   ├── Department.js     # Department Mongoose model
+│   ├── EventSchedule.js  # Event schedule Mongoose model (league, knockout, final)
+│   └── PointsTable.js    # Points table Mongoose model (for league matches)
+├── routes/              # Express.js route handlers
+│   ├── auth.js          # Authentication routes
+│   ├── players.js       # Player management routes
+│   ├── sports.js        # Sport management routes
+│   ├── eventYears.js    # Event year management routes
+│   ├── departments.js  # Department management routes
+│   ├── teams.js         # Team management routes
+│   ├── participants.js  # Participant management routes
+│   ├── captains.js      # Captain management routes
+│   ├── eventSchedule.js # Event schedule management routes
+│   ├── pointsTable.js   # Points table routes
+│   └── exports.js       # Data export routes
 ├── utils/
-│   └── logger.js        # Backend logging utility
+│   ├── logger.js        # Backend logging utility
+│   ├── cache.js         # In-memory cache utility
+│   ├── errorHandler.js  # Error handling utilities
+│   ├── yearHelpers.js   # Event year helper functions
+│   ├── sportHelpers.js  # Sport helper functions
+│   └── pointsTable.js   # Points table helper functions
 ├── server.js            # Express.js backend server
 ├── index.html
 ├── package.json         # Combined frontend and backend dependencies
@@ -183,10 +205,16 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Already participated view - Shows popup with participation status and total count when user has already participated
 - ✅ Unified sport details modal - Single modal with tabs for all sport-related actions (View Teams/Participants, Create Team/Enroll, View Events)
 - ✅ Event schedule management - Admin can create, view, update, and delete matches; users can view scheduled matches
-- ✅ Match scheduling - Support for league and knockout match types with automatic match number generation
+- ✅ Match scheduling - Support for league, knockout, and final match types with automatic match number generation
 - ✅ Match status updates - Admin can update match status (scheduled, completed, draw, cancelled) with future date validation
-- ✅ Winner/Loser selection - Admin can declare winners for completed matches with automatic loser assignment
-- ✅ Future date restrictions - Status updates and winner selection are blocked for future-dated matches (both frontend and backend validation)
+- ✅ Winner/Loser selection - Admin can declare winners for completed matches (dual sports) with automatic loser assignment
+- ✅ Qualifiers system - Admin can set qualifiers with positions for multi sports matches
+- ✅ Future date restrictions - Status updates and winner/qualifier selection are blocked for future-dated matches (both frontend and backend validation)
+- ✅ Points table display - View league standings with points, matches played, won, lost, draw, cancelled (dual sports only)
+- ✅ Year selector - Admin can switch between event years for viewing/managing data
+- ✅ Event year management - Admin can create, update, activate, and delete event years
+- ✅ Sport management - Admin can create, update, and delete sports with sport types and categories
+- ✅ Department management - Admin can create, update, and delete departments
 - ✅ Status popups for success/error messages
 - ✅ Loading states for all API operations
 - ✅ Form validation with proper error handling
@@ -217,10 +245,19 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Optimized user endpoint - `/api/me` endpoint for fetching current user (more efficient than fetching all players)
 - ✅ Bulk sports counts endpoint - `/api/sports-counts` fetches all team and participant counts in a single request
 - ✅ Event schedule management - Full CRUD operations for match scheduling with automatic match number generation per sport
-- ✅ Match eligibility validation - Automatic validation for knockout matches (only winners can proceed)
-- ✅ Match status and winner management - Update match status and declare winners with comprehensive validation
-- ✅ Future date validation - Prevents status updates and winner selection for future-dated matches (both frontend and backend)
-- ✅ EventSchedule model - Database model for storing match schedules with support for team and individual events
+- ✅ Match eligibility validation - Automatic validation for knockout matches (only winners/qualifiers can proceed)
+- ✅ Match status and winner management - Update match status and declare winners (dual sports) with comprehensive validation
+- ✅ Qualifiers management - Set qualifiers with positions for multi sports matches
+- ✅ Future date validation - Prevents status updates and winner/qualifier selection for future-dated matches (both frontend and backend)
+- ✅ Points table system - Automatic points calculation and tracking for league matches (dual sports only)
+- ✅ Event year management - Full CRUD operations for event years with registration and event periods
+- ✅ Sport management - Full CRUD operations for sports with sport types (dual_team, multi_team, dual_player, multi_player)
+- ✅ Department management - Full CRUD operations for departments
+- ✅ In-memory caching - Request caching with configurable TTL for improved performance
+- ✅ EventSchedule model - Database model for storing match schedules with support for all sport types
+- ✅ PointsTable model - Database model for tracking league match points and statistics
+- ✅ Sport model - Database model for sports with type, category, and participation tracking
+- ✅ EventYear model - Database model for event years with registration and event periods
 
 ## API Integration
 
@@ -271,18 +308,53 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
 - `GET /api/sports-counts` - Get all teams and participants counts for all sports in a single request (requires authentication, optimized bulk endpoint)
 
 #### Event Schedule Management
-- `GET /api/event-schedule/:sport` - Get all matches for a specific sport (requires authentication)
-- `GET /api/event-schedule/:sport/teams-players` - Get teams/players list for match scheduling dropdowns (admin only)
+- `GET /api/event-schedule/:sport` - Get all matches for a specific sport (requires authentication, supports ?year parameter)
+- `GET /api/event-schedule/:sport/teams-players` - Get teams/players list for match scheduling dropdowns (admin only, supports ?year parameter)
 - `POST /api/event-schedule` - Create a new match (admin only, auto-generates match number per sport)
-- `PUT /api/event-schedule/:id` - Update match winner and status (admin only)
+  - Supports match types: league (dual sports only), knockout, final
+  - Validates participant eligibility for knockout/final matches
+  - Enforces league vs knockout restrictions
+  - Validates final match restrictions
+- `PUT /api/event-schedule/:id` - Update match winner, qualifiers, and status (admin only)
   - Status updates: Can update status to 'completed', 'draw', 'cancelled', or 'scheduled'
-  - Winner selection: Can declare winner for completed matches (automatically marks other participant as loser)
-  - Future date validation: Status updates and winner selection are blocked for future-dated matches
-  - Winner validation: Winner must be one of the participating teams/players
+  - Winner selection: Can declare winner for completed matches in dual sports (automatically marks other participant as loser)
+  - Qualifiers selection: Can set qualifiers with positions for completed matches in multi sports
+  - Future date validation: Status updates and winner/qualifier selection are blocked for future-dated matches
+  - Status change restrictions: Cannot change status from completed/draw/cancelled to any other status
 - `DELETE /api/event-schedule/:id` - Delete a match (admin only, only if status is 'scheduled', allowed for future matches)
 
+#### Points Table Management
+- `GET /api/points-table/:sport` - Get points table for a specific sport (requires authentication, supports ?year parameter)
+  - Only available for dual_team and dual_player sports
+  - Returns points, matches played, won, lost, draw, cancelled
+  - Automatically sorted by points (descending), then matches won (descending)
+- `GET /api/points-table/:sport/:participant` - Get points for a specific participant (requires authentication, supports ?year parameter)
+
+#### Event Year Management
+- `GET /api/event-years` - Get all event years (admin only)
+- `GET /api/event-years/active` - Get active event year (public)
+- `POST /api/event-years` - Create new event year (admin only)
+- `PUT /api/event-years/:year` - Update event year (admin only)
+- `PUT /api/event-years/:year/activate` - Activate event year (admin only, deactivates all other years)
+- `DELETE /api/event-years/:year` - Delete event year (admin only, only if not active and no data exists)
+
+#### Sport Management
+- `GET /api/sports` - Get all sports (supports ?year parameter)
+- `GET /api/sports/:name` - Get sport by name (supports ?year parameter)
+- `GET /api/sports-counts` - Get all sports with participation counts (supports ?year parameter)
+- `POST /api/sports` - Create new sport (admin only)
+- `PUT /api/sports/:id` - Update sport (admin only)
+- `DELETE /api/sports/:id` - Delete sport (admin only, only if no matches or points entries exist)
+
+#### Department Management
+- `GET /api/departments` - Get all departments
+- `GET /api/departments/active` - Get active departments
+- `POST /api/departments` - Create new department (admin only)
+- `PUT /api/departments/:id` - Update department (admin only, only display_order can be updated)
+- `DELETE /api/departments/:id` - Delete department (admin only, only if no players are registered)
+
 #### Data Export
-- `GET /api/export-excel` - Export players data to Excel (admin only)
+- `GET /api/export-excel` - Export players data to Excel (admin only, supports ?year parameter)
 
 ### Authentication
 
@@ -1321,9 +1393,22 @@ sudo journalctl -u annual-sports-backend -n 50
 ### Modal Components
 
 - **SportDetailsModal.jsx** - Unified modal for sport details with tabbed interface
-  - Shows different tabs based on user role (admin/non-admin) and event type (team/individual)
-  - Tabs: View Teams/Participants, Create Team/Enroll, View Events
-  - Embeds other modals as content (RegisterModal, TeamDetailsModal, ParticipantDetailsModal, EventScheduleModal)
+  - Shows different tabs based on user role (admin/non-admin), sport type, and participation status
+  - Tabs: View Teams/Participants, Create Team/Enroll, View Enrollment, View Events, Points Table
+  - Auto-selects appropriate tab based on context (e.g., "Enroll Now" if not participated)
+  - Embeds other modals as content (RegisterModal, TeamDetailsModal, ParticipantDetailsModal, EventScheduleModal, PointsTableModal)
+- **AdminDashboardModal.jsx** - Admin dashboard for managing event years, sports, and departments
+  - Three tabs: Event Years, Sports, Departments
+  - Full CRUD operations for each entity
+  - Year selector integration for sports management
+- **YearSelector.jsx** - Year selector component for admin users
+  - Allows switching between event years
+  - Shows active year indicator
+  - Auto-selects active year on load
+- **PointsTableModal.jsx** - Points table display for dual sports
+  - Shows league standings with points and statistics
+  - Auto-refreshes when tab becomes active
+  - Sorted by points (descending), then matches won (descending)
 - **RegisterModal.jsx** - Handles player registration and event participation (team/individual)
   - Shows total teams count for team event registration
   - Shows total participants count for non-team event registration
@@ -1339,16 +1424,22 @@ sudo journalctl -u annual-sports-backend -n 50
   - Can be embedded in SportDetailsModal
 - **EventScheduleModal.jsx** - Event schedule management interface
   - Admin: Create, view, update, and delete matches
-    - Create matches with league or knockout type
+    - Create matches with league (dual sports only), knockout, or final type
+    - Dynamic match type dropdown based on sport type and participant count
+    - Gender-based participant filtering for match scheduling
     - Update match status (scheduled, completed, draw, cancelled) - only for non-future matches
-    - Declare winners for completed matches - automatically marks other participant as loser
+    - Declare winners for completed matches in dual sports - automatically marks other participant as loser
+    - Set qualifiers with positions for completed matches in multi sports
     - Remove matches (only scheduled matches, including future matches)
   - Users: View scheduled matches with full details
-  - Supports league and knockout match types
+  - Supports league, knockout, and final match types
   - Auto-generates match numbers per sport
-  - Validates match eligibility (knockout matches only allow winners to proceed)
-  - Future date validation: Status dropdown and winner buttons hidden for future matches
+  - Validates match eligibility (knockout/final matches only allow eligible participants)
+  - Enforces league vs knockout restrictions
+  - Enforces final match restrictions
+  - Future date validation: Status dropdown and winner/qualifier buttons hidden for future matches
   - Winner/Loser badges: Visual indicators for completed matches with declared winners
+  - Qualifiers display: Shows qualifiers with positions for multi sports matches
   - Can be embedded in SportDetailsModal
 - **PlayerListModal.jsx** - Admin interface for viewing and editing all players
 
@@ -1407,13 +1498,24 @@ The application uses React hooks for state management:
 - Bulk counts API: `/api/sports-counts` fetches all team and participant counts in a single request, reducing API calls
 - Modal UX: Modals require explicit close action (X button or Cancel) - they don't close on outside click to prevent accidental closures
 - Event Schedule: Match numbers are auto-generated per sport (e.g., Cricket: 1, 2, 3; Volleyball: 1, 2, 3)
-- Match Eligibility: Knockout matches automatically validate that only winners can proceed to next matches (per sport)
+- Sport Types: System supports four sport types - dual_team, multi_team, dual_player, multi_player
+- Match Types: System supports three match types - league (dual sports only), knockout, final
+- Match Eligibility: Knockout/final matches automatically validate that only eligible participants (winners/qualifiers) can proceed
+- League Matches: Only allowed for dual_team and dual_player sports, cannot be scheduled if knockout matches exist
+- Final Matches: Cannot schedule new matches if final match exists (scheduled or completed), can reschedule if draw or cancelled
 - Match Deletion: Only matches with 'scheduled' status can be deleted by admin (including future matches)
 - Match Status Updates: Status can only be updated for matches that are not in the future (both frontend and backend validation)
-- Winner Selection: Winners can only be declared for completed matches that are not in the future (both frontend and backend validation)
-- Winner/Loser Assignment: When a winner is selected, the other participant is automatically marked as loser (irreversible action)
+- Status Change Restrictions: Cannot change status from completed/draw/cancelled to any other status
+- Winner Selection: Winners can only be declared for completed matches in dual sports that are not in the future (both frontend and backend validation)
+- Qualifiers Selection: Qualifiers can only be set for completed matches in multi sports that are not in the future
+- Winner/Loser Assignment: When a winner is selected in dual sports, the other participant is automatically marked as loser
+- Qualifiers Assignment: When qualifiers are set in multi sports, participants not in qualifiers are marked as knocked out
+- Points Table: Automatically calculated and updated for league matches in dual sports (2 points for win, 1 for draw/cancelled, 0 for loss)
 - Remove Button: Available for all scheduled matches (including future matches) to allow cancellation/rescheduling
 - Status Dropdown: Only visible for scheduled matches that are not in the future
+- Event Year Management: Registration and event periods are managed per event year, not via environment variables
+- Year Selector: Admin can switch between event years to view/manage data for different years
+- Cache Management: Both frontend and backend use caching with automatic cache invalidation after database operations
 
 ## Security Considerations
 
@@ -1433,7 +1535,24 @@ The application uses React hooks for state management:
 - ⚠️ **Rate Limiting**: Consider implementing rate limiting to prevent abuse
 - ⚠️ **Input Sanitization**: Consider additional input sanitization for XSS prevention
 
-## Splitting Backend and Frontend
+## Documentation
+
+### User Guide
+For comprehensive user documentation covering all features, functionality, and usage instructions, see **[USER_GUIDE.md](./USER_GUIDE.md)**.
+
+The user guide covers:
+- Common features for all users
+- Non-admin user features
+- Admin user features
+- Sport types and registration rules
+- Match types and scheduling
+- Points table system
+- Event year management
+- Participation limits and constraints
+- User interface features
+- Security features
+
+### Splitting Backend and Frontend
 
 If you need to separate the backend and frontend into independent applications, see **[SPLIT_GUIDE.md](./SPLIT_GUIDE.md)** for detailed step-by-step instructions.
 

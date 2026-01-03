@@ -1,17 +1,22 @@
 import { useState, useEffect, useRef } from 'react'
-import { Modal, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
-import { fetchWithAuth } from '../utils/api'
+import { Modal, Button, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
+import { fetchWithAuth, clearCache } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
-import { useEventYearWithFallback } from '../hooks'
+import { useEventYearWithFallback, useApi } from '../hooks'
 import logger from '../utils/logger'
 
-function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = false, selectedYear }) {
+function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = false, selectedYear, isActive = true, onStatusPopup }) {
   const [pointsTable, setPointsTable] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [selectedGender, setSelectedGender] = useState('Male') // Default to Male
+  const [hasLeagueMatches, setHasLeagueMatches] = useState(true) // Assume true initially
   const eventYear = useEventYearWithFallback(selectedYear)
   const abortControllerRef = useRef(null)
   const currentSportRef = useRef(null)
+  const previousIsActiveRef = useRef(false)
+  const isAdmin = loggedInUser?.reg_number === 'admin'
+  const { loading: backfilling, execute: executeBackfill } = useApi()
 
   useEffect(() => {
     if (!isOpen || !sport) {
@@ -19,6 +24,7 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
       setError(null)
       setLoading(false)
       currentSportRef.current = null
+      previousIsActiveRef.current = false
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
         abortControllerRef.current = null
@@ -26,10 +32,19 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
       return
     }
 
-    // Only fetch if sport or eventYear changed or we haven't fetched yet
-    const currentKey = `${sport}-${eventYear}`
-    if (currentSportRef.current === currentKey) {
+    // Refresh when tab becomes active (user switches to Points Table tab)
+    const becameActive = isActive && !previousIsActiveRef.current
+    previousIsActiveRef.current = isActive
+
+    // Only fetch if sport, eventYear, or gender changed, we haven't fetched yet, or tab became active
+    const currentKey = `${sport}-${eventYear}-${selectedGender}`
+    if (currentSportRef.current === currentKey && !becameActive) {
       return
+    }
+
+    // Reset ref if tab became active to force refresh
+    if (becameActive) {
+      currentSportRef.current = null
     }
 
     currentSportRef.current = currentKey
@@ -51,8 +66,8 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
 
     return () => {
       isMounted = false
-      // Only abort if sport or eventYear changed
-      const currentKey = `${sport}-${eventYear}`
+      // Only abort if sport, eventYear, or gender changed
+      const currentKey = `${sport}-${eventYear}-${selectedGender}`
       if (currentSportRef.current !== currentKey) {
         abortController.abort()
       }
@@ -61,7 +76,7 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, sport, eventYear])
+  }, [isOpen, sport, eventYear, isActive, selectedGender])
 
   const fetchPointsTable = async (signal) => {
     if (!sport) {
@@ -76,7 +91,7 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
 
     try {
       const encodedSport = encodeURIComponent(sport)
-      const url = buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear)
+      const url = buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, selectedGender)
 
       const response = await fetchWithAuth(url, { signal })
 
@@ -108,6 +123,11 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
       if (isMounted) {
         if (data.success) {
           setPointsTable(data.points_table || [])
+          // Store has_league_matches flag for better empty state messaging
+          if (data.has_league_matches !== undefined) {
+            // This will be used in empty state message
+            setHasLeagueMatches(data.has_league_matches)
+          }
         } else {
           setError(data.error || 'Failed to fetch points table')
         }
@@ -128,6 +148,51 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
     }
   }
 
+  const handleBackfill = async () => {
+    if (!sport || !eventYear) {
+      if (onStatusPopup) {
+        onStatusPopup('❌ Sport and event year are required for backfill.', 'error', 3000)
+      }
+      return
+    }
+
+    try {
+      await executeBackfill(
+        () => fetchWithAuth(`/api/points-table/backfill/${encodeURIComponent(sport)}?year=${eventYear}`, {
+          method: 'POST',
+        }),
+        {
+          onSuccess: (data) => {
+            const message = data.message || `Backfill completed: ${data.processed || 0} matches processed, ${data.created || 0} entries created.`
+            if (onStatusPopup) {
+              onStatusPopup(`✅ ${message}`, 'success', 4000)
+            }
+            // Clear cache and refresh points table
+            clearCache(buildApiUrlWithYear(`/api/points-table/${encodeURIComponent(sport)}`, eventYear, 'Male'))
+            clearCache(buildApiUrlWithYear(`/api/points-table/${encodeURIComponent(sport)}`, eventYear, 'Female'))
+            // Reset current sport ref to force refresh
+            currentSportRef.current = null
+            // Refresh points table (create new abort controller for refresh)
+            const refreshAbortController = new AbortController()
+            abortControllerRef.current = refreshAbortController
+            fetchPointsTable(refreshAbortController.signal)
+          },
+          onError: (err) => {
+            const errorMessage = err?.message || err?.error || 'Error backfilling points table. Please try again.'
+            if (onStatusPopup) {
+              onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
+            }
+          },
+        }
+      )
+    } catch (err) {
+      logger.error('Error in handleBackfill:', err)
+      if (onStatusPopup) {
+        onStatusPopup('❌ Error backfilling points table. Please try again.', 'error', 3000)
+      }
+    }
+  }
+
   if (!embedded) {
     return (
       <Modal
@@ -137,10 +202,58 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
         subtitle="League Match Standings"
         maxWidth="max-w-[900px]"
       >
+        {/* Gender Selection Tabs and Refresh Button */}
+        <div className="mb-4 flex flex-col gap-3">
+          <div className="flex gap-2 justify-center">
+            <button
+              type="button"
+              onClick={() => setSelectedGender('Male')}
+              className={`px-4 py-2 rounded-lg text-[0.85rem] font-bold transition-all duration-200 ${
+                selectedGender === 'Male'
+                  ? 'bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.3)]'
+                  : 'bg-[rgba(255,255,255,0.05)] text-[#cbd5ff] hover:bg-[rgba(255,255,255,0.1)] border border-transparent'
+              }`}
+            >
+              Male
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedGender('Female')}
+              className={`px-4 py-2 rounded-lg text-[0.85rem] font-bold transition-all duration-200 ${
+                selectedGender === 'Female'
+                  ? 'bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.3)]'
+                  : 'bg-[rgba(255,255,255,0.05)] text-[#cbd5ff] hover:bg-[rgba(255,255,255,0.1)] border border-transparent'
+              }`}
+            >
+              Female
+            </button>
+          </div>
+          {isAdmin && (
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                onClick={handleBackfill}
+                disabled={backfilling || loading}
+                loading={backfilling}
+                variant="secondary"
+                className="px-4 py-2 text-[0.85rem] font-bold rounded-lg"
+                title="Backfill points table entries for existing completed league matches"
+              >
+                {backfilling ? 'Refreshing...' : '🔄 Refresh Points Table'}
+              </Button>
+            </div>
+          )}
+        </div>
         {loading && <LoadingSpinner />}
         {error && <ErrorMessage message={error} />}
         {!loading && !error && pointsTable.length === 0 && (
-          <EmptyState message="No points table data available yet. Points are calculated automatically for league matches." />
+          <EmptyState 
+            message={
+              hasLeagueMatches
+                ? "No points table data available yet. Points are calculated automatically for league matches. If you see completed league matches, try clicking the 'Refresh Points Table' button."
+                : "No points table data available. Points table only tracks league matches, not knockout or final matches. Please schedule league matches first to see points table entries."
+            } 
+          />
         )}
         {!loading && !error && pointsTable.length > 0 && (
           <div className="overflow-x-auto">
@@ -183,10 +296,58 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
   // Embedded mode (inside SportDetailsModal)
   return (
     <div className="p-4">
+      {/* Gender Selection Tabs and Refresh Button */}
+      <div className="mb-4 flex flex-col gap-3">
+        <div className="flex gap-2 justify-center">
+          <button
+            type="button"
+            onClick={() => setSelectedGender('Male')}
+            className={`px-4 py-2 rounded-lg text-[0.85rem] font-bold transition-all duration-200 ${
+              selectedGender === 'Male'
+                ? 'bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.3)]'
+                : 'bg-[rgba(255,255,255,0.05)] text-[#cbd5ff] hover:bg-[rgba(255,255,255,0.1)] border border-transparent'
+            }`}
+          >
+            Male
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedGender('Female')}
+            className={`px-4 py-2 rounded-lg text-[0.85rem] font-bold transition-all duration-200 ${
+              selectedGender === 'Female'
+                ? 'bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.3)]'
+                : 'bg-[rgba(255,255,255,0.05)] text-[#cbd5ff] hover:bg-[rgba(255,255,255,0.1)] border border-transparent'
+            }`}
+          >
+            Female
+          </button>
+        </div>
+        {isAdmin && (
+          <div className="flex justify-center">
+            <Button
+              type="button"
+              onClick={handleBackfill}
+              disabled={backfilling || loading}
+              loading={backfilling}
+              variant="secondary"
+              className="px-4 py-2 text-[0.85rem] font-bold rounded-lg"
+              title="Backfill points table entries for existing completed league matches"
+            >
+              {backfilling ? 'Refreshing...' : '🔄 Refresh Points Table'}
+            </Button>
+          </div>
+        )}
+      </div>
       {loading && <LoadingSpinner />}
       {error && <ErrorMessage message={error} />}
       {!loading && !error && pointsTable.length === 0 && (
-        <EmptyState message="No points table data available yet. Points are calculated automatically for league matches." />
+        <EmptyState 
+          message={
+            hasLeagueMatches
+              ? "No points table data available yet. Points are calculated automatically for league matches. If you see completed league matches, try clicking the 'Refresh Points Table' button."
+              : "No points table data available. Points table only tracks league matches, not knockout or final matches. Please schedule league matches first to see points table entries."
+          } 
+        />
       )}
       {!loading && !error && pointsTable.length > 0 && (
         <div className="overflow-x-auto">

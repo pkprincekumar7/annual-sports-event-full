@@ -59,16 +59,6 @@ function YearSelector({ selectedYear, onYearChange, loggedInUser }) {
 
   return (
     <div className="flex items-center gap-3 flex-wrap justify-center">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-bold text-[#ffe66d] uppercase tracking-wide">
-          View Year:
-        </span>
-        {activeYear && (
-          <span className="text-xs text-[#94a3b8]">
-            (Active: {activeYear.year})
-          </span>
-        )}
-      </div>
       <select
         value={currentYear || ''}
         onChange={handleYearChange}

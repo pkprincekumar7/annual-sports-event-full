@@ -9,10 +9,19 @@ import Player from '../models/Player.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { requireEventPeriod, isMatchDateWithinEventRange } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
+import logger from '../utils/logger.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
 import { updatePointsTable } from '../utils/pointsTable.js'
 import { getEventYear } from '../utils/yearHelpers.js'
 import { findSportByNameAndYear, normalizeSportName } from '../utils/sportHelpers.js'
+import { getMatchGender, getParticipantsGender } from '../utils/genderHelpers.js'
+import { clearMatchCaches, clearNewMatchCaches } from '../utils/cacheHelpers.js'
+import { 
+  validateMatchTypeForSport, 
+  validateFinalMatchRequirement,
+  getKnockedOutParticipants,
+  getParticipantsInScheduledMatches
+} from '../utils/matchValidation.js'
 
 const router = express.Router()
 
@@ -27,21 +36,43 @@ router.get(
   asyncHandler(async (req, res) => {
     const { sport } = req.params
     const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+    const gender = req.query.gender // Optional: 'Male' or 'Female'
 
-    // Check cache
-    const cacheKey = `/api/event-schedule/${sport}?year=${eventYear}`
+    // Build cache key with gender if provided
+    const cacheKey = gender 
+      ? `/api/event-schedule/${sport}?year=${eventYear}&gender=${gender}`
+      : `/api/event-schedule/${sport}?year=${eventYear}`
+    
     const cached = getCache(cacheKey)
     if (cached) {
       // Always use sendSuccessResponse for consistency, even for cached data
       return sendSuccessResponse(res, cached)
     }
 
-    const matches = await EventSchedule.find({
+    // Fetch all matches (gender will be derived from participants)
+    const allMatches = await EventSchedule.find({
       sports_name: normalizeSportName(sport),
       event_year: eventYear
     }).sort({ match_number: 1 }).lean()
 
-    const result = { matches }
+    // Derive gender for each match and filter if gender parameter provided
+    const sportDoc = await findSportByNameAndYear(sport, eventYear).catch(() => null)
+    const matchesWithGender = []
+    
+    for (const match of allMatches) {
+      const matchGender = await getMatchGender(match, sportDoc)
+      // Add gender to match object for frontend
+      const matchWithGender = { ...match, gender: matchGender }
+      
+      // Filter by gender if provided
+      if (!gender || (gender === 'Male' || gender === 'Female')) {
+        if (!gender || matchGender === gender) {
+          matchesWithGender.push(matchWithGender)
+        }
+      }
+    }
+
+    const result = { matches: matchesWithGender }
 
     // Cache the result
     setCache(cacheKey, result)
@@ -66,113 +97,40 @@ router.get(
     const { sport } = req.params
     const decodedSport = decodeURIComponent(sport)
     const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+    const gender = req.query.gender // Required: 'Male' or 'Female'
+
+    // Validate gender is provided
+    if (!gender || (gender !== 'Male' && gender !== 'Female')) {
+      return sendErrorResponse(res, 400, 'Gender parameter is required and must be "Male" or "Female"')
+    }
 
     // Find sport by name and event_year
     const sportDoc = await findSportByNameAndYear(decodedSport, eventYear)
+    
+    if (!sportDoc) {
+      return sendErrorResponse(res, 404, `Sport "${decodedSport}" not found for year ${eventYear}`)
+    }
 
-    // Get all completed matches for this sport to determine knocked out participants
-    const completedMatches = await EventSchedule.find({
-      sports_name: normalizeSportName(decodedSport),
-      event_year: eventYear,
-      status: 'completed'
-    }).lean()
-
-    const knockedOutParticipants = new Set()
-
-    // Determine knocked out participants from completed matches
-    completedMatches.forEach(match => {
-      if (match.match_type === 'knockout' || match.match_type === 'final') {
-        if (sportDoc.type === 'dual_team' || sportDoc.type === 'dual_player') {
-          // For dual types: loser is knocked out
-          if (match.winner && match.teams) {
-            match.teams.forEach(team => {
-              if (team !== match.winner) {
-                knockedOutParticipants.add(team)
-              }
-            })
-          } else if (match.winner && match.players) {
-            match.players.forEach(player => {
-              if (player !== match.winner) {
-                knockedOutParticipants.add(player)
-              }
-            })
-          }
-        } else {
-          // For multi types: participants not in qualifiers are knocked out
-          if (match.qualifiers && match.qualifiers.length > 0) {
-            const qualifierParticipants = new Set(match.qualifiers.map(q => (q.participant || '').trim()))
-            if (match.teams && match.teams.length > 0) {
-              match.teams.forEach(team => {
-                const trimmedTeam = (team || '').trim()
-                if (trimmedTeam && !qualifierParticipants.has(trimmedTeam)) {
-                  knockedOutParticipants.add(trimmedTeam)
-                }
-              })
-            } else if (match.players && match.players.length > 0) {
-              match.players.forEach(player => {
-                const trimmedPlayer = (player || '').trim()
-                if (trimmedPlayer && !qualifierParticipants.has(trimmedPlayer)) {
-                  knockedOutParticipants.add(trimmedPlayer)
-                }
-              })
-            }
-          } else {
-            // If match is completed but has no qualifiers, mark all participants as knocked out
-            // This handles edge cases where qualifiers weren't set properly
-            if (match.teams && match.teams.length > 0) {
-              match.teams.forEach(team => {
-                const trimmedTeam = (team || '').trim()
-                if (trimmedTeam) {
-                  knockedOutParticipants.add(trimmedTeam)
-                }
-              })
-            } else if (match.players && match.players.length > 0) {
-              match.players.forEach(player => {
-                const trimmedPlayer = (player || '').trim()
-                if (trimmedPlayer) {
-                  knockedOutParticipants.add(trimmedPlayer)
-                }
-              })
-            }
-          }
-        }
-      }
-    })
-
-    // Get all scheduled knockout matches to exclude participants already in matches
-    // Note: 'draw' and 'cancelled' matches don't block participants - they can be rescheduled
-    const scheduledKnockoutMatches = await EventSchedule.find({
-      sports_name: normalizeSportName(decodedSport),
-      event_year: eventYear,
-      match_type: { $in: ['knockout', 'final'] },
-      status: 'scheduled'
-    }).lean()
-
-    const participantsInScheduledMatches = new Set()
-    scheduledKnockoutMatches.forEach(match => {
-      if (match.teams && match.teams.length > 0) {
-        match.teams.forEach(team => {
-          const trimmedTeam = (team || '').trim()
-          if (trimmedTeam) {
-            participantsInScheduledMatches.add(trimmedTeam)
-          }
-        })
-      }
-      if (match.players && match.players.length > 0) {
-        match.players.forEach(player => {
-          const trimmedPlayer = (player || '').trim()
-          if (trimmedPlayer) {
-            participantsInScheduledMatches.add(trimmedPlayer)
-          }
-        })
-      }
-    })
+    // Get knocked out participants and participants in scheduled matches using utility functions
+    let knockedOutParticipants = new Set()
+    let participantsInScheduledMatches = new Set()
+    
+    try {
+      knockedOutParticipants = await getKnockedOutParticipants(decodedSport, eventYear, gender, sportDoc)
+      participantsInScheduledMatches = await getParticipantsInScheduledMatches(decodedSport, eventYear, gender, sportDoc)
+    } catch (error) {
+      logger.error('Error getting knocked out or scheduled participants:', error)
+      return sendErrorResponse(res, 500, 'Error retrieving participant eligibility data')
+    }
 
     if (sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team') {
       // Get teams from teams_participated with gender information
       // Exclude: 1) knocked out teams, 2) teams already in scheduled knockout matches
       const eligibleTeams = (sportDoc.teams_participated || [])
-        .filter(team => !knockedOutParticipants.has(team.team_name) && !participantsInScheduledMatches.has(team.team_name))
+        .filter(team => {
+          const trimmedTeamName = (team.team_name || '').trim()
+          return trimmedTeamName && !knockedOutParticipants.has(trimmedTeamName) && !participantsInScheduledMatches.has(trimmedTeamName)
+        })
       
       // Get first player from each team to determine gender (teams already have same gender players)
       const teamPlayerRegNumbers = []
@@ -192,7 +150,7 @@ router.get(
         .select('reg_number gender')
         .lean()
       
-      // Create teams list with gender information
+      // Create teams list with gender information, filtered by requested gender
       const teams = eligibleTeams
         .map(team => {
           const firstPlayerRegNumber = team.players && team.players.length > 0 ? team.players[0] : null
@@ -202,6 +160,7 @@ router.get(
             gender: playerData ? playerData.gender : null
           }
         })
+        .filter(team => team.gender === gender) // Filter by requested gender
         .sort((a, b) => a.team_name.localeCompare(b.team_name))
 
       return sendSuccessResponse(res, { teams, players: [] })
@@ -221,11 +180,13 @@ router.get(
         .select('reg_number full_name gender')
         .lean()
 
-      const playersList = players.map(p => ({
-        reg_number: p.reg_number,
-        full_name: p.full_name,
-        gender: p.gender
-      }))
+      const playersList = players
+        .filter(p => p.gender === gender) // Filter by requested gender
+        .map(p => ({
+          reg_number: p.reg_number,
+          full_name: p.full_name,
+          gender: p.gender
+        }))
 
       return sendSuccessResponse(res, { teams: [], players: playersList })
     }
@@ -249,7 +210,7 @@ router.post(
     const eventYear = await getEventYear(event_year ? parseInt(event_year) : null, { returnDoc: true })
     const eventYearDoc = eventYear.doc
 
-    // Validate required fields
+    // Validate required fields (gender will be derived from participants)
     if (!match_type || !sports_name || !match_date) {
       return sendErrorResponse(res, 400, 'Missing required fields: match_type, sports_name, match_date')
     }
@@ -276,13 +237,18 @@ router.post(
     // Find sport by name and event_year
     const sportDoc = await findSportByNameAndYear(sports_name, eventYear.year, { lean: false })
 
+    // Declare variables for trimmed/unique participants (used later for knockout validation)
+    let uniqueTeams = null
+    let uniquePlayers = null
+    let derivedGender = null // Will be set based on sport type (team or player)
+
     // Validate teams/players arrays based on sport type
     if (sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team') {
       if (!teams || !Array.isArray(teams) || teams.length === 0) {
         return sendErrorResponse(res, 400, 'Teams array is required for team sports')
       }
       // Remove duplicates
-      const uniqueTeams = [...new Set(teams.map(t => t.trim()).filter(t => t))]
+      uniqueTeams = [...new Set(teams.map(t => t.trim()).filter(t => t))]
       if (sportDoc.type === 'dual_team' && uniqueTeams.length !== 2) {
         return sendErrorResponse(res, 400, 'dual_team sports require exactly 2 teams')
       }
@@ -336,7 +302,7 @@ router.post(
         return sendErrorResponse(res, 400, 'Some players not found')
       }
       
-      // Check if all teams have the same gender
+      // Check if all teams have the same gender (gender is derived from participants, not provided)
       const teamGenders = playersList.map(p => p.gender).filter(Boolean)
       if (teamGenders.length > 0) {
         const firstGender = teamGenders[0]
@@ -344,13 +310,17 @@ router.post(
         if (genderMismatch) {
           return sendErrorResponse(res, 400, 'All teams must have players of the same gender for team matches')
         }
+        // Store derived gender for later use (for cache clearing, etc.)
+        derivedGender = firstGender
+      } else {
+        return sendErrorResponse(res, 400, 'Could not determine gender for teams')
       }
     } else {
       if (!players || !Array.isArray(players) || players.length === 0) {
         return sendErrorResponse(res, 400, 'Players array is required for individual/cultural sports')
       }
       // Remove duplicates
-      const uniquePlayers = [...new Set(players.map(p => p.trim()).filter(p => p))]
+      uniquePlayers = [...new Set(players.map(p => p.trim()).filter(p => p))]
       if (sportDoc.type === 'dual_player' && uniquePlayers.length !== 2) {
         return sendErrorResponse(res, 400, 'dual_player sports require exactly 2 players')
       }
@@ -381,130 +351,52 @@ router.post(
           return sendErrorResponse(res, 400, `Player "${player}" is not registered for ${sports_name}`)
         }
       }
-      // Validate all players have same gender
+      // Validate all players have same gender (derive gender from participants)
       const playerDocs = await Player.find({ reg_number: { $in: uniquePlayers } }).select('gender').lean()
       if (playerDocs.length !== uniquePlayers.length) {
         return sendErrorResponse(res, 400, 'Some players not found')
       }
       const firstGender = playerDocs[0].gender
+      if (!firstGender) {
+        return sendErrorResponse(res, 400, 'Could not determine gender for players. Please ensure all players have a valid gender set.')
+      }
       const genderMismatch = playerDocs.find(p => p.gender !== firstGender)
       if (genderMismatch) {
         return sendErrorResponse(res, 400, 'All players must have the same gender')
       }
+      // Store derived gender for later use
+      derivedGender = firstGender
     }
 
     // Validate match_type restrictions
-    if (sportDoc.type === 'multi_team' || sportDoc.type === 'multi_player') {
-      if (match_type === 'league') {
-        return sendErrorResponse(res, 400, 'match_type "league" is not allowed for multi_team and multi_player sports')
-      }
+    const matchTypeError = validateMatchTypeForSport(match_type, sportDoc.type)
+    if (matchTypeError) {
+      return sendErrorResponse(res, matchTypeError.statusCode, matchTypeError.message)
     }
 
-    // For knockout/final matches, validate that participants are not already in another scheduled knockout match
+    // For knockout/final matches, validate that participants are not already in another scheduled knockout/final match
+    // and that they have not been knocked out in previous completed knockout/final matches
     // Note: 'draw' and 'cancelled' matches don't block participants - they can be rescheduled
     if (match_type === 'knockout' || match_type === 'final') {
-      const participantsToCheck = sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team' ? teams : players
+      // Use the trimmed/unique arrays that were created during validation above
+      // This ensures consistent comparison with knocked-out participants (which are also trimmed)
+      const participantsToCheck = sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team' 
+        ? (uniqueTeams || teams.map(t => t.trim()).filter(t => t))
+        : (uniquePlayers || players.map(p => p.trim()).filter(p => p))
       
-      // Get all scheduled knockout matches for this sport (only 'scheduled' status blocks participants)
-      const scheduledKnockoutMatches = await EventSchedule.find({
-        sports_name: normalizeSportName(sports_name),
-        event_year: eventYear.year,
-        match_type: { $in: ['knockout', 'final'] },
-        status: 'scheduled'
-      }).lean()
-
-      // Check if any participant is already in a scheduled knockout match
-      const participantsInScheduledMatches = new Set()
-      scheduledKnockoutMatches.forEach(match => {
-        if (match.teams && match.teams.length > 0) {
-          match.teams.forEach(team => {
-            const trimmedTeam = (team || '').trim()
-            if (trimmedTeam) {
-              participantsInScheduledMatches.add(trimmedTeam)
-            }
-          })
-        }
-        if (match.players && match.players.length > 0) {
-          match.players.forEach(player => {
-            const trimmedPlayer = (player || '').trim()
-            if (trimmedPlayer) {
-              participantsInScheduledMatches.add(trimmedPlayer)
-            }
-          })
-        }
-      })
-
-      // Also check for knocked out participants from completed matches
-      const completedKnockoutMatches = await EventSchedule.find({
-        sports_name: normalizeSportName(sports_name),
-        event_year: eventYear.year,
-        status: 'completed',
-        match_type: { $in: ['knockout', 'final'] }
-      }).lean()
-
-      const knockedOutParticipants = new Set()
-      completedKnockoutMatches.forEach(match => {
-        if (sportDoc.type === 'dual_team' || sportDoc.type === 'dual_player') {
-          // For dual types: loser is knocked out
-          if (match.winner && match.teams) {
-            match.teams.forEach(team => {
-              const trimmedTeam = (team || '').trim()
-              if (trimmedTeam && trimmedTeam !== match.winner) {
-                knockedOutParticipants.add(trimmedTeam)
-              }
-            })
-          } else if (match.winner && match.players) {
-            match.players.forEach(player => {
-              const trimmedPlayer = (player || '').trim()
-              if (trimmedPlayer && trimmedPlayer !== match.winner) {
-                knockedOutParticipants.add(trimmedPlayer)
-              }
-            })
-          }
-        } else {
-          // For multi types: participants not in qualifiers are knocked out
-          if (match.qualifiers && match.qualifiers.length > 0) {
-            const qualifierParticipants = new Set(match.qualifiers.map(q => (q.participant || '').trim()))
-            if (match.teams && match.teams.length > 0) {
-              match.teams.forEach(team => {
-                const trimmedTeam = (team || '').trim()
-                if (trimmedTeam && !qualifierParticipants.has(trimmedTeam)) {
-                  knockedOutParticipants.add(trimmedTeam)
-                }
-              })
-            } else if (match.players && match.players.length > 0) {
-              match.players.forEach(player => {
-                const trimmedPlayer = (player || '').trim()
-                if (trimmedPlayer && !qualifierParticipants.has(trimmedPlayer)) {
-                  knockedOutParticipants.add(trimmedPlayer)
-                }
-              })
-            }
-          } else {
-            // If match is completed but has no qualifiers, mark all participants as knocked out
-            if (match.teams && match.teams.length > 0) {
-              match.teams.forEach(team => {
-                const trimmedTeam = (team || '').trim()
-                if (trimmedTeam) {
-                  knockedOutParticipants.add(trimmedTeam)
-                }
-              })
-            } else if (match.players && match.players.length > 0) {
-              match.players.forEach(player => {
-                const trimmedPlayer = (player || '').trim()
-                if (trimmedPlayer) {
-                  knockedOutParticipants.add(trimmedPlayer)
-                }
-              })
-            }
-          }
-        }
-      })
+      // Get knocked out participants and participants in scheduled matches using utility functions
+      const knockedOutParticipants = await getKnockedOutParticipants(sports_name, eventYear.year, derivedGender, sportDoc)
+      const participantsInScheduledMatches = await getParticipantsInScheduledMatches(sports_name, eventYear.year, derivedGender, sportDoc)
 
       // Check if any participant in the new match is already in a scheduled knockout match or is knocked out
       const conflictingParticipants = participantsToCheck.filter(p => {
         const trimmedP = (p || '').trim()
-        return participantsInScheduledMatches.has(trimmedP) || knockedOutParticipants.has(trimmedP)
+        const inScheduled = participantsInScheduledMatches.has(trimmedP)
+        const isKnockedOut = knockedOutParticipants.has(trimmedP)
+        if (inScheduled || isKnockedOut) {
+          logger.debug(`Participant "${trimmedP}" conflict: inScheduled=${inScheduled}, isKnockedOut=${isKnockedOut}`)
+        }
+        return inScheduled || isKnockedOut
       })
       if (conflictingParticipants.length > 0) {
         const participantType = sportDoc.type === 'dual_team' || sportDoc.type === 'multi_team' ? 'team(s)' : 'player(s)'
@@ -512,12 +404,13 @@ router.post(
         const inScheduled = conflictingParticipants.filter(p => participantsInScheduledMatches.has((p || '').trim()))
         const isKnockedOut = conflictingParticipants.filter(p => knockedOutParticipants.has((p || '').trim()))
         
-        let errorMessage = `Cannot schedule knockout match. `
+        const matchTypeLabel = match_type === 'final' ? 'final match' : 'knockout match'
+        let errorMessage = `Cannot schedule ${matchTypeLabel}. `
         if (inScheduled.length > 0) {
-          errorMessage += `The following ${participantType} are already in a scheduled knockout match: ${inScheduled.join(', ')}. `
+          errorMessage += `The following ${participantType} are already in a scheduled knockout or final match: ${inScheduled.join(', ')}. `
         }
         if (isKnockedOut.length > 0) {
-          errorMessage += `The following ${participantType} have been knocked out in previous matches: ${isKnockedOut.join(', ')}. `
+          errorMessage += `The following ${participantType} have been knocked out in previous knockout or final matches: ${isKnockedOut.join(', ')}. `
         }
         errorMessage += `Please select eligible participants.`
         
@@ -525,25 +418,39 @@ router.post(
       }
     }
 
-    // Validate league vs knockout restrictions
+    // Validate league vs knockout restrictions (gender will be derived)
     if (match_type === 'league') {
-      // Check if any knockout match exists for this sport
-      const knockoutMatch = await EventSchedule.findOne({
+      // Check if any knockout match exists for this sport (gender will be derived)
+      const allKnockoutMatches = await EventSchedule.find({
         sports_name: normalizeSportName(sports_name),
         event_year: eventYear.year,
         match_type: { $in: ['knockout', 'final'] },
         status: { $in: ['scheduled', 'completed', 'draw', 'cancelled'] }
-      })
-      if (knockoutMatch) {
-        return sendErrorResponse(res, 400, 'Cannot schedule league matches. Knockout matches already exist for this sport.')
+      }).lean()
+
+      // Check if any knockout match has the same derived gender
+      for (const match of allKnockoutMatches) {
+        const matchGender = await getMatchGender(match, sportDoc)
+        if (matchGender === derivedGender) {
+          return sendErrorResponse(res, 400, `Cannot schedule league matches. Knockout matches already exist for this sport and gender (${derivedGender}).`)
+        }
       }
     } else if (match_type === 'knockout' || match_type === 'final') {
-      // Check if any league match exists
-      const leagueMatches = await EventSchedule.find({
+      // Check if any league match exists for this gender (gender will be derived)
+      const allLeagueMatches = await EventSchedule.find({
         sports_name: normalizeSportName(sports_name),
         event_year: eventYear.year,
         match_type: 'league'
       }).sort({ match_date: -1 }).lean()
+
+      // Filter by derived gender
+      const leagueMatches = []
+      for (const match of allLeagueMatches) {
+        const matchGender = await getMatchGender(match, sportDoc)
+        if (matchGender === derivedGender) {
+          leagueMatches.push(match)
+        }
+      }
 
       if (leagueMatches.length > 0) {
         // Validate that match_date is after all league matches (date-only comparison)
@@ -564,58 +471,35 @@ router.post(
     }
 
     // Validate match_type: 'final' restrictions
-    if (sportDoc.type === 'dual_team' || sportDoc.type === 'dual_player') {
-      // Get eligible participants (not knocked out)
-      const eligibleParticipants = sportDoc.type === 'dual_team'
-        ? (sportDoc.teams_participated || []).map(t => t.team_name)
-        : (sportDoc.players_participated || [])
-
-      // Get knocked out participants from completed matches
-      const completedMatches = await EventSchedule.find({
-        sports_name: normalizeSportName(sports_name),
-        event_year: eventYear.year,
-        status: 'completed',
-        match_type: { $in: ['knockout', 'final'] }
-      }).lean()
-
-      const knockedOut = new Set()
-      completedMatches.forEach(match => {
-        if (match.winner && match.teams) {
-          match.teams.forEach(team => {
-            if (team !== match.winner) knockedOut.add(team)
-          })
-        } else if (match.winner && match.players) {
-          match.players.forEach(player => {
-            if (player !== match.winner) knockedOut.add(player)
-          })
-        }
-      })
-
-      const activeParticipants = eligibleParticipants.filter(p => !knockedOut.has(p))
-      const participantsInMatch = sportDoc.type === 'dual_team' ? teams : players
-
-      // If exactly 2 eligible participants are in the match, it MUST be 'final'
-      if (activeParticipants.length === 2 && participantsInMatch.length === 2) {
-        if (match_type !== 'final') {
-          return sendErrorResponse(
-            res,
-            400,
-            'match_type must be "final" when exactly 2 eligible participants are in the match'
-          )
-        }
-      }
+    // Use the same logic as GET /api/event-schedule/:sport/teams-players to ensure consistency
+    const finalMatchError = await validateFinalMatchRequirement(
+      sportDoc,
+      derivedGender,
+      teams,
+      players,
+      match_type,
+      sports_name,
+      eventYear.year
+    )
+    if (finalMatchError) {
+      return sendErrorResponse(res, finalMatchError.statusCode, finalMatchError.message)
     }
 
-    // Prevent scheduling if 'final' match exists with status 'scheduled' or 'completed'
+    // Prevent scheduling if 'final' match exists with status 'scheduled' or 'completed' for this gender
     // If final match is 'draw' or 'cancelled', another final match can be scheduled
-    const existingFinalMatch = await EventSchedule.findOne({
+    // Gender will be derived from matches
+    const allFinalMatches = await EventSchedule.find({
       sports_name: normalizeSportName(sports_name),
       event_year: eventYear.year,
       match_type: 'final',
       status: { $in: ['scheduled', 'completed'] }
-    })
-    if (existingFinalMatch) {
-      return sendErrorResponse(res, 400, 'Cannot schedule new matches. A final match already exists for this sport.')
+    }).lean()
+
+    for (const match of allFinalMatches) {
+      const matchGender = await getMatchGender(match, sportDoc)
+      if (matchGender === derivedGender) {
+        return sendErrorResponse(res, 400, `Cannot schedule new matches. A final match already exists for this sport and gender (${derivedGender}).`)
+      }
     }
 
     // Validate match date (date-only comparison)
@@ -630,14 +514,19 @@ router.post(
     }
 
     // Get next match number for this sport and year
+    // Match numbers must be unique per sport/year (not per gender) due to database index
+    // So we find the highest match_number for this sport/year regardless of gender
     const lastMatch = await EventSchedule.findOne({
       sports_name: normalizeSportName(sports_name),
       event_year: eventYear.year
-    }).sort({ match_number: -1 }).lean()
+    })
+      .sort({ match_number: -1 })
+      .select('match_number')
+      .lean()
 
     const match_number = lastMatch ? lastMatch.match_number + 1 : 1
 
-    // Create new match
+    // Create new match (gender is not stored, will be derived from participants)
     const matchData = {
       event_year: eventYear.year,
       match_number,
@@ -655,14 +544,36 @@ router.post(
       matchData.teams = []
     }
 
-    const newMatch = new EventSchedule(matchData)
-    await newMatch.save()
+    try {
+      const newMatch = new EventSchedule(matchData)
+      await newMatch.save()
+      
+      // Clear caches using helper function
+      // derivedGender should be set by this point, but add safety check
+      if (!derivedGender) {
+        logger.error(`[EventSchedule] Error: derivedGender is not set for match creation. Sport: ${sports_name}, Year: ${eventYear.year}, Type: ${sportDoc.type}`)
+        return sendErrorResponse(res, 500, 'Internal error: Could not determine match gender. Please contact administrator.')
+      }
+      
+      try {
+        clearNewMatchCaches(sports_name, eventYear.year, derivedGender, match_type)
+      } catch (cacheError) {
+        logger.error('[EventSchedule] Error clearing caches after match creation:', cacheError)
+        // Don't fail the request if cache clearing fails, just log it
+      }
+      
+      return sendSuccessResponse(res, { match: newMatch }, `Match #${match_number} scheduled successfully`)
+    } catch (saveError) {
+      logger.error('[EventSchedule] Error saving match:', saveError)
+      logger.error('[EventSchedule] Match data:', matchData)
+      logger.error('[EventSchedule] Error details:', {
+        message: saveError.message,
+        stack: saveError.stack,
+        name: saveError.name
+      })
+      return sendErrorResponse(res, 500, `Error saving match: ${saveError.message || 'Unknown error'}`)
+    }
 
-    // Clear cache
-    clearCache(`/api/event-schedule/${sports_name}?year=${eventYear.year}`)
-    clearCache(`/api/event-schedule/${sports_name}/teams-players?year=${eventYear.year}`)
-
-    return sendSuccessResponse(res, { match: newMatch }, `Match #${match_number} scheduled successfully`)
   })
 )
 
@@ -802,11 +713,15 @@ router.put(
 
       // Validate winner is one of the participants
       const participants = sportDoc.type === 'dual_team' ? match.teams : match.players
-      if (!participants || !participants.includes(winner)) {
+      const trimmedWinner = (winner || '').trim()
+      // Check if winner (trimmed) matches any participant (trimmed)
+      const participantMatches = participants && participants.some(p => (p || '').trim() === trimmedWinner)
+      if (!participantMatches) {
         return sendErrorResponse(res, 400, 'Winner must be one of the participating teams/players')
       }
 
-      updateData.winner = winner
+      // Store trimmed winner to ensure consistency
+      updateData.winner = trimmedWinner
       updateData.qualifiers = [] // Clear qualifiers for dual types
       if (!updateData.status) {
         updateData.status = 'completed'
@@ -874,13 +789,8 @@ router.put(
       await updatePointsTable(updatedMatch, previousStatus, previousWinner)
     }
 
-    // Clear cache
-    clearCache(`/api/event-schedule/${match.sports_name}?year=${match.event_year}`)
-    clearCache(`/api/event-schedule/${match.sports_name}/teams-players?year=${match.event_year}`)
-    // Clear points table cache if it's a league match
-    if (match.match_type === 'league') {
-      clearCache(`/api/points-table/${match.sports_name}?year=${match.event_year}`)
-    }
+    // Clear caches using helper function (reuse sportDoc from above)
+    await clearMatchCaches(updatedMatch, null, sportDoc)
 
     return sendSuccessResponse(res, { match: updatedMatch }, 'Match updated successfully')
   })
@@ -920,12 +830,14 @@ router.delete(
       // For deletion, we just delete the match (no points were added for scheduled matches)
     }
 
+    // Derive gender before deletion for cache clearing
+    const sportDoc = await findSportByNameAndYear(match.sports_name, match.event_year).catch(() => null)
+
     // Delete the match
     await EventSchedule.findByIdAndDelete(id)
 
-    // Clear cache
-    clearCache(`/api/event-schedule/${match.sports_name}?year=${match.event_year}`)
-    clearCache(`/api/event-schedule/${match.sports_name}/teams-players?year=${match.event_year}`)
+    // Clear caches using helper function
+    await clearMatchCaches(match, null, sportDoc)
 
     return sendSuccessResponse(res, {}, 'Match deleted successfully')
   })

@@ -12,6 +12,7 @@ import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundErr
 import { validateUpdatePlayerData, validatePlayerData, trimObjectFields } from '../utils/validation.js'
 import { computePlayerParticipation, validateDepartmentExists } from '../utils/playerHelpers.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
+import { clearPlayerGenderCache } from '../utils/genderHelpers.js'
 import logger from '../utils/logger.js'
 
 const router = express.Router()
@@ -316,6 +317,8 @@ router.put(
     // Clear cache
     clearCache('/api/players')
     clearCache(`/api/me?year=${new Date().getFullYear()}`)
+    // Clear gender cache for this player (in case gender derivation is affected)
+    clearPlayerGenderCache(reg_number)
 
     return sendSuccessResponse(res, { player: playerData }, 'Player data updated successfully')
   })

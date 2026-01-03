@@ -18,7 +18,7 @@ router.get('/', authenticateToken, asyncHandler(async (req, res) => {
     .sort({ display_order: 1, name: 1 })
     .lean()
   
-  return sendSuccessResponse(res, departments)
+  return sendSuccessResponse(res, { departments })
 }))
 
 /**
@@ -31,7 +31,7 @@ router.get('/active', asyncHandler(async (req, res) => {
     .sort({ display_order: 1, name: 1 })
     .lean()
   
-  return sendSuccessResponse(res, departments)
+  return sendSuccessResponse(res, { departments })
 }))
 
 /**

@@ -5,6 +5,7 @@ import { fetchWithAuth, clearCache } from '../utils/api'
 import { clearSportCaches } from '../utils/cacheHelpers'
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
+import { validateGenderMatch, validateYearMatch, validateNoDuplicates } from '../utils/participantValidation'
 
 function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
   const { eventYearConfig } = useEventYear()
@@ -289,26 +290,29 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
     // Validate gender match
     if (currentTeam.players.length > 0) {
       const teamGender = currentTeam.players[0].gender
-      if (newPlayer.gender !== teamGender) {
+      const genderValidation = validateGenderMatch([newPlayer], teamGender)
+      if (!genderValidation.isValid) {
         if (onStatusPopup) {
-          onStatusPopup(`❌ Gender mismatch: New player must have the same gender (${teamGender}) as other team members.`, 'error', 4000)
+          onStatusPopup(`❌ ${genderValidation.error}`, 'error', 4000)
         }
         return
       }
 
       // CRITICAL: Validate year match
       const teamYear = currentTeam.players[0].year
-      if (newPlayer.year !== teamYear) {
+      const yearValidation = validateYearMatch([newPlayer], teamYear)
+      if (!yearValidation.isValid) {
         if (onStatusPopup) {
-          onStatusPopup(`❌ Year mismatch: New player must be in the same year (${teamYear}) as other team members.`, 'error', 4000)
+          onStatusPopup(`❌ ${yearValidation.error}`, 'error', 4000)
         }
         return
       }
     }
 
     // Check for duplicate (new player already in team)
-    const isDuplicate = currentTeam.players.some(p => p.reg_number === selectedReplacementPlayer)
-    if (isDuplicate) {
+    const teamPlayerIds = currentTeam.players.map(p => p.reg_number)
+    const duplicateValidation = validateNoDuplicates([...teamPlayerIds, selectedReplacementPlayer])
+    if (!duplicateValidation.isValid) {
       if (onStatusPopup) {
         onStatusPopup('❌ This player is already in the team.', 'error', 2500)
       }

@@ -2,8 +2,15 @@ import { useState, useEffect } from 'react'
 import { Modal, Button, Input, DatePickerInput, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
 import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
-import { buildSportApiUrl, buildEventScheduleApiUrl } from '../utils/apiHelpers'
+import { buildSportApiUrl, buildEventScheduleApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
+import { 
+  validateParticipantCount, 
+  validateNoDuplicates, 
+  validateParticipantsExist, 
+  validateGenderMatch, 
+  validateDifferentParticipants 
+} from '../utils/participantValidation'
 
 function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
   const { eventYearConfig } = useEventYear()
@@ -14,9 +21,11 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const [showAddForm, setShowAddForm] = useState(false)
   const [deletingMatchId, setDeletingMatchId] = useState(null)
   const [sportDetails, setSportDetails] = useState(null) // Store sport details to know exact type
+  const [selectedGenderTab, setSelectedGenderTab] = useState('Male') // Gender tab for viewing matches (default to Male)
   
   // Form state
   const [matchType, setMatchType] = useState('league')
+  const [selectedGender, setSelectedGender] = useState('') // Gender selection for match creation
   const [teamOne, setTeamOne] = useState('')
   const [teamTwo, setTeamTwo] = useState('')
   const [playerOne, setPlayerOne] = useState('')
@@ -69,6 +78,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       setPlayerOne('')
       setPlayerTwo('')
       setMatchDate('')
+      setSelectedGender('')
       setAllPlayersList([])
       setUpdatingMatchId(null)
       setSportDetails(null)
@@ -84,9 +94,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
           await fetchSportDetails()
         }
         await fetchMatches()
-        if (isAdmin) {
-          await fetchTeamsPlayers()
-        }
+        // Don't fetch teams/players on initial load - wait for gender selection in form
       } catch (err) {
         // Errors are already handled in fetchMatches and fetchTeamsPlayers
         // This catch prevents unhandled promise rejection
@@ -106,6 +114,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       setPlayerOne('')
       setPlayerTwo('')
       setMatchDate('')
+      setSelectedGender('')
       setNumberOfParticipants('')
       setMultiTeams([])
       setMultiPlayers([])
@@ -164,13 +173,30 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
     }
   }
 
-  const fetchTeamsPlayers = async () => {
+  const fetchTeamsPlayers = async (gender = null) => {
     if (!sport) return
+    
+    // If gender is not provided but selectedGender is set, use it
+    const genderToUse = gender || selectedGender
+    
+    // Gender is required for teams-players endpoint
+    if (!genderToUse) {
+      logger.warn('Gender is required to fetch teams/players')
+      setTeamsList([])
+      setTeamsListWithGender([])
+      setPlayersList([])
+      setAllPlayersList([])
+      return
+    }
     
     setLoadingOptions(true)
     try {
-      // Fetching teams/players for sport
-      const response = await fetchWithAuth(buildEventScheduleApiUrl(sport, 'teams-players', eventYear))
+      // Fetching teams/players for sport and gender
+      // Note: The API endpoint automatically filters out:
+      // 1. Teams/players that have been knocked out in previous completed knockout/final matches
+      // 2. Teams/players that are already in scheduled knockout/final matches
+      // This ensures only eligible participants are shown in the dropdowns
+      const response = await fetchWithAuth(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, genderToUse))
       
       if (!response.ok) {
         // Clone response to read error text without consuming the original
@@ -340,9 +366,35 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             if (onStatusPopup) {
               onStatusPopup(`✅ Match status updated to ${newStatus}!`, 'success', 2500)
             }
-            // Clear cache and refresh matches
+            // Clear cache and refresh matches (with and without gender for backward compatibility)
             clearCache(buildEventScheduleApiUrl(sport, '', eventYear))
+            // Clear teams-players cache if status changed for knockout/final matches
+            // - If status is 'completed': knocked-out participants need to be excluded
+            // - If status is 'draw' or 'cancelled': participants become eligible again (need to refresh)
+            const match = matches.find(m => m._id === matchId)
+            if (match) {
+              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender))
+              if (match.match_type === 'knockout' || match.match_type === 'final') {
+                if (newStatus === 'completed' || newStatus === 'draw' || newStatus === 'cancelled') {
+                  clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender))
+                }
+              }
+              // Clear points-table cache if this is a league match (affects points table)
+              if (match.match_type === 'league') {
+                const encodedSport = encodeURIComponent(sport)
+                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender))
+              }
+            }
             fetchMatches()
+            // Refresh teams/players list if status changed for knockout/final matches
+            // - If status is 'completed': update to exclude knocked-out participants
+            // - If status is 'draw' or 'cancelled': update to include previously knocked-out participants
+            if (isAdmin && match && (match.match_type === 'knockout' || match.match_type === 'final')) {
+              if (newStatus === 'completed' || newStatus === 'draw' || newStatus === 'cancelled') {
+                // Use match gender if available, otherwise use selectedGender
+                fetchTeamsPlayers(match.gender || selectedGender)
+              }
+            }
             setUpdatingMatchId(null)
           },
           onError: (err) => {
@@ -393,9 +445,25 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             if (onStatusPopup) {
               onStatusPopup(`✅ Winner updated successfully!`, 'success', 2500)
             }
-            // Clear cache and refresh matches
+            // Clear cache and refresh matches (with and without gender for backward compatibility)
             clearCache(buildEventScheduleApiUrl(sport, '', eventYear))
+            // Clear teams-players cache to refresh dropdowns (knocked-out participants are now excluded)
+            const match = matches.find(m => m._id === matchId)
+            if (match) {
+              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender))
+              clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender))
+              // Clear points-table cache if this is a league match (affects points table)
+              if (match.match_type === 'league') {
+                const encodedSport = encodeURIComponent(sport)
+                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender))
+              }
+            }
             fetchMatches()
+            // Refresh teams/players list to update dropdowns (remove knocked-out participants)
+            // Use match gender if available
+            if (isAdmin && match && match.gender) {
+              fetchTeamsPlayers(match.gender)
+            }
             setUpdatingMatchId(null)
           },
           onError: (err) => {
@@ -476,9 +544,25 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             const newPendingQualifiers = { ...pendingQualifiers }
             delete newPendingQualifiers[matchId]
             setPendingQualifiers(newPendingQualifiers)
-            // Clear cache and refresh matches
+            // Clear cache and refresh matches (with and without gender for backward compatibility)
             clearCache(buildEventScheduleApiUrl(sport, '', eventYear))
+            // Clear teams-players cache to refresh dropdowns (knocked-out participants are now excluded)
+            const match = matches.find(m => m._id === matchId)
+            if (match) {
+              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender))
+              clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender))
+              // Clear points-table cache if this is a league match (affects points table)
+              if (match.match_type === 'league') {
+                const encodedSport = encodeURIComponent(sport)
+                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender))
+              }
+            }
             fetchMatches()
+            // Refresh teams/players list to update dropdowns (remove knocked-out participants)
+            // Use match gender if available
+            if (isAdmin && match && match.gender) {
+              fetchTeamsPlayers(match.gender)
+            }
             setUpdatingMatchId(null)
           },
           onError: (err) => {
@@ -514,9 +598,26 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             if (onStatusPopup) {
               onStatusPopup('✅ Match deleted successfully!', 'success', 2500)
             }
-            // Clear cache for event-schedule endpoint to ensure fresh data
+            // Clear cache for event-schedule endpoint to ensure fresh data (with and without gender for backward compatibility)
             clearCache(buildEventScheduleApiUrl(sport, '', eventYear))
+            // Clear teams-players cache if deleted match was knockout/final (participants are now available again)
+            const match = matches.find(m => m._id === deletingMatchId)
+            if (match) {
+              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender))
+              if (match.match_type === 'knockout' || match.match_type === 'final') {
+                clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender))
+              }
+            }
+            // Clear points-table cache if this is a league match (affects points table)
+            if (match && match.match_type === 'league') {
+              const encodedSport = encodeURIComponent(sport)
+              clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender))
+            }
             fetchMatches()
+            // Refresh teams/players list if deleted match was knockout/final (participants are now available)
+            if (isAdmin && match && (match.match_type === 'knockout' || match.match_type === 'final')) {
+              fetchTeamsPlayers(match.gender || selectedGender)
+            }
             setDeletingMatchId(null)
           },
           onError: (err) => {
@@ -542,7 +643,37 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
     setDeletingMatchId(null)
   }
 
+  // Check if a final match exists with status 'scheduled' or 'completed' for any gender
+  // If final is 'draw' or 'cancelled', another final can be scheduled
+  // Filter matches by selected gender tab
+  // The API already adds gender property to each match
+  const filteredMatches = matches.filter(match => {
+    // Use gender property from API response (already derived on backend)
+    return match.gender === selectedGenderTab
+  })
+
+  // Check if a final match exists for the selected gender tab
+  const hasActiveFinalMatch = filteredMatches.some(match => 
+    match.match_type === 'final' && (match.status === 'scheduled' || match.status === 'completed')
+  )
+
+  // Helper function to check if final match exists for a given gender
+  const hasActiveFinalForGender = (gender) => {
+    return matches.some(match => 
+      match.match_type === 'final' && 
+      match.gender === gender &&
+      (match.status === 'scheduled' || match.status === 'completed')
+    )
+  }
+
   const handleAddMatch = () => {
+    // Check if a final match already exists (scheduled or completed) for the selected gender tab
+    if (hasActiveFinalMatch) {
+      if (onStatusPopup) {
+        onStatusPopup(`❌ Cannot schedule new matches. A final match already exists for this sport and gender (${selectedGenderTab}).`, 'error', 3000)
+      }
+      return
+    }
     setShowAddForm(true)
     // Reset form
     // Set default match type based on sport type
@@ -557,11 +688,16 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
     setPlayerOne('')
     setPlayerTwo('')
     setMatchDate('')
+    setSelectedGender(selectedGenderTab) // Set form gender to selected tab gender
     setNumberOfParticipants('')
     setMultiTeams([])
     setMultiPlayers([])
     // Reset playersList to show all players when form opens
     setPlayersList(allPlayersList)
+    // Fetch teams/players for the selected gender tab
+    if (selectedGenderTab && isAdmin) {
+      fetchTeamsPlayers(selectedGenderTab)
+    }
   }
   
   // Handle number of participants change for multi sports
@@ -598,6 +734,67 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
 
   const handleSubmitMatch = async (e) => {
     e.preventDefault()
+    
+    // Validate gender is selected
+    if (!selectedGender || (selectedGender !== 'Male' && selectedGender !== 'Female')) {
+      if (onStatusPopup) {
+        onStatusPopup('❌ Please select gender (Male or Female).', 'error', 2500)
+      }
+      return
+    }
+    
+    // Check if a final match already exists (scheduled or completed) for this gender before submitting
+    if (hasActiveFinalForGender(selectedGender)) {
+      if (onStatusPopup) {
+        onStatusPopup(`❌ Cannot schedule new matches. A final match already exists for this sport and gender (${selectedGender}).`, 'error', 3000)
+      }
+      return
+    }
+
+    // Validate league vs knockout restrictions (gender-specific)
+    if (matchType === 'league') {
+      // Check if any knockout or final match exists for this gender
+      const hasKnockoutOrFinalForGender = matches.some(match => 
+        (match.match_type === 'knockout' || match.match_type === 'final') &&
+        match.gender === selectedGender &&
+        (match.status === 'scheduled' || match.status === 'completed' || match.status === 'draw' || match.status === 'cancelled')
+      )
+      if (hasKnockoutOrFinalForGender) {
+        if (onStatusPopup) {
+          onStatusPopup(`❌ Cannot schedule league matches. Knockout or final matches already exist for this sport and gender (${selectedGender}).`, 'error', 3000)
+        }
+        return
+      }
+    } else if (matchType === 'knockout' || matchType === 'final') {
+      // Check if any league match exists for this gender
+      const leagueMatchesForGender = matches.filter(match => 
+        match.match_type === 'league' &&
+        match.gender === selectedGender
+      )
+      
+      if (leagueMatchesForGender.length > 0) {
+        // Validate that match_date is after all league matches (date-only comparison)
+        const latestLeagueMatch = leagueMatchesForGender.reduce((latest, match) => {
+          const matchDate = new Date(match.match_date)
+          matchDate.setHours(0, 0, 0, 0)
+          const latestDate = new Date(latest.match_date)
+          latestDate.setHours(0, 0, 0, 0)
+          return matchDate > latestDate ? match : latest
+        })
+        
+        const latestLeagueDate = new Date(latestLeagueMatch.match_date)
+        latestLeagueDate.setHours(0, 0, 0, 0)
+        const matchDateObj = new Date(matchDate + 'T00:00:00')
+        matchDateObj.setHours(0, 0, 0, 0)
+        
+        if (matchDateObj <= latestLeagueDate) {
+          if (onStatusPopup) {
+            onStatusPopup(`❌ ${matchType === 'knockout' ? 'Knockout' : 'Final'} match date must be after all league matches. Latest league match date: ${latestLeagueDate.toLocaleDateString()}`, 'error', 4000)
+          }
+          return
+        }
+      }
+    }
     
     if (!matchDate) {
       if (onStatusPopup) {
@@ -701,28 +898,28 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
         }
       } else {
         // Validate all players are selected
-        if (multiPlayers.length !== num || multiPlayers.some(player => !player)) {
+        const countValidation = validateParticipantCount(multiPlayers, num, 'players')
+        if (!countValidation.isValid) {
           if (onStatusPopup) {
-            onStatusPopup(`❌ Please select all ${num} players.`, 'error', 2500)
+            onStatusPopup(`❌ ${countValidation.error}`, 'error', 2500)
           }
           return
         }
         
         // Validate no duplicates
-        const uniquePlayers = new Set(multiPlayers)
-        if (uniquePlayers.size !== multiPlayers.length) {
+        const duplicateValidation = validateNoDuplicates(multiPlayers, allPlayersList)
+        if (!duplicateValidation.isValid) {
           if (onStatusPopup) {
-            onStatusPopup('❌ Please select different players. Duplicate players are not allowed.', 'error', 2500)
+            onStatusPopup(`❌ ${duplicateValidation.error}`, 'error', 2500)
           }
           return
         }
         
         // Validate players exist in available players list
-        const availableRegNumbers = new Set(allPlayersList.map(p => p.reg_number))
-        const invalidPlayers = multiPlayers.filter(player => !availableRegNumbers.has(player))
-        if (invalidPlayers.length > 0) {
+        const existValidation = validateParticipantsExist(multiPlayers, allPlayersList, 'reg_number')
+        if (!existValidation.isValid) {
           if (onStatusPopup) {
-            onStatusPopup(`❌ Invalid player(s): ${invalidPlayers.join(', ')}. Please select from available players.`, 'error', 3000)
+            onStatusPopup(`❌ ${existValidation.error}`, 'error', 3000)
           }
           return
         }
@@ -730,26 +927,21 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
         // Validate all players have same gender
         const selectedPlayersData = allPlayersList.filter(p => multiPlayers.includes(p.reg_number))
         if (selectedPlayersData.length > 0) {
-          const firstGender = selectedPlayersData[0].gender
-          const genderMismatch = selectedPlayersData.find(p => p.gender !== firstGender)
-          if (genderMismatch) {
+          const genderValidation = validateGenderMatch(selectedPlayersData)
+          if (!genderValidation.isValid) {
             if (onStatusPopup) {
-              onStatusPopup(`❌ Gender mismatch: All players must have the same gender.`, 'error', 3000)
+              onStatusPopup(`❌ ${genderValidation.error}`, 'error', 3000)
             }
             return
           }
         }
       }
     } else if (sportDetails && sportDetails.type === 'dual_team') {
-      if (!teamOne || !teamTwo) {
+      // Validate both teams are selected and different
+      const differentValidation = validateDifferentParticipants(teamOne, teamTwo, 'teams')
+      if (!differentValidation.isValid) {
         if (onStatusPopup) {
-          onStatusPopup('❌ Please select both teams.', 'error', 2500)
-        }
-        return
-      }
-      if (teamOne === teamTwo) {
-        if (onStatusPopup) {
-          onStatusPopup('❌ Please select different teams.', 'error', 2500)
+          onStatusPopup(`❌ ${differentValidation.error}`, 'error', 2500)
         }
         return
       }
@@ -792,15 +984,11 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
         // Continue with submission if validation fails (backend will catch it)
       }
     } else if (sportDetails && sportDetails.type === 'dual_player') {
-      if (!playerOne || !playerTwo) {
+      // Validate both players are selected and different
+      const differentValidation = validateDifferentParticipants(playerOne, playerTwo, 'players')
+      if (!differentValidation.isValid) {
         if (onStatusPopup) {
-          onStatusPopup('❌ Please select both players.', 'error', 2500)
-        }
-        return
-      }
-      if (playerOne === playerTwo) {
-        if (onStatusPopup) {
-          onStatusPopup('❌ Please select different players.', 'error', 2500)
+          onStatusPopup(`❌ ${differentValidation.error}`, 'error', 2500)
         }
         return
       }
@@ -809,10 +997,11 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       const player1Data = allPlayersList.find(p => p.reg_number === playerOne)
       const player2Data = allPlayersList.find(p => p.reg_number === playerTwo)
       
-      if (player1Data && player2Data && player1Data.gender && player2Data.gender) {
-        if (player1Data.gender !== player2Data.gender) {
+      if (player1Data && player2Data) {
+        const genderValidation = validateGenderMatch([player1Data, player2Data])
+        if (!genderValidation.isValid) {
           if (onStatusPopup) {
-            onStatusPopup(`❌ Gender mismatch: Both players must have the same gender. Player one is ${player1Data.gender}, player two is ${player2Data.gender}.`, 'error', 4000)
+            onStatusPopup(`❌ ${genderValidation.error}`, 'error', 4000)
           }
           return
         }
@@ -848,6 +1037,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             players: players,
             match_date: matchDate + 'T00:00:00', // Add time for MongoDB storage
             event_year: eventYear,
+            // Gender is not sent - it will be derived from participants on the backend
             number_of_participants: isMultiSport ? parseInt(numberOfParticipants) : undefined,
           }),
         }),
@@ -857,9 +1047,23 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
               onStatusPopup(`✅ ${data.message || 'Match scheduled successfully!'}`, 'success', 2500)
             }
             setShowAddForm(false)
-            // Clear cache for event-schedule endpoint to ensure fresh data
+            // Clear cache for event-schedule endpoint to ensure fresh data (with and without gender for backward compatibility)
             clearCache(buildEventScheduleApiUrl(sport, '', eventYear))
+            clearCache(buildEventScheduleApiUrl(sport, '', eventYear, selectedGender))
+            // Clear teams-players cache if new match is knockout/final (participants are now in scheduled match)
+            if (matchType === 'knockout' || matchType === 'final') {
+              clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, selectedGender))
+            }
+            // Clear points-table cache if this is a league match (affects points table)
+            if (matchType === 'league') {
+              const encodedSport = encodeURIComponent(sport)
+              clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, selectedGender))
+            }
             fetchMatches()
+            // Refresh teams/players list if new match is knockout/final (participants are now in scheduled match)
+            if (isAdmin && (matchType === 'knockout' || matchType === 'final')) {
+              fetchTeamsPlayers(selectedGender)
+            }
             // Reset form
             // Set default match type based on sport type
             if (sportDetails && (sportDetails.type === 'multi_team' || sportDetails.type === 'multi_player')) {
@@ -916,16 +1120,53 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
         embedded={embedded}
         maxWidth="max-w-[900px]"
       >
+        {/* Gender Selection Tabs */}
+        <div className="mb-4 flex gap-2 justify-center">
+          <button
+            type="button"
+            onClick={() => setSelectedGenderTab('Male')}
+            className={`px-4 py-2 rounded-lg text-[0.85rem] font-bold transition-all duration-200 ${
+              selectedGenderTab === 'Male'
+                ? 'bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.3)]'
+                : 'bg-[rgba(255,255,255,0.05)] text-[#cbd5ff] hover:bg-[rgba(255,255,255,0.1)] border border-transparent'
+            }`}
+          >
+            Male
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedGenderTab('Female')}
+            className={`px-4 py-2 rounded-lg text-[0.85rem] font-bold transition-all duration-200 ${
+              selectedGenderTab === 'Female'
+                ? 'bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.3)]'
+                : 'bg-[rgba(255,255,255,0.05)] text-[#cbd5ff] hover:bg-[rgba(255,255,255,0.1)] border border-transparent'
+            }`}
+          >
+            Female
+          </button>
+        </div>
+
         {isAdmin && !showAddForm && (
           <div className="mb-4 flex justify-center">
-            <Button
-              type="button"
-              onClick={handleAddMatch}
-              variant="success"
-              className="px-4 py-2 text-[0.85rem] font-bold rounded-lg"
-            >
-              Add Match
-            </Button>
+            {hasActiveFinalMatch ? (
+              <div className="text-center">
+                <p className="text-yellow-400 text-sm mb-2">
+                  ⚠️ A final match already exists for this sport and gender ({selectedGenderTab}). No further matches can be scheduled.
+                </p>
+                <p className="text-gray-400 text-xs">
+                  If the final match is draw or cancelled, you can schedule another final match.
+                </p>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                onClick={handleAddMatch}
+                variant="success"
+                className="px-4 py-2 text-[0.85rem] font-bold rounded-lg"
+              >
+                Add Match
+              </Button>
+            )}
           </div>
         )}
 
@@ -947,6 +1188,35 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                   ),
                   { value: 'knockout', label: 'Knockout' },
                   { value: 'final', label: 'Final' },
+                ]}
+                className="mb-3"
+              />
+              <Input
+                label="Gender"
+                type="select"
+                value={selectedGender}
+                onChange={(e) => {
+                  const newGender = e.target.value
+                  if (!newGender || (newGender !== 'Male' && newGender !== 'Female')) {
+                    return // Invalid gender, don't update
+                  }
+                  setSelectedGender(newGender)
+                  // Clear team/player selections when gender changes
+                  setTeamOne('')
+                  setTeamTwo('')
+                  setPlayerOne('')
+                  setPlayerTwo('')
+                  setMultiTeams([])
+                  setMultiPlayers([])
+                  // Fetch teams/players for the selected gender
+                  if (isAdmin) {
+                    fetchTeamsPlayers(newGender)
+                  }
+                }}
+                required
+                options={[
+                  { value: 'Male', label: 'Male' },
+                  { value: 'Female', label: 'Female' },
                 ]}
                 className="mb-3"
               />
@@ -1284,11 +1554,11 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
 
         {loading ? (
           <LoadingSpinner message="Loading matches..." />
-        ) : matches.length === 0 ? (
-          <EmptyState message="No matches scheduled yet." className="py-8" />
+        ) : filteredMatches.length === 0 ? (
+          <EmptyState message={`No matches scheduled yet for ${selectedGenderTab}.`} className="py-8" />
         ) : (
           <div className="space-y-2">
-            {matches.map((match) => {
+            {filteredMatches.map((match) => {
               const isExpanded = expandedMatches.has(match._id)
               return (
                 <div
@@ -1304,6 +1574,11 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                       <span className="text-[0.75rem] text-[#cbd5ff] uppercase">
                         {match.match_type}
                       </span>
+                      {match.gender && (
+                        <span className="text-[0.75rem] text-[#86efac] font-semibold">
+                          {match.gender}
+                        </span>
+                      )}
                       <span className="text-[0.75rem] text-[#e5e7eb]">
                         {formatDate(match.match_date)}
                       </span>

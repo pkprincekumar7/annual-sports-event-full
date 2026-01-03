@@ -11,6 +11,7 @@ import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError, handleForbiddenError } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
+import { clearTeamGenderCache, clearSportGenderCache } from '../utils/genderHelpers.js'
 import { getEventYear } from '../utils/yearHelpers.js'
 import { findSportByNameAndYear } from '../utils/sportHelpers.js'
 
@@ -214,6 +215,8 @@ router.post(
     clearCache(`/api/sports/${sport}?year=${eventYear}`)
     clearCache(`/api/teams/${sport}?year=${eventYear}`)
     clearCache(`/api/sports-counts?year=${eventYear}`)
+    // Clear gender cache for this team (team composition changed)
+    clearTeamGenderCache(team_name, sport, eventYear)
 
     return sendSuccessResponse(
       res,
@@ -473,6 +476,8 @@ router.post(
     clearCache(`/api/sports/${sport}?year=${eventYear}`)
     clearCache(`/api/teams/${sport}?year=${eventYear}`)
     clearCache(`/api/sports-counts?year=${eventYear}`)
+    // Clear gender cache for this team (team composition changed - first player might have changed)
+    clearTeamGenderCache(team_name, sport, eventYear)
 
     const newPlayerData = newPlayer.toObject()
     delete newPlayerData.password
@@ -543,6 +548,8 @@ router.delete(
     clearCache(`/api/sports/${sport}?year=${eventYear}`)
     clearCache(`/api/teams/${sport}?year=${eventYear}`)
     clearCache(`/api/sports-counts?year=${eventYear}`)
+    // Clear gender cache for this team (team deleted)
+    clearTeamGenderCache(team_name, sport, eventYear)
 
     return sendSuccessResponse(
       res,

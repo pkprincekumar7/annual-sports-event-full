@@ -331,13 +331,15 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       case 'points':
         return (
           <PointsTableModal
-            key="points"
+            key={`points-${selectedSport.name}-${eventYear}`}
             isOpen={true}
             onClose={onClose}
             sport={selectedSport.name}
             loggedInUser={loggedInUser}
             embedded={true}
             selectedYear={selectedYear}
+            isActive={activeTab === 'points'}
+            onStatusPopup={onStatusPopup}
           />
         )
       

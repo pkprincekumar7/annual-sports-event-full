@@ -9,6 +9,7 @@ import { EVENT_INFO, GENDER_OPTIONS } from '../constants/app'
 import { generateYearOfAdmissionOptions } from '../utils/yearHelpers'
 import { formatSportName } from '../utils/stringHelpers'
 import { isTeamSport, getSportType, getTeamSize, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual } from '../utils/sportHelpers'
+import { validateParticipantSelection, validateNoDuplicates, validateGenderMatch, validateYearMatch } from '../utils/participantValidation'
 
 function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate, embedded = false, selectedYear }) {
   const [players, setPlayers] = useState([])
@@ -357,55 +358,34 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
     // Check for duplicate players
     const playerRegNumbers = []
-    const duplicateCheck = new Set()
-    const duplicates = []
-    
+    // Collect player reg numbers
     for (let i = 1; i <= playerCount; i++) {
       if (selectedPlayers[i]) {
-        if (duplicateCheck.has(selectedPlayers[i])) {
-          const player = players.find(p => p.reg_number === selectedPlayers[i])
-          duplicates.push(player ? player.full_name : selectedPlayers[i])
-        } else {
-          duplicateCheck.add(selectedPlayers[i])
-          playerRegNumbers.push(selectedPlayers[i])
-        }
+        playerRegNumbers.push(selectedPlayers[i])
       }
     }
 
-    if (duplicates.length > 0) {
-      onStatusPopup(`❌ Duplicate players selected: ${duplicates.join(', ')}. Each player can only be selected once.`, 'error', 5000)
+    // Get selected player objects for validation
+    const selectedPlayerObjects = players.filter(p => playerRegNumbers.includes(p.reg_number))
+
+    // Validate no duplicates
+    const duplicateValidation = validateNoDuplicates(playerRegNumbers, players)
+    if (!duplicateValidation.isValid) {
+      onStatusPopup(`❌ ${duplicateValidation.error}`, 'error', 5000)
       return
     }
 
-    // Validate that all selected players have the same gender as logged-in user
-    const genderMismatches = []
-    for (let i = 1; i <= playerCount; i++) {
-      if (selectedPlayers[i]) {
-        const player = players.find(p => p.reg_number === selectedPlayers[i])
-        if (player && player.gender !== loggedInUser.gender) {
-          genderMismatches.push(`${player.full_name} (${player.reg_number})`)
-        }
-      }
-    }
-
-    if (genderMismatches.length > 0) {
-      onStatusPopup(`❌ Gender mismatch: ${genderMismatches.join(', ')} must have the same gender (${loggedInUser.gender}) as you.`, 'error', 5000)
+    // Validate gender match
+    const genderValidation = validateGenderMatch(selectedPlayerObjects, loggedInUser.gender)
+    if (!genderValidation.isValid) {
+      onStatusPopup(`❌ ${genderValidation.error}`, 'error', 5000)
       return
     }
 
-    // CRITICAL: Validate that all selected players have the same year as logged-in user
-    const yearMismatches = []
-    for (let i = 1; i <= playerCount; i++) {
-      if (selectedPlayers[i]) {
-        const player = players.find(p => p.reg_number === selectedPlayers[i])
-        if (player && player.year !== loggedInUser.year) {
-          yearMismatches.push(`${player.full_name} (${player.reg_number})`)
-        }
-      }
-    }
-
-    if (yearMismatches.length > 0) {
-      onStatusPopup(`❌ Year mismatch: ${yearMismatches.join(', ')} must be in the same year (${loggedInUser.year}) as you.`, 'error', 5000)
+    // Validate year match
+    const yearValidation = validateYearMatch(selectedPlayerObjects, loggedInUser.year)
+    if (!yearValidation.isValid) {
+      onStatusPopup(`❌ ${yearValidation.error}`, 'error', 5000)
       return
     }
 

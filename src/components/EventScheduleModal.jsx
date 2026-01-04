@@ -772,8 +772,46 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
         match.gender === selectedGender
       )
       
+      // For knockout matches, validate that all league matches are completed/draw/cancelled
+      if (matchType === 'knockout' && leagueMatchesForGender.length > 0) {
+        const scheduledLeagueMatches = leagueMatchesForGender.filter(match => match.status === 'scheduled')
+        if (scheduledLeagueMatches.length > 0) {
+          if (onStatusPopup) {
+            onStatusPopup(`❌ Cannot schedule knockout match. There are ${scheduledLeagueMatches.length} scheduled league match(es) that must be completed, drawn, or cancelled first. All league matches must be finished before scheduling knockout matches.`, 'error', 4000)
+          }
+          return
+        }
+        
+        // Check if any completed league match is missing winner/qualifiers
+        const completedLeagueMatches = leagueMatchesForGender.filter(match => match.status === 'completed')
+        const incompleteMatches = []
+        
+        for (const match of completedLeagueMatches) {
+          if (sportDetails && (sportDetails.type === 'dual_team' || sportDetails.type === 'dual_player')) {
+            // For dual types: must have winner
+            if (!match.winner || (match.winner || '').trim() === '') {
+              incompleteMatches.push(`Match #${match.match_number}`)
+            }
+          } else if (sportDetails && (sportDetails.type === 'multi_team' || sportDetails.type === 'multi_player')) {
+            // For multi types: must have qualifiers
+            if (!match.qualifiers || !Array.isArray(match.qualifiers) || match.qualifiers.length === 0) {
+              incompleteMatches.push(`Match #${match.match_number}`)
+            }
+          }
+        }
+        
+        if (incompleteMatches.length > 0) {
+          const missingField = sportDetails && (sportDetails.type === 'dual_team' || sportDetails.type === 'dual_player') ? 'winner' : 'qualifiers'
+          const fieldLabel = sportDetails && (sportDetails.type === 'dual_team' || sportDetails.type === 'dual_player') ? 'a winner declared' : 'qualifiers declared'
+          if (onStatusPopup) {
+            onStatusPopup(`❌ Cannot schedule knockout match. The following completed league match(es) are missing ${missingField}: ${incompleteMatches.join(', ')}. All completed league matches must have ${fieldLabel} before scheduling knockout matches.`, 'error', 4000)
+          }
+          return
+        }
+      }
+      
       if (leagueMatchesForGender.length > 0) {
-        // Validate that match_date is after all league matches (date-only comparison)
+        // Validate that match_date is not before all league matches (same date is allowed)
         const latestLeagueMatch = leagueMatchesForGender.reduce((latest, match) => {
           const matchDate = new Date(match.match_date)
           matchDate.setHours(0, 0, 0, 0)
@@ -787,11 +825,89 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
         const matchDateObj = new Date(matchDate + 'T00:00:00')
         matchDateObj.setHours(0, 0, 0, 0)
         
-        if (matchDateObj <= latestLeagueDate) {
+        if (matchDateObj < latestLeagueDate) {
           if (onStatusPopup) {
-            onStatusPopup(`❌ ${matchType === 'knockout' ? 'Knockout' : 'Final'} match date must be after all league matches. Latest league match date: ${latestLeagueDate.toLocaleDateString()}`, 'error', 4000)
+            onStatusPopup(`❌ ${matchType === 'knockout' ? 'Knockout' : 'Final'} match date cannot be before all league matches. Latest league match date: ${latestLeagueDate.toLocaleDateString()}`, 'error', 4000)
           }
           return
+        }
+      }
+
+      // For final matches, also check knockout matches
+      if (matchType === 'final') {
+        // Validate that all league and knockout matches are completed/draw/cancelled before scheduling final
+        const allLeagueAndKnockoutMatches = matches.filter(match => 
+          (match.match_type === 'league' || match.match_type === 'knockout') &&
+          match.gender === selectedGender
+        )
+        
+        const scheduledLeagueAndKnockoutMatches = allLeagueAndKnockoutMatches.filter(match => match.status === 'scheduled')
+        if (scheduledLeagueAndKnockoutMatches.length > 0) {
+          const matchTypes = scheduledLeagueAndKnockoutMatches.map(m => m.match_type)
+          const uniqueMatchTypes = [...new Set(matchTypes)]
+          const matchTypeLabel = uniqueMatchTypes.length === 1 
+            ? uniqueMatchTypes[0] 
+            : 'league or knockout'
+          
+          if (onStatusPopup) {
+            onStatusPopup(`❌ Cannot schedule final match. There are ${scheduledLeagueAndKnockoutMatches.length} scheduled ${matchTypeLabel} match(es) that must be completed, drawn, or cancelled first. All matches must be finished before scheduling the final.`, 'error', 4000)
+          }
+          return
+        }
+        
+        // Check if any completed match is missing winner/qualifiers
+        const completedMatches = allLeagueAndKnockoutMatches.filter(match => match.status === 'completed')
+        const incompleteMatches = []
+        
+        for (const match of completedMatches) {
+          if (sportDetails && (sportDetails.type === 'dual_team' || sportDetails.type === 'dual_player')) {
+            // For dual types: must have winner
+            if (!match.winner || (match.winner || '').trim() === '') {
+              incompleteMatches.push(`${match.match_type} Match #${match.match_number}`)
+            }
+          } else if (sportDetails && (sportDetails.type === 'multi_team' || sportDetails.type === 'multi_player')) {
+            // For multi types: must have qualifiers
+            if (!match.qualifiers || !Array.isArray(match.qualifiers) || match.qualifiers.length === 0) {
+              incompleteMatches.push(`${match.match_type} Match #${match.match_number}`)
+            }
+          }
+        }
+        
+        if (incompleteMatches.length > 0) {
+          const missingField = sportDetails && (sportDetails.type === 'dual_team' || sportDetails.type === 'dual_player') ? 'winner' : 'qualifiers'
+          const fieldLabel = sportDetails && (sportDetails.type === 'dual_team' || sportDetails.type === 'dual_player') ? 'a winner declared' : 'qualifiers declared'
+          if (onStatusPopup) {
+            onStatusPopup(`❌ Cannot schedule final match. The following completed match(es) are missing ${missingField}: ${incompleteMatches.join(', ')}. All completed matches must have ${fieldLabel} before scheduling the final.`, 'error', 4000)
+          }
+          return
+        }
+        
+        const knockoutMatchesForGender = matches.filter(match => 
+          match.match_type === 'knockout' &&
+          match.gender === selectedGender
+        )
+        
+        if (knockoutMatchesForGender.length > 0) {
+          // Validate that match_date is not before all knockout matches (same date is allowed)
+          const latestKnockoutMatch = knockoutMatchesForGender.reduce((latest, match) => {
+            const matchDate = new Date(match.match_date)
+            matchDate.setHours(0, 0, 0, 0)
+            const latestDate = new Date(latest.match_date)
+            latestDate.setHours(0, 0, 0, 0)
+            return matchDate > latestDate ? match : latest
+          })
+          
+          const latestKnockoutDate = new Date(latestKnockoutMatch.match_date)
+          latestKnockoutDate.setHours(0, 0, 0, 0)
+          const matchDateObj = new Date(matchDate + 'T00:00:00')
+          matchDateObj.setHours(0, 0, 0, 0)
+          
+          if (matchDateObj < latestKnockoutDate) {
+            if (onStatusPopup) {
+              onStatusPopup(`❌ Final match date cannot be before all knockout matches. Latest knockout match date: ${latestKnockoutDate.toLocaleDateString()}`, 'error', 4000)
+            }
+            return
+          }
         }
       }
     }
@@ -821,9 +937,9 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       const num = parseInt(numberOfParticipants) || 0
       
       // Validate number range
-      if (num < 2 || num > 20) {
+      if (num < 3 || num > 20) {
         if (onStatusPopup) {
-          onStatusPopup('❌ Number of participants must be between 2 and 20.', 'error', 2500)
+          onStatusPopup('❌ Number of participants must be between 3 and 20.', 'error', 2500)
         }
         return
       }
@@ -1229,7 +1345,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                   value={numberOfParticipants}
                   onChange={(e) => handleNumberOfParticipantsChange(e.target.value)}
                   required
-                  options={Array.from({ length: 19 }, (_, i) => i + 2).map(num => ({
+                  options={Array.from({ length: 18 }, (_, i) => i + 3).map(num => ({
                     value: num.toString(),
                     label: num.toString()
                   }))}

@@ -71,6 +71,9 @@ router.get(
       .sort({ points: -1, matches_won: -1 })
       .lean()
 
+    // Performance optimization: batch lookup sport document once (needed for gender derivation)
+    const sportDoc = await findSportByNameAndYear(sport, eventYear).catch(() => null)
+
     // If no entries found, check if there are completed league matches that might need backfilling
     // Also check if there are any league matches at all for this gender
     if (allPointsEntries.length === 0) {
@@ -110,9 +113,6 @@ router.get(
     }
 
     // Derive gender for each entry and filter by requested gender
-    // Performance optimization: batch lookup sport document once
-    const sportDoc = await findSportByNameAndYear(sport, eventYear).catch(() => null)
-    
     const pointsEntries = []
     const entriesWithNullGender = []
     

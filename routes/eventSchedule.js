@@ -19,6 +19,8 @@ import { clearMatchCaches, clearNewMatchCaches } from '../utils/cacheHelpers.js'
 import { 
   validateMatchTypeForSport, 
   validateFinalMatchRequirement,
+  validateAllMatchesCompletedBeforeFinal,
+  validateAllLeagueMatchesCompletedBeforeKnockout,
   getKnockedOutParticipants,
   getParticipantsInScheduledMatches
 } from '../utils/matchValidation.js'
@@ -256,8 +258,8 @@ router.post(
         // Validate number_of_participants for multi_team
         if (number_of_participants !== undefined) {
           const num = parseInt(number_of_participants)
-          if (isNaN(num) || num < 2 || num > 20) {
-            return sendErrorResponse(res, 400, 'number_of_participants must be between 2 and 20')
+          if (isNaN(num) || num < 3 || num > 20) {
+            return sendErrorResponse(res, 400, 'number_of_participants must be between 3 and 20')
           }
           if (uniqueTeams.length !== num) {
             return sendErrorResponse(res, 400, `Number of teams (${uniqueTeams.length}) does not match number_of_participants (${num})`)
@@ -328,8 +330,8 @@ router.post(
         // Validate number_of_participants for multi_player
         if (number_of_participants !== undefined) {
           const num = parseInt(number_of_participants)
-          if (isNaN(num) || num < 2 || num > 20) {
-            return sendErrorResponse(res, 400, 'number_of_participants must be between 2 and 20')
+          if (isNaN(num) || num < 3 || num > 20) {
+            return sendErrorResponse(res, 400, 'number_of_participants must be between 3 and 20')
           }
           if (uniquePlayers.length !== num) {
             return sendErrorResponse(res, 400, `Number of players (${uniquePlayers.length}) does not match number_of_participants (${num})`)
@@ -372,6 +374,30 @@ router.post(
     const matchTypeError = validateMatchTypeForSport(match_type, sportDoc.type)
     if (matchTypeError) {
       return sendErrorResponse(res, matchTypeError.statusCode, matchTypeError.message)
+    }
+
+    // Validate that all league matches are completed before scheduling knockout (applies to all sport types with gender filter)
+    const allLeagueMatchesCompletedError = await validateAllLeagueMatchesCompletedBeforeKnockout(
+      sports_name,
+      eventYear.year,
+      match_type,
+      derivedGender,
+      sportDoc
+    )
+    if (allLeagueMatchesCompletedError) {
+      return sendErrorResponse(res, allLeagueMatchesCompletedError.statusCode, allLeagueMatchesCompletedError.message)
+    }
+
+    // Validate that all other matches are completed before scheduling final (applies to all sport types with gender filter)
+    const allMatchesCompletedError = await validateAllMatchesCompletedBeforeFinal(
+      sports_name,
+      eventYear.year,
+      match_type,
+      derivedGender,
+      sportDoc
+    )
+    if (allMatchesCompletedError) {
+      return sendErrorResponse(res, allMatchesCompletedError.statusCode, allMatchesCompletedError.message)
     }
 
     // For knockout/final matches, validate that participants are not already in another scheduled knockout/final match
@@ -453,19 +479,53 @@ router.post(
       }
 
       if (leagueMatches.length > 0) {
-        // Validate that match_date is after all league matches (date-only comparison)
+        // Validate that match_date is not before all league matches (same date is allowed)
         const latestLeagueDate = new Date(leagueMatches[0].match_date)
         latestLeagueDate.setHours(0, 0, 0, 0)
         // Handle date-only format (YYYY-MM-DD) or datetime format
         const matchDateStr = match_date.includes('T') ? match_date : match_date + 'T00:00:00'
         const matchDateObj = new Date(matchDateStr)
         matchDateObj.setHours(0, 0, 0, 0)
-        if (matchDateObj <= latestLeagueDate) {
+        if (matchDateObj < latestLeagueDate) {
           return sendErrorResponse(
             res,
             400,
-            `Knockout match date must be after all league matches. Latest league match date: ${latestLeagueDate.toLocaleDateString()}`
+            `${match_type === 'knockout' ? 'Knockout' : 'Final'} match date cannot be before all league matches. Latest league match date: ${latestLeagueDate.toLocaleDateString()}`
           )
+        }
+      }
+
+      // For final matches, also check knockout matches
+      if (match_type === 'final') {
+        const allKnockoutMatches = await EventSchedule.find({
+          sports_name: normalizeSportName(sports_name),
+          event_year: eventYear.year,
+          match_type: 'knockout'
+        }).sort({ match_date: -1 }).lean()
+
+        // Filter by derived gender
+        const knockoutMatches = []
+        for (const match of allKnockoutMatches) {
+          const matchGender = await getMatchGender(match, sportDoc)
+          if (matchGender === derivedGender) {
+            knockoutMatches.push(match)
+          }
+        }
+
+        if (knockoutMatches.length > 0) {
+          // Validate that match_date is not before all knockout matches (same date is allowed)
+          const latestKnockoutDate = new Date(knockoutMatches[0].match_date)
+          latestKnockoutDate.setHours(0, 0, 0, 0)
+          const matchDateStr = match_date.includes('T') ? match_date : match_date + 'T00:00:00'
+          const matchDateObj = new Date(matchDateStr)
+          matchDateObj.setHours(0, 0, 0, 0)
+          if (matchDateObj < latestKnockoutDate) {
+            return sendErrorResponse(
+              res,
+              400,
+              `Final match date cannot be before all knockout matches. Latest knockout match date: ${latestKnockoutDate.toLocaleDateString()}`
+            )
+          }
         }
       }
     }

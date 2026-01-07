@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { Modal, Button, Input, LoadingSpinner, EmptyState } from './ui'
+import { Modal, Button, Input, LoadingSpinner, EmptyState, ConfirmationDialog } from './ui'
 import { useApi, useDepartments, useEventYearWithFallback } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { GENDER_OPTIONS } from '../constants/app'
+import logger from '../utils/logger'
 
 function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   const [players, setPlayers] = useState([])
@@ -12,7 +13,17 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   const [loading, setLoading] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState(null)
   const [editedData, setEditedData] = useState({})
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [playerToDelete, setPlayerToDelete] = useState(null)
+  const [playerEnrollments, setPlayerEnrollments] = useState({ 
+    nonTeamEvents: [], 
+    teams: [], 
+    matches: [],
+    hasMatches: false
+  })
+  const [loadingEnrollments, setLoadingEnrollments] = useState(false)
   const { loading: saving, execute } = useApi()
+  const { loading: deleting, execute: executeDelete } = useApi()
   const { departments: departmentOptions, loading: loadingDepartments } = useDepartments()
   const eventYear = useEventYearWithFallback(selectedYear)
   const isRefreshingRef = useRef(false) // Use ref to track if we're refreshing after update
@@ -62,6 +73,9 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
       setSearchQuery('')
       setEditingPlayer(null)
       setEditedData({})
+      setDeleteConfirmOpen(false)
+      setPlayerToDelete(null)
+      setPlayerEnrollments({ nonTeamEvents: [], teams: [], matches: [], hasMatches: false })
       return
     }
 
@@ -100,6 +114,112 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
       mobile_number: player.mobile_number,
       email_id: player.email_id,
     })
+  }
+
+  const handleEditClick = (e, player) => {
+    e.stopPropagation()
+    handlePlayerClick(player)
+  }
+
+  const handleDeleteClick = async (e, player) => {
+    e.stopPropagation()
+    setPlayerToDelete(player)
+    setLoadingEnrollments(true)
+    setDeleteConfirmOpen(true)
+
+    try {
+      // Fetch player enrollments
+      const response = await fetchWithAuth(
+        buildApiUrlWithYear(`/api/player-enrollments/${player.reg_number}`, eventYear)
+      )
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      if (data.success) {
+        setPlayerEnrollments({
+          nonTeamEvents: data.nonTeamEvents || [],
+          teams: data.teams || [],
+          matches: data.matches || [],
+          hasMatches: data.hasMatches || false
+        })
+      } else {
+        throw new Error(data.error || 'Failed to fetch enrollments')
+      }
+    } catch (err) {
+      logger.error('Error fetching player enrollments:', err)
+      if (onStatusPopup) {
+        onStatusPopup('❌ Error fetching player enrollments. Please try again.', 'error', 3000)
+      }
+      setDeleteConfirmOpen(false)
+      setPlayerToDelete(null)
+    } finally {
+      setLoadingEnrollments(false)
+    }
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!playerToDelete) return
+
+    // Safety check: if player is in any team - cannot delete (should not reach here due to button logic)
+    if (playerEnrollments.teams.length > 0) {
+      handleDeleteCancel()
+      return
+    }
+
+    // Safety check: if player has matches - cannot delete
+    if (playerEnrollments.hasMatches && playerEnrollments.matches.length > 0) {
+      handleDeleteCancel()
+      return
+    }
+
+    try {
+      await executeDelete(
+        () => fetchWithAuth(
+          buildApiUrlWithYear(`/api/delete-player/${playerToDelete.reg_number}`, eventYear),
+          {
+            method: 'DELETE',
+          }
+        ),
+        {
+          onSuccess: (data) => {
+            if (onStatusPopup) {
+              const eventCount = playerEnrollments.nonTeamEvents.length
+              onStatusPopup(
+                `✅ Player deleted successfully! Removed from ${eventCount} event(s).`,
+                'success',
+                3000
+              )
+            }
+            // Refresh players list
+            isRefreshingRef.current = true
+            clearCache('/api/players')
+            fetchPlayers(null, false).finally(() => {
+              isRefreshingRef.current = false
+            })
+            setDeleteConfirmOpen(false)
+            setPlayerToDelete(null)
+            setPlayerEnrollments({ nonTeamEvents: [], teams: [], matches: [], hasMatches: false })
+          },
+          onError: (err) => {
+            const errorMessage = err?.message || err?.error || 'Failed to delete player. Please try again.'
+            if (onStatusPopup) {
+              onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
+            }
+          },
+        }
+      )
+    } catch (err) {
+      logger.error('Error deleting player:', err)
+    }
+  }
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false)
+    setPlayerToDelete(null)
+    setPlayerEnrollments({ nonTeamEvents: [], teams: [], matches: [], hasMatches: false })
   }
 
   const handleCancelEdit = () => {
@@ -251,7 +371,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                   onClick={() => !isEditing && handlePlayerClick(player)}
                 >
                   {!isEditing ? (
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-2">
                       <div>
                         <div className="text-[#e5e7eb] font-semibold text-[0.95rem]">
                           {player.full_name}
@@ -260,7 +380,24 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                           Reg. No: {player.reg_number} • {player.department_branch} • {player.year || ''}
                         </div>
                       </div>
-                      <div className="text-[#ffe66d] text-sm">Click to edit</div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          onClick={(e) => handleEditClick(e, player)}
+                          variant="secondary"
+                          className="px-3 py-1 text-[0.8rem]"
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={(e) => handleDeleteClick(e, player)}
+                          variant="danger"
+                          className="px-3 py-1 text-[0.8rem]"
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -348,6 +485,115 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
             })}
           </div>
         )}
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={deleteConfirmOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={
+          playerEnrollments.teams.length > 0 || playerEnrollments.hasMatches
+            ? handleDeleteCancel
+            : handleDeleteConfirm
+        }
+        title={
+          playerEnrollments.teams.length > 0 || playerEnrollments.hasMatches
+            ? 'Cannot Delete Player'
+            : 'Delete Player'
+        }
+        confirmText={
+          playerEnrollments.teams.length > 0 || playerEnrollments.hasMatches
+            ? 'Close'
+            : 'Delete'
+        }
+        cancelText="Cancel"
+        variant={
+          playerEnrollments.teams.length > 0 || playerEnrollments.hasMatches
+            ? 'secondary'
+            : 'danger'
+        }
+        loading={deleting || loadingEnrollments}
+        embedded={true}
+        message={
+          loadingEnrollments ? (
+            <div className="text-center">
+              <LoadingSpinner message="Loading player enrollments..." />
+            </div>
+          ) : playerEnrollments.hasMatches && playerEnrollments.matches.length > 0 ? (
+            <div className="space-y-3">
+              <p className="text-[#ef4444] font-semibold">
+                Cannot delete player. Player has match(es) (any status):
+              </p>
+              <div className="bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.3)] rounded-[8px] p-3 max-h-[200px] overflow-y-auto">
+                <ul className="space-y-2">
+                  {playerEnrollments.matches.map((match, index) => (
+                    <li key={index} className="text-[#e5e7eb] text-sm">
+                      • <span className="font-semibold">{match.sport}</span> - Match #{match.match_number} ({match.match_type})
+                      <span className="text-[#ffe66d] ml-2">[{match.status}]</span>
+                      {match.match_date && (
+                        <span className="text-[#cbd5ff] ml-2">
+                          - {new Date(match.match_date).toLocaleDateString()}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <p className="text-[#cbd5ff] text-sm">
+                Player cannot be deleted if they have any match history (scheduled/completed/draw/cancelled).
+              </p>
+            </div>
+          ) : playerEnrollments.teams.length > 0 ? (
+            <div className="space-y-3">
+              <p className="text-[#ef4444] font-semibold">
+                Cannot delete player. Player is a member of the following team(s):
+              </p>
+              <div className="bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.3)] rounded-[8px] p-3 max-h-[200px] overflow-y-auto">
+                <ul className="space-y-2">
+                  {playerEnrollments.teams.map((team, index) => (
+                    <li key={index} className="text-[#e5e7eb] text-sm">
+                      • <span className="font-semibold">{team.sport}</span> - {team.team_name}
+                      {team.is_captain && <span className="text-[#ffe66d] ml-2">(Captain)</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <p className="text-[#cbd5ff] text-sm">
+                Please remove the player from all teams before deleting.
+              </p>
+            </div>
+          ) : playerEnrollments.nonTeamEvents.length > 0 ? (
+            <div className="space-y-3">
+              <p className="text-[#e5e7eb]">
+                Are you sure you want to delete <span className="font-semibold text-[#ffe66d]">{playerToDelete?.full_name}</span>?
+              </p>
+              <p className="text-[#cbd5ff] text-sm">
+                This will also remove the player from the following event(s):
+              </p>
+              <div className="bg-[rgba(255,230,109,0.1)] border border-[rgba(255,230,109,0.3)] rounded-[8px] p-3 max-h-[200px] overflow-y-auto">
+                <ul className="space-y-2">
+                  {playerEnrollments.nonTeamEvents.map((event, index) => (
+                    <li key={index} className="text-[#e5e7eb] text-sm">
+                      • <span className="font-semibold">{event.sport}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <p className="text-[#ef4444] text-sm font-semibold">
+                This action cannot be undone.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-[#e5e7eb]">
+                Are you sure you want to delete <span className="font-semibold text-[#ffe66d]">{playerToDelete?.full_name}</span>?
+              </p>
+              <p className="text-[#ef4444] text-sm font-semibold">
+                This action cannot be undone.
+              </p>
+            </div>
+          )
+        }
+      />
     </Modal>
   )
 }

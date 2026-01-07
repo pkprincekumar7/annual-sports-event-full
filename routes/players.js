@@ -6,12 +6,15 @@
 import express from 'express'
 import Player from '../models/Player.js'
 import EventYear from '../models/EventYear.js'
+import Sport from '../models/Sport.js'
+import EventSchedule from '../models/EventSchedule.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { validateUpdatePlayerData, validatePlayerData, trimObjectFields } from '../utils/validation.js'
 import { computePlayerParticipation, validateDepartmentExists } from '../utils/playerHelpers.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
+import { clearPlayerGenderCache } from '../utils/genderHelpers.js'
 import logger from '../utils/logger.js'
 
 const router = express.Router()
@@ -316,8 +319,286 @@ router.put(
     // Clear cache
     clearCache('/api/players')
     clearCache(`/api/me?year=${new Date().getFullYear()}`)
+    // Clear gender cache for this player (in case gender derivation is affected)
+    clearPlayerGenderCache(reg_number)
 
     return sendSuccessResponse(res, { player: playerData }, 'Player data updated successfully')
+  })
+)
+
+/**
+ * GET /api/player-enrollments/:reg_number
+ * Get player enrollments (non-team events and teams) for deletion validation
+ * Returns: { nonTeamEvents: Array, teams: Array }
+ */
+router.get(
+  '/player-enrollments/:reg_number',
+  authenticateToken,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { reg_number } = req.params
+    let eventYear = req.query.year ? parseInt(req.query.year) : null
+
+    // Get event year (default to active year if not provided)
+    if (!eventYear) {
+      const cachedActiveYear = getCache('/api/event-years/active')
+      if (cachedActiveYear) {
+        eventYear = cachedActiveYear.year
+      } else {
+        const activeYear = await EventYear.findOne({ is_active: true }).lean()
+        if (activeYear) {
+          eventYear = activeYear.year
+          setCache('/api/event-years/active', activeYear)
+        } else {
+          eventYear = new Date().getFullYear()
+        }
+      }
+    }
+
+    // Check if player exists
+    const player = await Player.findOne({ reg_number }).lean()
+    if (!player) {
+      return handleNotFoundError(res, 'Player')
+    }
+
+    // Find all sports where player is enrolled
+    const sports = await Sport.find({
+      event_year: eventYear,
+      $or: [
+        { 'teams_participated.captain': reg_number },
+        { 'teams_participated.players': reg_number },
+        { players_participated: reg_number }
+      ]
+    }).lean()
+
+    const nonTeamEvents = []
+    const teams = []
+
+    sports.forEach(sport => {
+      // Check if player is in a team
+      const teamMember = sport.teams_participated.find(
+        team => team.captain === reg_number || (team.players && team.players.includes(reg_number))
+      )
+
+      if (teamMember) {
+        // Player is in a team
+        teams.push({
+          sport: sport.name,
+          team_name: teamMember.team_name,
+          is_captain: teamMember.captain === reg_number
+        })
+      } else if (sport.players_participated && sport.players_participated.includes(reg_number)) {
+        // Player is enrolled in non-team event (individual event)
+        nonTeamEvents.push({
+          sport: sport.name,
+          category: sport.category
+        })
+      }
+    })
+
+    // Check for matches (any status: scheduled, completed, draw, cancelled)
+    // 1. Check individual events (player reg_number in players array)
+    const individualMatches = await EventSchedule.find({
+      event_year: eventYear,
+      players: reg_number
+    }).select('sports_name match_number match_type match_date status').lean()
+
+    // 2. Check team events (player's teams in teams array)
+    const playerTeamNames = teams.map(t => t.team_name)
+    const teamMatches = await EventSchedule.find({
+      event_year: eventYear,
+      teams: { $in: playerTeamNames }
+    }).select('sports_name match_number match_type match_date teams status').lean()
+
+    const allMatches = [
+      ...individualMatches.map(m => ({
+        sport: m.sports_name,
+        match_number: m.match_number,
+        match_type: m.match_type,
+        match_date: m.match_date,
+        status: m.status,
+        type: 'individual'
+      })),
+      ...teamMatches.map(m => ({
+        sport: m.sports_name,
+        match_number: m.match_number,
+        match_type: m.match_type,
+        match_date: m.match_date,
+        status: m.status,
+        teams: m.teams,
+        type: 'team'
+      }))
+    ]
+
+    return sendSuccessResponse(res, {
+      nonTeamEvents,
+      teams,
+      matches: allMatches,
+      hasEnrollments: nonTeamEvents.length > 0 || teams.length > 0,
+      hasMatches: allMatches.length > 0
+    })
+  })
+)
+
+/**
+ * DELETE /api/delete-player/:reg_number
+ * Delete player and their enrollments (admin only)
+ * Cannot delete if player is a member of any team
+ * Can delete if player is only enrolled in non-team events
+ */
+router.delete(
+  '/delete-player/:reg_number',
+  authenticateToken,
+  requireAdmin,
+  requireRegistrationPeriod,
+  asyncHandler(async (req, res) => {
+    const { reg_number } = req.params
+    let eventYear = req.query.year ? parseInt(req.query.year) : null
+
+    // Get event year (default to active year if not provided)
+    if (!eventYear) {
+      const cachedActiveYear = getCache('/api/event-years/active')
+      if (cachedActiveYear) {
+        eventYear = cachedActiveYear.year
+      } else {
+        const activeYear = await EventYear.findOne({ is_active: true }).lean()
+        if (activeYear) {
+          eventYear = activeYear.year
+          setCache('/api/event-years/active', activeYear)
+        } else {
+          eventYear = new Date().getFullYear()
+        }
+      }
+    }
+
+    // Check if player exists
+    const player = await Player.findOne({ reg_number })
+    if (!player) {
+      return handleNotFoundError(res, 'Player')
+    }
+
+    // Prevent deletion of admin user
+    if (reg_number === 'admin') {
+      return sendErrorResponse(res, 400, 'Cannot delete admin user')
+    }
+
+    // Find all sports where player is enrolled
+    const sports = await Sport.find({
+      event_year: eventYear,
+      $or: [
+        { 'teams_participated.captain': reg_number },
+        { 'teams_participated.players': reg_number },
+        { players_participated: reg_number }
+      ]
+    })
+
+    const teams = []
+    const nonTeamEvents = []
+
+    // Check enrollments
+    for (const sport of sports) {
+      // Check if player is in a team
+      const teamMember = sport.teams_participated.find(
+        team => team.captain === reg_number || (team.players && team.players.includes(reg_number))
+      )
+
+      if (teamMember) {
+        teams.push({
+          sport: sport.name,
+          team_name: teamMember.team_name
+        })
+      } else if (sport.players_participated && sport.players_participated.includes(reg_number)) {
+        // Player is enrolled in non-team event
+        nonTeamEvents.push({
+          sport: sport.name
+        })
+      }
+    }
+
+    // Check for matches (any status: scheduled, completed, draw, cancelled)
+    // 1. Check individual events (player reg_number in players array)
+    const individualMatches = await EventSchedule.find({
+      event_year: eventYear,
+      players: reg_number
+    }).lean()
+
+    // 2. Check team events (player's teams in teams array)
+    const playerTeamNames = teams.map(t => t.team_name)
+    const teamMatches = playerTeamNames.length > 0
+      ? await EventSchedule.find({
+          event_year: eventYear,
+          teams: { $in: playerTeamNames }
+        }).lean()
+      : []
+
+    const allMatches = [...individualMatches, ...teamMatches]
+
+    // Cannot delete if player has any matches (regardless of status)
+    if (allMatches.length > 0) {
+      const matchDetails = allMatches.map(m => ({
+        sport: m.sports_name,
+        match_number: m.match_number,
+        match_type: m.match_type,
+        match_date: m.match_date,
+        status: m.status
+      }))
+      return sendErrorResponse(
+        res,
+        400,
+        `Cannot delete player. Player has ${allMatches.length} match(es) (scheduled/completed/draw/cancelled). Player cannot be deleted if they have any match history.`,
+        { matches: matchDetails }
+      )
+    }
+
+    // Cannot delete if player is a member of any team
+    if (teams.length > 0) {
+      return sendErrorResponse(
+        res,
+        400,
+        `Cannot delete player. Player is a member of ${teams.length} team(s). Please remove player from teams first.`,
+        { teams }
+      )
+    }
+
+    // Remove player from non-team events
+    for (const event of nonTeamEvents) {
+      const sport = await Sport.findOne({
+        name: event.sport,
+        event_year: eventYear
+      })
+
+      if (sport) {
+        // Remove from players_participated array
+        sport.players_participated = sport.players_participated.filter(
+          p => p !== reg_number
+        )
+        await sport.save()
+
+        // Clear cache for this sport
+        clearCache(`/api/sports?year=${eventYear}`)
+        clearCache(`/api/sports/${event.sport}?year=${eventYear}`)
+        clearCache(`/api/participants/${event.sport}?year=${eventYear}`)
+        clearCache(`/api/participants-count/${event.sport}?year=${eventYear}`)
+        clearCache(`/api/sports-counts?year=${eventYear}`)
+      }
+    }
+
+    // Delete player from database
+    await Player.findOneAndDelete({ reg_number })
+
+    // Clear cache
+    clearCache('/api/players')
+    clearCache(`/api/me?year=${eventYear}`)
+    clearPlayerGenderCache(reg_number)
+
+    return sendSuccessResponse(
+      res,
+      {
+        deleted_events: nonTeamEvents.length,
+        events: nonTeamEvents.map(e => e.sport)
+      },
+      `Player deleted successfully. Removed from ${nonTeamEvents.length} event(s).`
+    )
   })
 )
 

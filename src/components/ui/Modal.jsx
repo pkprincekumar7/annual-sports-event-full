@@ -55,14 +55,14 @@ function Modal({
         </div>
       )}
       
-      {title && (
+      {!embedded && title && (
         <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
           {title}
         </div>
       )}
       
       {displaySubtitle && (
-        <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">
+        <div className={`text-[0.85rem] text-center text-[#e5e7eb] mb-4 ${embedded ? (headerLabel ? 'mt-1' : 'mt-[1.25rem]') : ''}`}>
           {displaySubtitle}
         </div>
       )}

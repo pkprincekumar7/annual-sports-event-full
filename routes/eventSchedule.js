@@ -865,7 +865,7 @@ router.delete(
   '/event-schedule/:id',
   authenticateToken,
   requireAdmin,
-  requireEventPeriod,
+  requireEventSchedulingPeriod,
   asyncHandler(async (req, res) => {
     const { id } = req.params
 

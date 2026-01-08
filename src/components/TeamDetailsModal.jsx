@@ -102,6 +102,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
 
   const fetchPlayers = async (signal) => {
     try {
+      // Don't pass page parameter to get all players (needed for team member replacement)
       const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear), signal ? { signal } : {})
       
       if (!response.ok) {
@@ -110,12 +111,8 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
 
       const data = await response.json()
       if (data.success) {
-        // Filter out admin user
-        const filteredPlayers = (data.players || []).filter(
-          p => p.reg_number !== 'admin'
-        )
-        // Fetched players for team replacement
-        setPlayers(filteredPlayers)
+        // Server-side filtering: admin user already filtered out on server
+        setPlayers(data.players || [])
       } else {
         logger.warn('Failed to fetch players:', data.error)
         setPlayers([])

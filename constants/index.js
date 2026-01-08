@@ -24,6 +24,9 @@ export const SPORT_TYPES = ['dual_team', 'multi_team', 'dual_player', 'multi_pla
 export const MAX_PARTICIPATIONS = 10
 export const MAX_CAPTAIN_ROLES = 10
 
+// Pagination
+export const DEFAULT_PLAYERS_PAGE_SIZE = 5 // Default page size for players list pagination and search
+
 // Note: Date constants removed - dates are now fetched from EventYear model in database
 // Registration and event dates are managed per event year through the Event Year management interface
 

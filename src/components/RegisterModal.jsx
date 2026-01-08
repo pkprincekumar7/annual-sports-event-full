@@ -148,6 +148,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       // For team events, fetch players and teams
       const fetchPlayers = async () => {
         try {
+          // Don't pass page parameter to get all players (needed for participant selection)
           const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear))
           
           if (!isMountedRef.current) {

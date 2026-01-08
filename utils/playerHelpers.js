@@ -84,6 +84,106 @@ export async function computePlayerParticipation(playerRegNumber, eventYear = nu
 }
 
 /**
+ * Compute player participation for multiple players in batch (optimized)
+ * @param {Array<string>} playerRegNumbers - Array of player registration numbers
+ * @param {number|null} eventYear - Event year (defaults to active year if not provided)
+ * @returns {Promise<Object>} Map of reg_number -> {participated_in: Array, captain_in: Array}
+ */
+export async function computePlayersParticipationBatch(playerRegNumbers, eventYear = null) {
+  if (!playerRegNumbers || playerRegNumbers.length === 0) {
+    return {}
+  }
+
+  // If eventYear not provided, get active year
+  if (!eventYear) {
+    const activeYear = await EventYear.findOne({ is_active: true }).lean()
+    eventYear = activeYear ? activeYear.year : new Date().getFullYear()
+  }
+
+  // Initialize result map
+  const result = {}
+  playerRegNumbers.forEach(regNumber => {
+    result[regNumber] = {
+      participated_in: [],
+      captain_in: []
+    }
+  })
+
+  // OPTIMIZATION: Single query to fetch all sports for all players
+  const sports = await Sport.find({
+    event_year: eventYear,
+    $or: [
+      { eligible_captains: { $in: playerRegNumbers } },
+      { 'teams_participated.captain': { $in: playerRegNumbers } },
+      { 'teams_participated.players': { $in: playerRegNumbers } },
+      { players_participated: { $in: playerRegNumbers } }
+    ]
+  }).lean()
+
+  // Process all sports and build participation data for all players
+  sports.forEach(sport => {
+    // Check teams first (captains and members)
+    if (sport.teams_participated && Array.isArray(sport.teams_participated)) {
+      sport.teams_participated.forEach(team => {
+        // Check captain
+        if (team.captain && result[team.captain]) {
+          result[team.captain].captain_in.push(sport.name)
+          result[team.captain].participated_in.push({
+            sport: sport.name,
+            team_name: team.team_name
+          })
+        }
+
+        // Check team members
+        if (team.players && Array.isArray(team.players)) {
+          team.players.forEach(regNumber => {
+            if (result[regNumber] && regNumber !== team.captain) {
+              result[regNumber].participated_in.push({
+                sport: sport.name,
+                team_name: team.team_name
+              })
+            }
+          })
+        }
+      })
+    }
+
+    // Check eligible captains (only if they don't have a team yet)
+    if (sport.eligible_captains && Array.isArray(sport.eligible_captains)) {
+      sport.eligible_captains.forEach(regNumber => {
+        if (result[regNumber]) {
+          // Only add if they're not already a captain (don't have a team)
+          const hasTeam = result[regNumber].captain_in.includes(sport.name)
+          if (!hasTeam) {
+            result[regNumber].captain_in.push(sport.name)
+          }
+        }
+      })
+    }
+
+    // Check individual participants (only if not in a team)
+    if (sport.players_participated && Array.isArray(sport.players_participated)) {
+      sport.players_participated.forEach(regNumber => {
+        if (result[regNumber]) {
+          // Only add if player is not already in a team for this sport
+          const hasTeamInSport = result[regNumber].participated_in.some(
+            p => p.sport === sport.name && p.team_name !== null
+          )
+          if (!hasTeamInSport) {
+            result[regNumber].participated_in.push({
+              sport: sport.name,
+              team_name: null
+            })
+          }
+        }
+      })
+    }
+  })
+
+  return result
+}
+
+/**
  * Validate department exists
  * @param {string} departmentName - Department name
  * @returns {Promise<{exists: boolean, department: Object|null}>}

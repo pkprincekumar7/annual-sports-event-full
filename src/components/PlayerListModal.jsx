@@ -45,6 +45,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   const eventYear = useEventYearWithFallback(selectedYear)
   const isRefreshingRef = useRef(false) // Use ref to track if we're refreshing after update
   const searchTimeoutRef = useRef(null) // Use ref for debouncing search
+  const clearButtonRef = useRef(null) // Ref for clear button
+  const [clearButtonTop, setClearButtonTop] = useState(null) // Dynamic top position for clear button
 
   // Function to fetch players (extracted for reuse)
   // showError: whether to show error popup (default: true for initial load, false for silent refresh)
@@ -163,6 +165,62 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
       }
     }
   }, [searchInput])
+
+  // Calculate clear button position to center it with input field
+  useEffect(() => {
+    if (!searchInput || !isOpen) return
+    
+    // Use setTimeout to ensure DOM is rendered
+    const calculatePosition = () => {
+      const inputElement = document.getElementById('searchPlayer')
+      const containerElement = inputElement?.closest('.relative')
+      
+      if (inputElement && containerElement && clearButtonRef.current) {
+        const inputRect = inputElement.getBoundingClientRect()
+        const containerRect = containerElement.getBoundingClientRect()
+        
+        if (containerRect && inputRect) {
+          // Calculate the center of the input field relative to the container
+          const inputCenterY = inputRect.top - containerRect.top + (inputRect.height / 2)
+          // Center the button (accounting for button's own height)
+          const buttonHeight = clearButtonRef.current.offsetHeight || 20
+          const topPosition = inputCenterY - (buttonHeight / 2)
+          setClearButtonTop(topPosition)
+        }
+      }
+    }
+    
+    // Calculate immediately and after a short delay to ensure layout is complete
+    calculatePosition()
+    const timeoutId = setTimeout(calculatePosition, 10)
+    
+    return () => clearTimeout(timeoutId)
+  }, [searchInput, isOpen])
+
+  // Recalculate on window resize
+  useEffect(() => {
+    if (!searchInput || !isOpen) return
+    
+    const handleResize = () => {
+      const inputElement = document.getElementById('searchPlayer')
+      const containerElement = inputElement?.closest('.relative')
+      
+      if (inputElement && containerElement && clearButtonRef.current) {
+        const inputRect = inputElement.getBoundingClientRect()
+        const containerRect = containerElement.getBoundingClientRect()
+        
+        if (containerRect && inputRect) {
+          const inputCenterY = inputRect.top - containerRect.top + (inputRect.height / 2)
+          const buttonHeight = clearButtonRef.current.offsetHeight || 20
+          const topPosition = inputCenterY - (buttonHeight / 2)
+          setClearButtonTop(topPosition)
+        }
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [searchInput, isOpen])
 
   // Server-side pagination: players array contains only the current page's data from API
   // No client-side pagination or filtering - all pagination handled by backend
@@ -672,26 +730,29 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
     >
       {/* Search Bar */}
       <div className="mb-4">
-        <div className="flex gap-2 items-end">
-          <div className="flex-1">
-            <Input
-              label="Search by Registration Number or Name"
-              id="searchPlayer"
-              value={searchInput}
-              onChange={handleSearchChange}
-              placeholder="Type registration number or name to search..."
-            />
-          </div>
+        <div className="relative">
+          <Input
+            label="Search by Registration Number or Name"
+            id="searchPlayer"
+            value={searchInput}
+            onChange={handleSearchChange}
+            placeholder="Type registration number or name to search..."
+            className={searchInput ? "pr-8" : ""}
+          />
           {searchInput && (
-            <Button
+            <button
+              ref={clearButtonRef}
               type="button"
               onClick={handleClearSearch}
-              variant="secondary"
-              className="px-4 py-2 text-[0.85rem]"
               disabled={loading}
+              className="absolute right-[10px] text-[#cbd5ff] hover:text-[#ffe66d] transition-colors cursor-pointer bg-transparent border-none text-xl leading-none disabled:opacity-50 disabled:cursor-not-allowed z-10"
+              style={{
+                top: clearButtonTop !== null ? `${clearButtonTop}px` : 'calc(0.78rem * 1.2 + 0.25rem + 0.5rem + 0.45rem)'
+              }}
+              aria-label="Clear search"
             >
-              Clear
-            </Button>
+              ✕
+            </button>
           )}
         </div>
       </div>

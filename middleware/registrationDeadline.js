@@ -73,12 +73,13 @@ async function getRegistrationDeadline() {
 
 /**
  * Middleware to enforce registration deadline
- * Allows GET requests and login endpoint after deadline
+ * Allows GET requests, login endpoint, and event scheduling after deadline
  * Fetches deadline from database - throws error if not available
  */
 export const checkRegistrationDeadline = async (req, res, next) => {
-  // Allow GET requests and login endpoint to pass through without date check
-  if (req.method === 'GET' || req.path === '/login') {
+  // Allow GET requests, login endpoint, and event scheduling to pass through without date check
+  // Event scheduling has its own date validation (after registration starts, before event ends)
+  if (req.method === 'GET' || req.path === '/login' || req.path === '/event-schedule') {
     return next()
   }
 

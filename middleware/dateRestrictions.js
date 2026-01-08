@@ -98,6 +98,52 @@ async function checkEventDateRange(eventYear = null) {
 }
 
 /**
+ * Check if current date is after registration starts and before event ends
+ * This allows event scheduling after registration period begins
+ * @param {number|null} eventYear - Optional event year (defaults to active year)
+ * @returns {Promise<{isWithin: boolean, eventYearDoc: Object|null, message: string}>}
+ */
+async function checkEventSchedulingDateRange(eventYear = null) {
+  try {
+    const year = await getEventYear(eventYear, { returnDoc: true })
+    const eventYearDoc = year.doc
+
+    if (!eventYearDoc) {
+      return {
+        isWithin: false,
+        eventYearDoc: null,
+        message: 'No active event year found. Please contact administrator.'
+      }
+    }
+
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    const regStart = new Date(eventYearDoc.registration_dates.start)
+    regStart.setHours(0, 0, 0, 0)
+
+    const eventEnd = new Date(eventYearDoc.event_dates.end)
+    eventEnd.setHours(23, 59, 59, 999)
+
+    const isWithin = now >= regStart && now <= eventEnd
+
+    return {
+      isWithin,
+      eventYearDoc,
+      message: isWithin
+        ? ''
+        : `Event scheduling is only allowed after registration starts and before event ends (after ${formatDate(regStart)} and before ${formatDate(eventEnd)}).`
+    }
+  } catch (error) {
+    return {
+      isWithin: false,
+      eventYearDoc: null,
+      message: 'Error checking event scheduling date range. Please try again.'
+    }
+  }
+}
+
+/**
  * Format date for display
  * @param {Date} date - Date to format
  * @returns {string} Formatted date string
@@ -170,6 +216,30 @@ export const requireEventPeriod = async (req, res, next) => {
     next()
   } catch (error) {
     return sendErrorResponse(res, 500, 'Error checking event period. Please try again.')
+  }
+}
+
+/**
+ * Middleware to allow event scheduling after registration starts and before event ends
+ * Allows scheduling operations after registration_dates.start and before event_dates.end
+ */
+export const requireEventSchedulingPeriod = async (req, res, next) => {
+  try {
+    // Try to get event_year from query, body, or params
+    const eventYear = req.query.year || req.body.event_year || req.params.year || null
+    const parsedYear = eventYear ? parseInt(eventYear) : null
+
+    const check = await checkEventSchedulingDateRange(parsedYear)
+
+    if (!check.isWithin) {
+      return sendErrorResponse(res, 400, check.message)
+    }
+
+    // Attach eventYearDoc to request for use in route handlers
+    req.eventYearDoc = check.eventYearDoc
+    next()
+  } catch (error) {
+    return sendErrorResponse(res, 500, 'Error checking event scheduling period. Please try again.')
   }
 }
 

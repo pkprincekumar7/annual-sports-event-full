@@ -322,18 +322,31 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
     } else {
       // Select all on current page (if within limit)
       const currentSelectedCount = selectedPlayers.size
-      const availableSlots = PAGE_SIZE - currentSelectedCount
-      const toSelect = currentPagePlayers.slice(0, availableSlots)
       
-      if (toSelect.length < currentPagePlayers.length) {
+      // Filter out players from current page that are already selected
+      const alreadySelectedOnPage = currentPagePlayers.filter(player => 
+        selectedPlayers.has(player.reg_number)
+      )
+      const notSelectedOnPage = currentPagePlayers.filter(player => 
+        !selectedPlayers.has(player.reg_number)
+      )
+      
+      // Calculate how many new players we can select
+      const availableSlots = PAGE_SIZE - currentSelectedCount
+      const canSelectAll = notSelectedOnPage.length <= availableSlots
+      
+      if (!canSelectAll) {
+        // Cannot select all players on current page due to limit
         if (onStatusPopup) {
-          onStatusPopup(`❌ Maximum ${PAGE_SIZE} players can be selected at a time.`, 'error', 3000)
+          onStatusPopup(`❌ Maximum ${PAGE_SIZE} players can be selected at a time. Cannot select all ${currentPagePlayers.length} players on this page.`, 'error', 3000)
         }
+        return // Don't select any if we can't select all
       }
-
+      
+      // Select all players on current page that aren't already selected
       setSelectedPlayers(prev => {
         const newSet = new Set(prev)
-        toSelect.forEach(player => {
+        notSelectedOnPage.forEach(player => {
           newSet.add(player.reg_number)
         })
         return newSet

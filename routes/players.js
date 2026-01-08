@@ -411,6 +411,179 @@ router.put(
 )
 
 /**
+ * POST /api/bulk-player-enrollments
+ * Get enrollments for multiple players (optimized bulk endpoint)
+ * Accepts: { reg_numbers: Array<string>, year?: number }
+ * Returns: { enrollments: { [reg_number]: { nonTeamEvents, teams, matches, hasMatches } } }
+ */
+router.post(
+  '/bulk-player-enrollments',
+  authenticateToken,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { reg_numbers } = req.body
+    let eventYear = req.query.year || req.body.year ? parseInt(req.query.year || req.body.year) : null
+
+    // Validate input
+    if (!Array.isArray(reg_numbers) || reg_numbers.length === 0) {
+      return sendErrorResponse(res, 400, 'reg_numbers must be a non-empty array')
+    }
+
+    // Get event year (default to active year if not provided)
+    if (!eventYear) {
+      const cachedActiveYear = getCache('/api/event-years/active')
+      if (cachedActiveYear) {
+        eventYear = cachedActiveYear.year
+      } else {
+        const activeYear = await EventYear.findOne({ is_active: true }).lean()
+        if (activeYear) {
+          eventYear = activeYear.year
+          setCache('/api/event-years/active', activeYear)
+        } else {
+          eventYear = new Date().getFullYear()
+        }
+      }
+    }
+
+    // Check if all players exist
+    const players = await Player.find({ reg_number: { $in: reg_numbers } }).select('reg_number full_name').lean()
+    const foundRegNumbers = players.map(p => p.reg_number)
+    const notFound = reg_numbers.filter(reg => !foundRegNumbers.includes(reg))
+    
+    if (notFound.length > 0) {
+      return sendErrorResponse(
+        res,
+        404,
+        `Players not found: ${notFound.join(', ')}`,
+        { notFound }
+      )
+    }
+
+    // OPTIMIZATION: Fetch all sports for all players in one query
+    const allSports = await Sport.find({
+      event_year: eventYear,
+      $or: [
+        { 'teams_participated.captain': { $in: reg_numbers } },
+        { 'teams_participated.players': { $in: reg_numbers } },
+        { players_participated: { $in: reg_numbers } }
+      ]
+    }).lean()
+
+    // OPTIMIZATION: Build enrollment maps for all players
+    const enrollmentsMap = {}
+    for (const reg_number of reg_numbers) {
+      enrollmentsMap[reg_number] = {
+        nonTeamEvents: [],
+        teams: [],
+        matches: [],
+        hasMatches: false
+      }
+    }
+
+    // Process all sports to build enrollment maps
+    for (const sport of allSports) {
+      // Check team participations
+      if (sport.teams_participated && sport.teams_participated.length > 0) {
+        for (const team of sport.teams_participated) {
+          // Check if any of the players is captain
+          if (team.captain && reg_numbers.includes(team.captain)) {
+            enrollmentsMap[team.captain].teams.push({
+              sport: sport.name,
+              team_name: team.team_name,
+              is_captain: true
+            })
+          }
+          // Check if any of the players is in the team
+          if (team.players && Array.isArray(team.players)) {
+            for (const playerRegNumber of team.players) {
+              if (reg_numbers.includes(playerRegNumber)) {
+                // Only add if not already added as captain
+                const existingTeam = enrollmentsMap[playerRegNumber].teams.find(
+                  t => t.team_name === team.team_name && t.sport === sport.name
+                )
+                if (!existingTeam) {
+                  enrollmentsMap[playerRegNumber].teams.push({
+                    sport: sport.name,
+                    team_name: team.team_name,
+                    is_captain: false
+                  })
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Check non-team participations
+      if (sport.players_participated && Array.isArray(sport.players_participated)) {
+        for (const playerRegNumber of sport.players_participated) {
+          if (reg_numbers.includes(playerRegNumber)) {
+            // Only add if player is not in a team for this sport
+            const hasTeamInSport = enrollmentsMap[playerRegNumber].teams.some(
+              t => t.sport === sport.name
+            )
+            if (!hasTeamInSport) {
+              enrollmentsMap[playerRegNumber].nonTeamEvents.push({
+                sport: sport.name,
+                category: sport.category
+              })
+            }
+          }
+        }
+      }
+    }
+
+    // OPTIMIZATION: Get all non-team event names for all players
+    const allNonTeamEventNames = new Set()
+    for (const reg_number of reg_numbers) {
+      enrollmentsMap[reg_number].nonTeamEvents.forEach(e => allNonTeamEventNames.add(e.sport))
+    }
+
+    // OPTIMIZATION: Fetch all matches for all players in one query
+    const allMatches = allNonTeamEventNames.size > 0
+      ? await EventSchedule.find({
+          event_year: eventYear,
+          players: { $in: reg_numbers },
+          sports_name: { $in: Array.from(allNonTeamEventNames) }
+        }).select('sports_name match_number match_type match_date status players').lean()
+      : []
+
+    // Group matches by player
+    for (const match of allMatches) {
+      if (match.players && Array.isArray(match.players)) {
+        for (const playerRegNumber of match.players) {
+          if (reg_numbers.includes(playerRegNumber)) {
+            enrollmentsMap[playerRegNumber].matches.push({
+              sport: match.sports_name,
+              match_number: match.match_number,
+              match_type: match.match_type,
+              match_date: match.match_date,
+              status: match.status,
+              type: 'individual'
+            })
+            enrollmentsMap[playerRegNumber].hasMatches = true
+          }
+        }
+      }
+    }
+
+    // Add player info to each enrollment
+    const result = {}
+    for (const reg_number of reg_numbers) {
+      const player = players.find(p => p.reg_number === reg_number)
+      result[reg_number] = {
+        ...enrollmentsMap[reg_number],
+        player: player || { reg_number, full_name: reg_number }
+      }
+    }
+
+    return sendSuccessResponse(res, {
+      enrollments: result
+    })
+  })
+)
+
+/**
  * GET /api/player-enrollments/:reg_number
  * Get player enrollments (non-team events and teams) for deletion validation
  * Returns: { nonTeamEvents: Array, teams: Array }

@@ -29,7 +29,7 @@ export const GENDER_OPTIONS = [
 // DEPARTMENT_OPTIONS and CULTURAL_SPORTS removed - now fetched dynamically from API
 
 // Pagination
-export const DEFAULT_PLAYERS_PAGE_SIZE = 50 // Default page size for players list pagination and search
+export const DEFAULT_PLAYERS_PAGE_SIZE = 25 // Default page size for players list pagination and search
 
 // Admin Registration Number
 export const ADMIN_REG_NUMBER = 'admin'

@@ -32,6 +32,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   })
   const [bulkDeleteError, setBulkDeleteError] = useState(null)
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false)
+  const [bulkDeleteEnrollments, setBulkDeleteEnrollments] = useState({}) // Map of reg_number -> enrollments
+  const [loadingBulkEnrollments, setLoadingBulkEnrollments] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchInput, setSearchInput] = useState('')
   // Use constant for page size - ensures consistency across pagination and search
@@ -112,6 +114,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
       setCurrentPage(1)
       setBulkDeleteError(null)
       setBulkDeleteConfirmOpen(false)
+      setBulkDeleteEnrollments({})
       setSearchQuery('')
       setSearchInput('')
       setPagination({
@@ -339,19 +342,90 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   }
 
   // Bulk delete handlers
-  const handleBulkDeleteClick = () => {
+  const handleBulkDeleteClick = async () => {
     if (selectedPlayers.size === 0) {
       if (onStatusPopup) {
         onStatusPopup('❌ Please select at least one player to delete.', 'error', 2500)
       }
       return
     }
+    
     setBulkDeleteError(null)
+    setLoadingBulkEnrollments(true)
     setBulkDeleteConfirmOpen(true)
+    
+    const regNumbers = Array.from(selectedPlayers)
+    
+    try {
+      // OPTIMIZATION: Fetch enrollments for all selected players in a single API call
+      const response = await fetchWithAuth(
+        buildApiUrlWithYear('/api/bulk-player-enrollments', eventYear),
+        {
+          method: 'POST',
+          body: JSON.stringify({ reg_numbers: regNumbers }),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      if (data.success && data.enrollments) {
+        setBulkDeleteEnrollments(data.enrollments)
+      } else {
+        throw new Error(data.error || 'Failed to fetch enrollments')
+      }
+    } catch (err) {
+      logger.error('Error fetching bulk delete enrollments:', err)
+      if (onStatusPopup) {
+        onStatusPopup('❌ Error fetching player enrollments. Please try again.', 'error', 3000)
+      }
+      setBulkDeleteConfirmOpen(false)
+    } finally {
+      setLoadingBulkEnrollments(false)
+    }
   }
 
   const handleBulkDeleteConfirm = async () => {
     if (selectedPlayers.size === 0) return
+
+    // Safety check: if any player is in any team - cannot delete
+    const playersWithTeams = []
+    const playersWithMatches = []
+    
+    for (const regNumber of Array.from(selectedPlayers)) {
+      const enrollments = bulkDeleteEnrollments[regNumber]
+      if (enrollments) {
+        if (enrollments.teams && enrollments.teams.length > 0) {
+          playersWithTeams.push({
+            reg_number: regNumber,
+            full_name: enrollments.player?.full_name || regNumber,
+            teams: enrollments.teams
+          })
+        }
+        if (enrollments.hasMatches && enrollments.matches && enrollments.matches.length > 0) {
+          playersWithMatches.push({
+            reg_number: regNumber,
+            full_name: enrollments.player?.full_name || regNumber,
+            matches: enrollments.matches
+          })
+        }
+      }
+    }
+    
+    // If any players cannot be deleted, show error and prevent deletion
+    if (playersWithTeams.length > 0 || playersWithMatches.length > 0) {
+      setBulkDeleteError({
+        playersWithTeams,
+        playersWithMatches,
+        message: 'Some players cannot be deleted due to constraints'
+      })
+      return
+    }
 
     const regNumbers = Array.from(selectedPlayers)
     setBulkDeleting(true)
@@ -379,21 +453,41 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
             message: data.error || 'Some players cannot be deleted due to constraints'
           })
         } else {
+          // Handle registration period errors and other validation errors
           const errorMessage = data.error || data.message || 'Failed to delete players. Please try again.'
-          if (onStatusPopup) {
-            onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
+          // If it's a registration period error or other validation error, show it in the dialog
+          if (errorMessage.includes('registration period') || errorMessage.includes('only allowed during')) {
+            setBulkDeleteError({
+              playersWithTeams: [],
+              playersWithMatches: [],
+              message: errorMessage
+            })
+          } else {
+            if (onStatusPopup) {
+              onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
+            }
+            setBulkDeleteConfirmOpen(false)
           }
-          setBulkDeleteConfirmOpen(false)
         }
         return
       }
 
       // Success
       if (onStatusPopup) {
+        // Calculate total events removed
+        const totalEventsRemoved = data.deleted_events 
+          ? Object.values(data.deleted_events).reduce((total, events) => total + (events?.length || 0), 0)
+          : 0
+        
+        let message = `✅ Successfully deleted ${data.deleted_count} player(s).`
+        if (totalEventsRemoved > 0) {
+          message += ` Removed from ${totalEventsRemoved} non-team event enrollment(s).`
+        }
+        
         onStatusPopup(
-          `✅ Successfully deleted ${data.deleted_count} player(s).`,
+          message,
           'success',
-          3000
+          4000
         )
       }
       // Refresh players list
@@ -407,6 +501,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
       setBulkDeleteConfirmOpen(false)
       setSelectedPlayers(new Set())
       setBulkDeleteError(null)
+      setBulkDeleteEnrollments({})
     } catch (err) {
       logger.error('Error bulk deleting players:', err)
       const errorMessage = err?.message || err?.error || 'Failed to delete players. Please try again.'
@@ -422,6 +517,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   const handleBulkDeleteCancel = () => {
     setBulkDeleteConfirmOpen(false)
     setBulkDeleteError(null)
+    setBulkDeleteEnrollments({})
   }
 
   // Search handlers
@@ -654,15 +750,6 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                 <div className="flex items-center justify-center gap-0.5 sm:gap-2 flex-wrap">
                   <Button
                     type="button"
-                    onClick={() => setCurrentPage(1)}
-                    disabled={!pagination.hasPreviousPage || currentPageNum === 1}
-                    variant="secondary"
-                    className="!px-1.5 !py-0.5 sm:!px-3 sm:!py-1 !text-[0.65rem] sm:!text-[0.8rem] !leading-tight !tracking-normal sm:!tracking-[0.1em]"
-                  >
-                    First
-                  </Button>
-                  <Button
-                    type="button"
                     onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                     disabled={!pagination.hasPreviousPage || currentPageNum === 1}
                     variant="secondary"
@@ -764,6 +851,19 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                     className="!px-1.5 !py-0.5 sm:!px-3 sm:!py-1 !text-[0.65rem] sm:!text-[0.8rem] !leading-tight !tracking-normal sm:!tracking-[0.1em]"
                   >
                     Next
+                  </Button>
+                </div>
+                
+                {/* First and Last buttons below Prev and Next */}
+                <div className="flex items-center justify-center gap-0.5 sm:gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={!pagination.hasPreviousPage || currentPageNum === 1}
+                    variant="secondary"
+                    className="!px-1.5 !py-0.5 sm:!px-3 sm:!py-1 !text-[0.65rem] sm:!text-[0.8rem] !leading-tight !tracking-normal sm:!tracking-[0.1em]"
+                  >
+                    First
                   </Button>
                   <Button
                     type="button"
@@ -1055,21 +1155,65 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
       />
 
       {/* Bulk Delete Confirmation Dialog */}
-      <ConfirmationDialog
-        isOpen={bulkDeleteConfirmOpen}
-        onClose={handleBulkDeleteCancel}
-        onConfirm={bulkDeleteError ? handleBulkDeleteCancel : handleBulkDeleteConfirm}
-        title={bulkDeleteError ? 'Cannot Delete Players' : 'Delete Selected Players'}
-        confirmText={bulkDeleteError ? 'Close' : 'Delete'}
-        cancelText="Cancel"
-        variant={bulkDeleteError ? 'secondary' : 'danger'}
-        loading={bulkDeleting}
-        embedded={true}
-        message={
-          bulkDeleteError ? (
+      {(() => {
+        // Check enrollments from state to determine if any players have teams or matches
+        const playersWithTeams = []
+        const playersWithMatches = []
+        const playersToDelete = []
+        
+        if (!loadingBulkEnrollments && Object.keys(bulkDeleteEnrollments).length > 0) {
+          for (const regNumber of Array.from(selectedPlayers)) {
+            const enrollments = bulkDeleteEnrollments[regNumber]
+            if (enrollments && !enrollments.error) {
+              if (enrollments.teams && enrollments.teams.length > 0) {
+                playersWithTeams.push({
+                  reg_number: regNumber,
+                  full_name: enrollments.player?.full_name || regNumber,
+                  teams: enrollments.teams
+                })
+              } else if (enrollments.hasMatches && enrollments.matches && enrollments.matches.length > 0) {
+                playersWithMatches.push({
+                  reg_number: regNumber,
+                  full_name: enrollments.player?.full_name || regNumber,
+                  matches: enrollments.matches
+                })
+              } else {
+                // Player can be deleted
+                playersToDelete.push({
+                  reg_number: regNumber,
+                  full_name: enrollments.player?.full_name || regNumber,
+                  nonTeamEvents: enrollments.nonTeamEvents || []
+                })
+              }
+            }
+          }
+        }
+        
+        const hasValidationErrors = playersWithTeams.length > 0 || playersWithMatches.length > 0
+        const hasApiErrors = bulkDeleteError && (bulkDeleteError.playersWithTeams || bulkDeleteError.playersWithMatches || bulkDeleteError.message?.includes('registration period') || bulkDeleteError.message?.includes('only allowed during'))
+        const cannotDelete = hasValidationErrors || hasApiErrors
+        
+        return (
+          <ConfirmationDialog
+            isOpen={bulkDeleteConfirmOpen}
+            onClose={handleBulkDeleteCancel}
+            onConfirm={cannotDelete ? handleBulkDeleteCancel : handleBulkDeleteConfirm}
+            title={cannotDelete ? 'Cannot Delete Players' : 'Delete Selected Players'}
+            confirmText={cannotDelete ? 'Close' : 'Delete'}
+            cancelText="Cancel"
+            variant={cannotDelete ? 'secondary' : 'danger'}
+            loading={bulkDeleting || loadingBulkEnrollments}
+            embedded={true}
+            message={
+              loadingBulkEnrollments ? (
+                <div className="text-center">
+                  <LoadingSpinner message="Loading player enrollments..." />
+                </div>
+              ) : hasApiErrors ? (
+            // Show API errors (registration period, etc.) or validation errors from API response
             <div className="space-y-4">
               <p className="text-[#ef4444] font-semibold">
-                {bulkDeleteError.message}
+                {bulkDeleteError.message || 'Cannot delete players'}
               </p>
               
               {bulkDeleteError.playersWithTeams && bulkDeleteError.playersWithTeams.length > 0 && (
@@ -1115,6 +1259,11 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                               <div key={matchIndex} className="text-[#cbd5ff] text-xs">
                                 - {match.sport} - Match #{match.match_number} ({match.match_type})
                                 <span className="text-[#ffe66d] ml-1">[{match.status}]</span>
+                                {match.match_date && (
+                                  <span className="text-[#cbd5ff] ml-1">
+                                    - {new Date(match.match_date).toLocaleDateString()}
+                                  </span>
+                                )}
                               </div>
                             ))}
                             {player.matches.length > 3 && (
@@ -1133,18 +1282,120 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                 </div>
               )}
             </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-[#e5e7eb]">
-                Are you sure you want to delete <span className="font-semibold text-[#ffe66d]">{selectedPlayers.size}</span> selected player(s)?
-              </p>
-              <p className="text-[#ef4444] text-sm font-semibold">
-                This action cannot be undone.
-              </p>
-            </div>
-          )
-        }
-      />
+          ) : hasValidationErrors ? (
+                <div className="space-y-4">
+                  <p className="text-[#ef4444] font-semibold">
+                    Cannot delete some players. The following players have constraints:
+                  </p>
+                  
+                  {playersWithTeams.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[#ef4444] font-semibold text-sm">
+                        Players with team memberships ({playersWithTeams.length}):
+                      </p>
+                      <div className="bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.3)] rounded-[8px] p-3 max-h-[200px] overflow-y-auto">
+                        <ul className="space-y-2">
+                          {playersWithTeams.map((player, index) => (
+                            <li key={index} className="text-[#e5e7eb] text-sm">
+                              • <span className="font-semibold">{player.full_name}</span> ({player.reg_number})
+                              <div className="ml-4 mt-1">
+                                {player.teams.map((team, teamIndex) => (
+                                  <div key={teamIndex} className="text-[#cbd5ff] text-xs">
+                                    - {team.sport}: {team.team_name}
+                                    {team.is_captain && <span className="text-[#ffe66d] ml-1">(Captain)</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <p className="text-[#cbd5ff] text-xs">
+                        Please remove these players from all teams before deleting.
+                      </p>
+                    </div>
+                  )}
+
+                  {playersWithMatches.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[#ef4444] font-semibold text-sm">
+                        Players with match history ({playersWithMatches.length}):
+                      </p>
+                      <div className="bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.3)] rounded-[8px] p-3 max-h-[200px] overflow-y-auto">
+                        <ul className="space-y-2">
+                          {playersWithMatches.map((player, index) => (
+                            <li key={index} className="text-[#e5e7eb] text-sm">
+                              • <span className="font-semibold">{player.full_name}</span> ({player.reg_number})
+                              <div className="ml-4 mt-1">
+                                {player.matches.slice(0, 3).map((match, matchIndex) => (
+                                  <div key={matchIndex} className="text-[#cbd5ff] text-xs">
+                                    - {match.sport} - Match #{match.match_number} ({match.match_type})
+                                    <span className="text-[#ffe66d] ml-1">[{match.status}]</span>
+                                    {match.match_date && (
+                                      <span className="text-[#cbd5ff] ml-1">
+                                        - {new Date(match.match_date).toLocaleDateString()}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                                {player.matches.length > 3 && (
+                                  <div className="text-[#cbd5ff] text-xs italic">
+                                    ... and {player.matches.length - 3} more match(es)
+                                  </div>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <p className="text-[#cbd5ff] text-xs">
+                        Players cannot be deleted if they have any match history (scheduled/completed/draw/cancelled).
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // All players can be deleted - show confirmation with event details
+                (() => {
+                  const allNonTeamEvents = new Set()
+                  playersToDelete.forEach(player => {
+                    player.nonTeamEvents.forEach(event => {
+                      allNonTeamEvents.add(event.sport)
+                    })
+                  })
+                  
+                  return (
+                    <div className="space-y-3">
+                      <p className="text-[#e5e7eb]">
+                        Are you sure you want to delete <span className="font-semibold text-[#ffe66d]">{selectedPlayers.size}</span> selected player(s)?
+                      </p>
+                      {allNonTeamEvents.size > 0 && (
+                        <>
+                          <p className="text-[#cbd5ff] text-sm">
+                            This will also remove players from the following event(s):
+                          </p>
+                          <div className="bg-[rgba(255,230,109,0.1)] border border-[rgba(255,230,109,0.3)] rounded-[8px] p-3 max-h-[200px] overflow-y-auto">
+                            <ul className="space-y-2">
+                              {Array.from(allNonTeamEvents).map((sport, index) => (
+                                <li key={index} className="text-[#e5e7eb] text-sm">
+                                  • <span className="font-semibold">{sport}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </>
+                      )}
+                      <p className="text-[#ef4444] text-sm font-semibold">
+                        This action cannot be undone.
+                      </p>
+                    </div>
+                  )
+                })()
+              )
+            }
+          />
+        )
+      })()}
     </Modal>
   )
 }

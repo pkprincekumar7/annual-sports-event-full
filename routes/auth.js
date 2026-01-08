@@ -12,6 +12,7 @@ import { asyncHandler, sendSuccessResponse, sendErrorResponse } from '../utils/e
 import { trimObjectFields } from '../utils/validation.js'
 import { computePlayerParticipation } from '../utils/playerHelpers.js'
 import { getCache, setCache } from '../utils/cache.js'
+import { findActiveEventYear } from '../utils/yearHelpers.js'
 import { JWT_EXPIRES_IN } from '../constants/index.js'
 
 const router = express.Router()
@@ -54,7 +55,7 @@ router.post(
     if (cachedActiveYear) {
       eventYear = cachedActiveYear.year
     } else {
-      const activeYear = await EventYear.findOne({ is_active: true }).lean()
+      const activeYear = await findActiveEventYear()
       if (activeYear) {
         eventYear = activeYear.year
         setCache('/api/event-years/active', activeYear)

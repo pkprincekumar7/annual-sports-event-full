@@ -5,6 +5,7 @@
 
 import EventYear from '../models/EventYear.js'
 import Sport from '../models/Sport.js'
+import { findActiveEventYear } from './yearHelpers.js'
 
 /**
  * Compute player participation from Sports collection
@@ -15,7 +16,7 @@ import Sport from '../models/Sport.js'
 export async function computePlayerParticipation(playerRegNumber, eventYear = null) {
   // If eventYear not provided, get active year
   if (!eventYear) {
-    const activeYear = await EventYear.findOne({ is_active: true }).lean()
+    const activeYear = await findActiveEventYear()
     eventYear = activeYear ? activeYear.year : new Date().getFullYear()
   }
   
@@ -96,7 +97,7 @@ export async function computePlayersParticipationBatch(playerRegNumbers, eventYe
 
   // If eventYear not provided, get active year
   if (!eventYear) {
-    const activeYear = await EventYear.findOne({ is_active: true }).lean()
+    const activeYear = await findActiveEventYear()
     eventYear = activeYear ? activeYear.year : new Date().getFullYear()
   }
 

@@ -15,6 +15,7 @@ import { validateUpdatePlayerData, validatePlayerData, trimObjectFields } from '
 import { computePlayerParticipation, computePlayersParticipationBatch, validateDepartmentExists } from '../utils/playerHelpers.js'
 import { getCache, setCache, clearCache, clearCachePattern } from '../utils/cache.js'
 import { clearPlayerGenderCache } from '../utils/genderHelpers.js'
+import { findActiveEventYear } from '../utils/yearHelpers.js'
 import { DEFAULT_PLAYERS_PAGE_SIZE } from '../constants/index.js'
 import logger from '../utils/logger.js'
 
@@ -53,7 +54,7 @@ router.get(
       if (cachedActiveYear) {
         eventYear = cachedActiveYear.year
       } else {
-        const activeYear = await EventYear.findOne({ is_active: true }).lean()
+        const activeYear = await findActiveEventYear()
         if (activeYear) {
           eventYear = activeYear.year
           setCache('/api/event-years/active', activeYear)
@@ -140,7 +141,7 @@ router.get(
       if (cachedActiveYear) {
         eventYear = cachedActiveYear.year
       } else {
-        const activeYear = await EventYear.findOne({ is_active: true }).lean()
+        const activeYear = await findActiveEventYear()
         if (activeYear) {
           eventYear = activeYear.year
           setCache('/api/event-years/active', activeYear)
@@ -435,7 +436,7 @@ router.post(
       if (cachedActiveYear) {
         eventYear = cachedActiveYear.year
       } else {
-        const activeYear = await EventYear.findOne({ is_active: true }).lean()
+        const activeYear = await findActiveEventYear()
         if (activeYear) {
           eventYear = activeYear.year
           setCache('/api/event-years/active', activeYear)
@@ -602,7 +603,7 @@ router.get(
       if (cachedActiveYear) {
         eventYear = cachedActiveYear.year
       } else {
-        const activeYear = await EventYear.findOne({ is_active: true }).lean()
+        const activeYear = await findActiveEventYear()
         if (activeYear) {
           eventYear = activeYear.year
           setCache('/api/event-years/active', activeYear)
@@ -704,7 +705,7 @@ router.delete(
       if (cachedActiveYear) {
         eventYear = cachedActiveYear.year
       } else {
-        const activeYear = await EventYear.findOne({ is_active: true }).lean()
+        const activeYear = await findActiveEventYear()
         if (activeYear) {
           eventYear = activeYear.year
           setCache('/api/event-years/active', activeYear)
@@ -874,7 +875,7 @@ router.post(
       if (cachedActiveYear) {
         eventYear = cachedActiveYear.year
       } else {
-        const activeYear = await EventYear.findOne({ is_active: true }).lean()
+        const activeYear = await findActiveEventYear()
         if (activeYear) {
           eventYear = activeYear.year
           setCache('/api/event-years/active', activeYear)

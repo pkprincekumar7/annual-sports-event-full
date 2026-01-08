@@ -12,6 +12,7 @@ import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { asyncHandler, sendErrorResponse } from '../utils/errorHandler.js'
 import { computePlayerParticipation } from '../utils/playerHelpers.js'
 import { getCache, setCache } from '../utils/cache.js'
+import { findActiveEventYear } from '../utils/yearHelpers.js'
 import { ADMIN_REG_NUMBER } from '../constants/index.js'
 import logger from '../utils/logger.js'
 
@@ -38,7 +39,7 @@ router.get(
       if (cachedActiveYear) {
         eventYear = cachedActiveYear.year
       } else {
-        const activeYear = await EventYear.findOne({ is_active: true }).lean()
+        const activeYear = await findActiveEventYear()
         if (activeYear) {
           eventYear = activeYear.year
           setCache('/api/event-years/active', activeYear)

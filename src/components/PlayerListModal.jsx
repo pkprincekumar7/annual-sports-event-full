@@ -821,7 +821,19 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
             
             return (
               <div className="mb-3 sm:mb-4 flex flex-col items-center gap-1.5 sm:gap-3">
+                {/* Pagination buttons - responsive layout */}
                 <div className="flex items-center justify-center gap-0.5 sm:gap-2 flex-wrap">
+                  {/* First button - visible on medium+ devices, hidden on small */}
+                  <Button
+                    type="button"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={!pagination.hasPreviousPage || currentPageNum === 1}
+                    variant="secondary"
+                    className="hidden md:flex !px-1.5 !py-0.5 sm:!px-3 sm:!py-1 !text-[0.65rem] sm:!text-[0.8rem] !leading-tight !tracking-normal sm:!tracking-[0.1em]"
+                  >
+                    First
+                  </Button>
+                  
                   <Button
                     type="button"
                     onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
@@ -926,10 +938,21 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                   >
                     Next
                   </Button>
+                  
+                  {/* Last button - visible on medium+ devices, hidden on small */}
+                  <Button
+                    type="button"
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={!pagination.hasNextPage || currentPageNum === totalPages}
+                    variant="secondary"
+                    className="hidden md:flex !px-1.5 !py-0.5 sm:!px-3 sm:!py-1 !text-[0.65rem] sm:!text-[0.8rem] !leading-tight !tracking-normal sm:!tracking-[0.1em]"
+                  >
+                    Last
+                  </Button>
                 </div>
                 
-                {/* First and Last buttons below Prev and Next */}
-                <div className="flex items-center justify-center gap-0.5 sm:gap-2">
+                {/* First and Last buttons - visible only on small devices, below Prev and Next */}
+                <div className="flex md:hidden items-center justify-center gap-0.5 sm:gap-2">
                   <Button
                     type="button"
                     onClick={() => setCurrentPage(1)}

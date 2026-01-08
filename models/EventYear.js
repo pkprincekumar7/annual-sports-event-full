@@ -31,10 +31,6 @@ const eventYearSchema = new mongoose.Schema({
       required: true
     }
   },
-  is_active: {
-    type: Boolean,
-    default: false
-  },
   event_organizer: {
     type: String,
     trim: true,
@@ -61,19 +57,7 @@ const eventYearSchema = new mongoose.Schema({
 
 // Create indexes for faster lookups
 eventYearSchema.index({ year: 1 }, { unique: true })
-eventYearSchema.index({ is_active: 1 }) // For efficient queries of active year
-
-// Pre-save hook to ensure only one active year at a time
-eventYearSchema.pre('save', async function(next) {
-  if (this.is_active && this.isModified('is_active')) {
-    // Deactivate all other years
-    await mongoose.model('EventYear').updateMany(
-      { _id: { $ne: this._id } },
-      { $set: { is_active: false } }
-    )
-  }
-  next()
-})
+// Note: Active status is now determined automatically based on dates, not stored in database
 
 const EventYear = mongoose.model('EventYear', eventYearSchema)
 

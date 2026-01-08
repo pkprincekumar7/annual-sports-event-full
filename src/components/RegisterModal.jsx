@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input } from './ui'
-import { useApi, useDepartments, useEventYearWithFallback } from '../hooks'
+import { useApi, useDepartments, useEventYear } from '../hooks'
 import { fetchWithAuth, API_URL, clearCache } from '../utils/api'
 import { clearTeamParticipationCaches, clearIndividualParticipationCaches } from '../utils/cacheHelpers'
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
-import { EVENT_INFO, GENDER_OPTIONS } from '../constants/app'
+import { GENDER_OPTIONS } from '../constants/app'
 import { generateYearOfAdmissionOptions } from '../utils/yearHelpers'
 import { formatSportName } from '../utils/stringHelpers'
 import { isTeamSport, getSportType, getTeamSize, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual } from '../utils/sportHelpers'
@@ -23,7 +23,15 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   const { loading: isSubmittingTeam, execute: executeTeam } = useApi()
   const { loading: isSubmittingIndividual, execute: executeIndividual } = useApi()
   const { departments: departmentOptions, loading: loadingDepartments } = useDepartments()
-  const eventYear = useEventYearWithFallback(selectedYear)
+  const { eventYear: activeEventYear, eventYearConfig } = useEventYear()
+  // Use selectedYear if provided (for admin), otherwise use active event year
+  const eventYear = selectedYear || activeEventYear
+  
+  // Build event display name from database
+  const eventDisplayName = eventYearConfig 
+    ? `${eventYearConfig.event_organizer || 'Events Community'} • ${eventYearConfig.event_name} - ${eventYearConfig.year}`
+    : 'Sports Event' // Fallback
+  const eventName = eventYearConfig?.event_name || 'Sports Event'
 
   const sportType = getSportType(selectedSport)
   const isTeam = isTeamSport(sportType)
@@ -594,7 +602,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         isOpen={isOpen}
         onClose={onClose}
         title={selectedSport.name.toUpperCase()}
-        subtitle={EVENT_INFO.fullName}
+        subtitle={eventDisplayName}
         embedded={embedded}
         maxWidth="max-w-[420px]"
       >
@@ -668,7 +676,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         isOpen={isOpen}
         onClose={onClose}
         title="Team Registration"
-        subtitle={`${formatSportName(selectedSport.name)} • ${EVENT_INFO.fullName}`}
+        subtitle={`${formatSportName(selectedSport.name)} • ${eventDisplayName}`}
         embedded={embedded}
         maxWidth="max-w-[420px]"
       >
@@ -792,7 +800,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             <div className="flex flex-col mb-[0.7rem]">
               <label className="text-[0.78rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
                 <input type="checkbox" id="declaration" required className="mr-2" />
-                I agree to follow all rules of {EVENT_INFO.name}.
+                I agree to follow all rules of {eventName}.
               </label>
             </div>
 
@@ -826,7 +834,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       isOpen={isOpen}
       onClose={onClose}
       title="Player Entry Form"
-      subtitle={EVENT_INFO.fullName}
+      subtitle={eventDisplayName}
       embedded={embedded}
       maxWidth="max-w-[420px]"
     >

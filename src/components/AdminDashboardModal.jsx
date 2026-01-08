@@ -17,6 +17,7 @@ import ErrorMessage from './ui/ErrorMessage'
 import { formatSportName } from '../utils/stringHelpers'
 import ConfirmationDialog from './ui/ConfirmationDialog'
 import YearSelector from './YearSelector'
+import { validateDateRelationships, getUpdatableDateFields } from '../utils/yearHelpers'
 
 const TABS = {
   EVENT_YEARS: 'event_years',
@@ -176,6 +177,31 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
   // Event Year Handlers
   const handleCreateEventYear = async (e) => {
     e.preventDefault()
+    
+    // Client-side validation: Check date relationships
+    const dateValidation = validateDateRelationships(eventYearForm.registration_dates, eventYearForm.event_dates)
+    if (!dateValidation.isValid) {
+      onStatusPopup(`❌ ${dateValidation.error}`, 'error', 3000)
+      return
+    }
+    
+    // Client-side validation: Check past dates
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+    const regStart = new Date(eventYearForm.registration_dates.start + 'T00:00:00')
+    regStart.setHours(0, 0, 0, 0)
+    if (regStart < now) {
+      onStatusPopup('❌ Registration start date cannot be in the past. Event creation is only allowed for current or future dates.', 'error', 3000)
+      return
+    }
+    
+    const eventStart = new Date(eventYearForm.event_dates.start + 'T00:00:00')
+    eventStart.setHours(0, 0, 0, 0)
+    if (eventStart < now) {
+      onStatusPopup('❌ Event start date cannot be in the past. Event creation is only allowed for current or future dates.', 'error', 3000)
+      return
+    }
+    
     try {
       const response = await fetchWithAuth('/api/event-years', {
         method: 'POST',
@@ -222,43 +248,98 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
     }
   }
 
-  const handleActivateEventYear = async (year) => {
-    try {
-      const response = await fetchWithAuth(`/api/event-years/${year}/activate`, {
-        method: 'PUT'
-      })
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to activate event year')
-      }
-      clearCache('/api/event-years/active')
-      onStatusPopup('✅ Event year activated successfully', 'success', 2500)
-      fetchEventYearsData()
-    } catch (error) {
-      onStatusPopup(`❌ ${error.message}`, 'error', 3000)
-    }
-  }
 
   const handleUpdateEventYear = async (e) => {
     e.preventDefault()
     if (!editingEventYear) return
-    try {
-      const updateData = {
-        event_name: eventYearForm.event_name,
-        event_dates: {
-          start: new Date(eventYearForm.event_dates.start + 'T00:00:00'),
-          end: new Date(eventYearForm.event_dates.end + 'T23:59:59')
-        },
-        registration_dates: {
-          start: new Date(eventYearForm.registration_dates.start + 'T00:00:00'),
-          end: new Date(eventYearForm.registration_dates.end + 'T23:59:59')
-        },
-        // Always include optional fields - backend will handle defaults if empty
-        event_organizer: eventYearForm.event_organizer ? eventYearForm.event_organizer.trim() : '',
-        event_title: eventYearForm.event_title ? eventYearForm.event_title.trim() : '',
-        event_highlight: eventYearForm.event_highlight ? eventYearForm.event_highlight.trim() : ''
+    
+    // Get updatable fields based on current date
+    const updatableFields = getUpdatableDateFields(editingEventYear)
+    
+    // Client-side validation: Check if trying to update restricted non-date fields
+    if (!updatableFields.canUpdateNonDateFields && (
+      eventYearForm.event_name !== editingEventYear.event_name ||
+      eventYearForm.event_organizer !== (editingEventYear.event_organizer || '') ||
+      eventYearForm.event_title !== (editingEventYear.event_title || '') ||
+      eventYearForm.event_highlight !== (editingEventYear.event_highlight || '')
+    )) {
+      onStatusPopup('❌ Cannot update event configuration. The event has already ended.', 'error', 3000)
+      return
+    }
+    
+    // Build update data with only allowed fields
+    const updateData = {}
+    
+    // Add non-date fields if allowed
+    if (updatableFields.canUpdateNonDateFields) {
+      updateData.event_name = eventYearForm.event_name
+      updateData.event_organizer = eventYearForm.event_organizer ? eventYearForm.event_organizer.trim() : ''
+      updateData.event_title = eventYearForm.event_title ? eventYearForm.event_title.trim() : ''
+      updateData.event_highlight = eventYearForm.event_highlight ? eventYearForm.event_highlight.trim() : ''
+    }
+    
+    // Build date objects with only allowed fields
+    const regDates = {}
+    const eventDates = {}
+    let hasRegDates = false
+    let hasEventDates = false
+    
+    if (updatableFields.canUpdateRegStart || updatableFields.canUpdateRegEnd) {
+      if (updatableFields.canUpdateRegStart) {
+        regDates.start = new Date(eventYearForm.registration_dates.start + 'T00:00:00')
+        hasRegDates = true
+      }
+      if (updatableFields.canUpdateRegEnd) {
+        regDates.end = new Date(eventYearForm.registration_dates.end + 'T23:59:59')
+        hasRegDates = true
+      }
+      if (hasRegDates) {
+        updateData.registration_dates = regDates
+      }
+    }
+    
+    if (updatableFields.canUpdateEventStart || updatableFields.canUpdateEventEnd) {
+      if (updatableFields.canUpdateEventStart) {
+        eventDates.start = new Date(eventYearForm.event_dates.start + 'T00:00:00')
+        hasEventDates = true
+      }
+      if (updatableFields.canUpdateEventEnd) {
+        eventDates.end = new Date(eventYearForm.event_dates.end + 'T23:59:59')
+        hasEventDates = true
+      }
+      if (hasEventDates) {
+        updateData.event_dates = eventDates
+      }
+    }
+    
+    // Client-side validation: Check date relationships if dates are being updated
+    if (hasRegDates || hasEventDates) {
+      // Merge with existing dates for validation (use form values or existing dates)
+      const finalRegDates = {
+        start: updatableFields.canUpdateRegStart 
+          ? eventYearForm.registration_dates.start 
+          : (editingEventYear.registration_dates.start ? new Date(editingEventYear.registration_dates.start).toISOString().split('T')[0] : ''),
+        end: updatableFields.canUpdateRegEnd 
+          ? eventYearForm.registration_dates.end 
+          : (editingEventYear.registration_dates.end ? new Date(editingEventYear.registration_dates.end).toISOString().split('T')[0] : '')
+      }
+      const finalEventDates = {
+        start: updatableFields.canUpdateEventStart 
+          ? eventYearForm.event_dates.start 
+          : (editingEventYear.event_dates.start ? new Date(editingEventYear.event_dates.start).toISOString().split('T')[0] : ''),
+        end: updatableFields.canUpdateEventEnd 
+          ? eventYearForm.event_dates.end 
+          : (editingEventYear.event_dates.end ? new Date(editingEventYear.event_dates.end).toISOString().split('T')[0] : '')
       }
       
+      const dateValidation = validateDateRelationships(finalRegDates, finalEventDates)
+      if (!dateValidation.isValid) {
+        onStatusPopup(`❌ ${dateValidation.error}`, 'error', 3000)
+        return
+      }
+    }
+    
+    try {
       const response = await fetchWithAuth(`/api/event-years/${editingEventYear.year}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -686,74 +767,111 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
           ) : (
             <form onSubmit={handleUpdateEventYear} className="mb-6 p-4 bg-[rgba(0,0,0,0.3)] rounded-lg">
               <h4 className="text-md font-bold text-[#cbd5ff] mb-3">Edit Event Year: {editingEventYear.year}</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="col-span-1 md:col-span-2">
-                  <Input
-                    label="Year"
-                    type="number"
-                    name="year"
-                    value={eventYearForm.year}
-                    disabled
-                    className="opacity-50"
-                  />
-                </div>
-                <Input
-                  label="Event Name"
-                  name="event_name"
-                  value={eventYearForm.event_name}
-                  onChange={(e) => setEventYearForm({ ...eventYearForm, event_name: e.target.value })}
-                  required
-                />
-                <Input
-                  label="Event Organizer"
-                  name="event_organizer"
-                  value={eventYearForm.event_organizer}
-                  onChange={(e) => setEventYearForm({ ...eventYearForm, event_organizer: e.target.value })}
-                  placeholder="Events Community"
-                />
-                <Input
-                  label="Event Title"
-                  name="event_title"
-                  value={eventYearForm.event_title}
-                  onChange={(e) => setEventYearForm({ ...eventYearForm, event_title: e.target.value })}
-                  placeholder="Community Entertainment"
-                />
-                <Input
-                  label="Event Highlight"
-                  name="event_highlight"
-                  value={eventYearForm.event_highlight}
-                  onChange={(e) => setEventYearForm({ ...eventYearForm, event_highlight: e.target.value })}
-                  placeholder="Community Entertainment Fest"
-                />
-                <DatePickerInput
-                  label="Event Start Date"
-                  name="event_start"
-                  value={eventYearForm.event_dates.start}
-                  onChange={(e) => setEventYearForm({ ...eventYearForm, event_dates: { ...eventYearForm.event_dates, start: e.target.value } })}
-                  required
-                />
-                <DatePickerInput
-                  label="Event End Date"
-                  name="event_end"
-                  value={eventYearForm.event_dates.end}
-                  onChange={(e) => setEventYearForm({ ...eventYearForm, event_dates: { ...eventYearForm.event_dates, end: e.target.value } })}
-                  required
-                />
-                <DatePickerInput
-                  label="Registration Start Date"
-                  name="reg_start"
-                  value={eventYearForm.registration_dates.start}
-                  onChange={(e) => setEventYearForm({ ...eventYearForm, registration_dates: { ...eventYearForm.registration_dates, start: e.target.value } })}
-                  required
-                />
-                <DatePickerInput
-                  label="Registration End Date"
-                  name="reg_end"
-                  value={eventYearForm.registration_dates.end}
-                  onChange={(e) => setEventYearForm({ ...eventYearForm, registration_dates: { ...eventYearForm.registration_dates, end: e.target.value } })}
-                  required
-                />
-              </div>
+              {(() => {
+                const updatableFields = getUpdatableDateFields(editingEventYear)
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="col-span-1 md:col-span-2">
+                      <Input
+                        label="Year"
+                        type="number"
+                        name="year"
+                        value={eventYearForm.year}
+                        disabled
+                        className="opacity-50"
+                      />
+                    </div>
+                    <div className="relative" title={!updatableFields.canUpdateNonDateFields ? updatableFields.nonDateFieldsTooltip : ''}>
+                      <Input
+                        label="Event Name"
+                        name="event_name"
+                        value={eventYearForm.event_name}
+                        onChange={(e) => setEventYearForm({ ...eventYearForm, event_name: e.target.value })}
+                        required
+                        disabled={!updatableFields.canUpdateNonDateFields}
+                        className={!updatableFields.canUpdateNonDateFields ? 'opacity-50 cursor-not-allowed' : ''}
+                      />
+                    </div>
+                    <div className="relative" title={!updatableFields.canUpdateNonDateFields ? updatableFields.nonDateFieldsTooltip : ''}>
+                      <Input
+                        label="Event Organizer"
+                        name="event_organizer"
+                        value={eventYearForm.event_organizer}
+                        onChange={(e) => setEventYearForm({ ...eventYearForm, event_organizer: e.target.value })}
+                        placeholder="Events Community"
+                        disabled={!updatableFields.canUpdateNonDateFields}
+                        className={!updatableFields.canUpdateNonDateFields ? 'opacity-50 cursor-not-allowed' : ''}
+                      />
+                    </div>
+                    <div className="relative" title={!updatableFields.canUpdateNonDateFields ? updatableFields.nonDateFieldsTooltip : ''}>
+                      <Input
+                        label="Event Title"
+                        name="event_title"
+                        value={eventYearForm.event_title}
+                        onChange={(e) => setEventYearForm({ ...eventYearForm, event_title: e.target.value })}
+                        placeholder="Community Entertainment"
+                        disabled={!updatableFields.canUpdateNonDateFields}
+                        className={!updatableFields.canUpdateNonDateFields ? 'opacity-50 cursor-not-allowed' : ''}
+                      />
+                    </div>
+                    <div className="relative" title={!updatableFields.canUpdateNonDateFields ? updatableFields.nonDateFieldsTooltip : ''}>
+                      <Input
+                        label="Event Highlight"
+                        name="event_highlight"
+                        value={eventYearForm.event_highlight}
+                        onChange={(e) => setEventYearForm({ ...eventYearForm, event_highlight: e.target.value })}
+                        placeholder="Community Entertainment Fest"
+                        disabled={!updatableFields.canUpdateNonDateFields}
+                        className={!updatableFields.canUpdateNonDateFields ? 'opacity-50 cursor-not-allowed' : ''}
+                      />
+                    </div>
+                    <div className="relative" title={!updatableFields.canUpdateEventStart ? updatableFields.eventStartTooltip : ''}>
+                      <DatePickerInput
+                        label="Event Start Date"
+                        name="event_start"
+                        value={eventYearForm.event_dates.start}
+                        onChange={(e) => setEventYearForm({ ...eventYearForm, event_dates: { ...eventYearForm.event_dates, start: e.target.value } })}
+                        required
+                        disabled={!updatableFields.canUpdateEventStart}
+                        className={!updatableFields.canUpdateEventStart ? 'opacity-50 cursor-not-allowed' : ''}
+                      />
+                    </div>
+                    <div className="relative" title={!updatableFields.canUpdateEventEnd ? updatableFields.eventEndTooltip : ''}>
+                      <DatePickerInput
+                        label="Event End Date"
+                        name="event_end"
+                        value={eventYearForm.event_dates.end}
+                        onChange={(e) => setEventYearForm({ ...eventYearForm, event_dates: { ...eventYearForm.event_dates, end: e.target.value } })}
+                        required
+                        disabled={!updatableFields.canUpdateEventEnd}
+                        className={!updatableFields.canUpdateEventEnd ? 'opacity-50 cursor-not-allowed' : ''}
+                      />
+                    </div>
+                    <div className="relative" title={!updatableFields.canUpdateRegStart ? updatableFields.regStartTooltip : ''}>
+                      <DatePickerInput
+                        label="Registration Start Date"
+                        name="reg_start"
+                        value={eventYearForm.registration_dates.start}
+                        onChange={(e) => setEventYearForm({ ...eventYearForm, registration_dates: { ...eventYearForm.registration_dates, start: e.target.value } })}
+                        required
+                        disabled={!updatableFields.canUpdateRegStart}
+                        className={!updatableFields.canUpdateRegStart ? 'opacity-50 cursor-not-allowed' : ''}
+                      />
+                    </div>
+                    <div className="relative" title={!updatableFields.canUpdateRegEnd ? updatableFields.regEndTooltip : ''}>
+                      <DatePickerInput
+                        label="Registration End Date"
+                        name="reg_end"
+                        value={eventYearForm.registration_dates.end}
+                        onChange={(e) => setEventYearForm({ ...eventYearForm, registration_dates: { ...eventYearForm.registration_dates, end: e.target.value } })}
+                        required
+                        disabled={!updatableFields.canUpdateRegEnd}
+                        className={!updatableFields.canUpdateRegEnd ? 'opacity-50 cursor-not-allowed' : ''}
+                      />
+                    </div>
+                  </div>
+                )
+              })()}
               <div className="flex gap-2 mt-4">
                 <Button type="submit">Update</Button>
                 <Button
@@ -789,15 +907,6 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                           <span className="ml-2 px-2 py-1 bg-[#22c55e] text-white text-xs rounded">Active</span>
                         )}
                       </div>
-                      {!year.is_active && (
-                        <Button
-                          variant="success"
-                          onClick={() => handleActivateEventYear(year.year)}
-                          className="px-3 py-1 text-xs"
-                        >
-                          Activate
-                        </Button>
-                      )}
                     </div>
                     <div className="flex gap-2 md:ml-0">
                       <Button
@@ -813,7 +922,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                         onClick={() => setShowDeleteConfirm(year.year)}
                         className="px-3 py-1 text-xs"
                         disabled={!!editingEventYear || year.is_active}
-                        title={year.is_active ? 'Cannot delete the active event year. Please activate another event year first.' : ''}
+                        title={year.is_active ? 'Cannot delete the active event year. The event is currently active based on its registration and event dates.' : ''}
                       >
                         Delete
                       </Button>
@@ -839,7 +948,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
             </div>
           )}
           {!currentEventYear && (
-            <ErrorMessage message="No active event year. Please activate an event year first or select a year from the dropdown above." />
+            <ErrorMessage message="No active event year. Please select a year from the dropdown above or wait for an event year's registration period to begin." />
           )}
           
           {/* Create/Edit Form */}

@@ -7,6 +7,7 @@
 import EventYear from '../models/EventYear.js'
 import { getCache, setCache } from '../utils/cache.js'
 import logger from '../utils/logger.js'
+import { findActiveEventYear } from '../utils/yearHelpers.js'
 
 /**
  * Format date for display
@@ -48,8 +49,8 @@ async function getRegistrationDeadline() {
       return new Date(cachedActiveYear.registration_dates.end)
     }
 
-    // Fetch from database
-    const activeYear = await EventYear.findOne({ is_active: true }).lean()
+    // Fetch from database using automatic detection
+    const activeYear = await findActiveEventYear()
     
     if (!activeYear) {
       logger.warn('No active event year found for registration deadline check')

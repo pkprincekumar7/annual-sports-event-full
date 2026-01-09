@@ -29,6 +29,7 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
     const fetchData = async () => {
       try {
         // Fetch both in parallel
+        // Don't pass page parameter to get all players (needed for captain selection)
         const [playersRes, sportsRes] = await Promise.all([
           fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear), { signal: abortController.signal }),
           fetchWithAuth(buildApiUrlWithYear('/api/sports', eventYear), { signal: abortController.signal }),
@@ -50,10 +51,8 @@ function AddCaptainModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
         ])
 
         if (playersData.success) {
-          const filteredPlayers = (playersData.players || []).filter(
-            (p) => p.reg_number !== 'admin'
-          )
-          setPlayers(filteredPlayers)
+          // Server-side filtering: admin user already filtered out on server
+          setPlayers(playersData.players || [])
         }
 
         // Sports API now returns array directly (not wrapped in success object)

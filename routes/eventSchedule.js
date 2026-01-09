@@ -7,7 +7,7 @@ import express from 'express'
 import EventSchedule from '../models/EventSchedule.js'
 import Player from '../models/Player.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
-import { requireEventPeriod, isMatchDateWithinEventRange } from '../middleware/dateRestrictions.js'
+import { requireEventPeriod, requireEventSchedulingPeriod, requireEventStatusUpdatePeriod, isMatchDateWithinEventRange } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import logger from '../utils/logger.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
@@ -647,7 +647,7 @@ router.put(
   '/event-schedule/:id',
   authenticateToken,
   requireAdmin,
-  requireEventPeriod,
+  requireEventStatusUpdatePeriod,
   asyncHandler(async (req, res) => {
     const { id } = req.params
     const { winner, qualifiers, status, match_date } = req.body

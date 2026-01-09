@@ -74,13 +74,15 @@ async function getRegistrationDeadline() {
 
 /**
  * Middleware to enforce registration deadline
- * Allows GET requests, login endpoint, and event scheduling after deadline
+ * Allows GET requests, login endpoint, event scheduling/updates, and points table operations after deadline
  * Fetches deadline from database - throws error if not available
  */
 export const checkRegistrationDeadline = async (req, res, next) => {
-  // Allow GET requests, login endpoint, and event scheduling to pass through without date check
-  // Event scheduling has its own date validation (after registration starts, before event ends)
-  if (req.method === 'GET' || req.path === '/login' || req.path === '/event-schedule') {
+  // Allow GET requests, login endpoint, event scheduling/updates, and points table operations to pass through without date check
+  // Event scheduling (POST) has its own date validation (requireEventPeriod: after registration end, before event end)
+  // Event updates (PUT) have their own date validation (requireEventStatusUpdatePeriod: event start to event end)
+  // Points table refresh (POST backfill) has its own date validation (requireEventStatusUpdatePeriod: event start to event end)
+  if (req.method === 'GET' || req.path === '/login' || req.path.startsWith('/event-schedule') || req.path.startsWith('/points-table')) {
     return next()
   }
 

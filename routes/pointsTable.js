@@ -6,6 +6,7 @@
 import express from 'express'
 import PointsTable from '../models/PointsTable.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
+import { requireEventStatusUpdatePeriod } from '../middleware/dateRestrictions.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { getEventYear } from '../utils/yearHelpers.js'
@@ -215,11 +216,13 @@ router.get(
  * POST /api/points-table/backfill/:sport
  * Backfill points table for a specific sport (admin only)
  * Useful when points table entries are missing for existing completed matches
+ * Allowed during event period (event start to event end)
  */
 router.post(
   '/points-table/backfill/:sport',
   authenticateToken,
   requireAdmin,
+  requireEventStatusUpdatePeriod,
   asyncHandler(async (req, res) => {
     const { sport } = req.params
     const eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)

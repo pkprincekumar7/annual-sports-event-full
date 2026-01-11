@@ -937,9 +937,9 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       const num = parseInt(numberOfParticipants) || 0
       
       // Validate number range
-      if (num < 3 || num > 20) {
+      if (num < 3 || num > 100) {
         if (onStatusPopup) {
-          onStatusPopup('❌ Number of participants must be between 3 and 20.', 'error', 2500)
+          onStatusPopup('❌ Number of participants must be between 3 and 100.', 'error', 2500)
         }
         return
       }
@@ -1345,7 +1345,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                   value={numberOfParticipants}
                   onChange={(e) => handleNumberOfParticipantsChange(e.target.value)}
                   required
-                  options={Array.from({ length: 18 }, (_, i) => i + 3).map(num => ({
+                  options={Array.from({ length: 98 }, (_, i) => i + 3).map(num => ({
                     value: num.toString(),
                     label: num.toString()
                   }))}

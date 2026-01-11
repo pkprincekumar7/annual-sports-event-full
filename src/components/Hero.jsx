@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef } from 'react'
 import { useEventYear } from '../hooks/useEventYear'
 import { formatDateRange } from '../utils/dateFormatters'
-import YearSelector from './YearSelector'
+import EventYearSelector from './EventYearSelector'
 import ProfileModal from './ProfileModal'
 
-function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onAddCaptainClick, onRemoveCaptainClick, onListPlayersClick, onExportExcel, onAdminDashboardClick, onYearChange, selectedYear, loggedInUser }) {
+function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCaptainManagementClick, onCoordinatorManagementClick, onBatchManagementClick, onListPlayersClick, onExportExcel, onAdminDashboardClick, onEventYearChange, selectedEventYear, loggedInUser }) {
   const { eventYearConfig } = useEventYear()
   const eventOrganizer = eventYearConfig?.event_organizer || 'Events Community'
   const [eventCountdown, setEventCountdown] = useState('')
@@ -176,26 +176,37 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onAdd
                         >
                           <span className="text-[#ffe66d]">●</span> Profile
                         </button>
-                        {loggedInUser?.reg_number === 'admin' && onAddCaptainClick && (
+                        {loggedInUser?.reg_number === 'admin' && onCaptainManagementClick && (
                           <button
                             onClick={() => {
                               setIsMenuOpen(false)
-                              onAddCaptainClick()
+                              onCaptainManagementClick()
                             }}
                             className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
                           >
-                            <span className="text-[#6366f1]">●</span> Add Captain
+                            <span className="text-[#6366f1]">●</span> Add/Remove Captain
                           </button>
                         )}
-                        {loggedInUser?.reg_number === 'admin' && onRemoveCaptainClick && (
+                        {loggedInUser?.reg_number === 'admin' && onCoordinatorManagementClick && (
                           <button
                             onClick={() => {
                               setIsMenuOpen(false)
-                              onRemoveCaptainClick()
+                              onCoordinatorManagementClick()
                             }}
                             className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
                           >
-                            <span className="text-[#ef4444]">●</span> Remove Captain
+                            <span className="text-[#10b981]">●</span> Add/Remove Coordinator
+                          </button>
+                        )}
+                        {loggedInUser?.reg_number === 'admin' && onBatchManagementClick && (
+                          <button
+                            onClick={() => {
+                              setIsMenuOpen(false)
+                              onBatchManagementClick()
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
+                          >
+                            <span className="text-[#f59e0b]">●</span> Add/Remove Batch
                           </button>
                         )}
                         {loggedInUser?.reg_number === 'admin' && onListPlayersClick && (
@@ -251,9 +262,9 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onAdd
               </div>
             </div>
             {loggedInUser?.reg_number === 'admin' && (
-              <YearSelector
-                selectedYear={selectedYear}
-                onYearChange={onYearChange}
+              <EventYearSelector
+                selectedEventYear={selectedEventYear}
+                onEventYearChange={onEventYearChange}
                 loggedInUser={loggedInUser}
               />
             )}
@@ -287,7 +298,7 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onAdd
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         loggedInUser={loggedInUser}
-        selectedYear={selectedYear}
+        selectedEventYear={selectedEventYear}
       />
     </div>
   )

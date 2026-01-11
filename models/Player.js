@@ -24,12 +24,7 @@ const playerSchema = new mongoose.Schema({
     trim: true
     // No enum restriction - validated against Department collection
   },
-  year: {
-    type: String,
-    required: true,
-    trim: true
-    // Stores formatted year string like "1st Year (2025)", "2nd Year (2024)", etc.
-  },
+  // year field removed - now handled by Batch collection
   mobile_number: {
     type: String,
     required: true,
@@ -55,7 +50,7 @@ const playerSchema = new mongoose.Schema({
 // Create indexes for faster lookups
 playerSchema.index({ reg_number: 1 }) // Already unique, but explicit index for performance
 playerSchema.index({ department_branch: 1 }) // For queries filtering by department
-playerSchema.index({ year: 1 }) // For queries filtering by year
+// year index removed - batch filtering now handled by Batch collection
 
 const Player = mongoose.model('Player', playerSchema)
 

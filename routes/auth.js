@@ -53,11 +53,11 @@ router.post(
     let eventYear = null
     const cachedActiveYear = getCache('/api/event-years/active')
     if (cachedActiveYear) {
-      eventYear = cachedActiveYear.year
+      eventYear = cachedActiveYear.event_year
     } else {
       const activeYear = await findActiveEventYear()
       if (activeYear) {
-        eventYear = activeYear.year
+        eventYear = activeYear.event_year
         setCache('/api/event-years/active', activeYear)
       } else {
         eventYear = new Date().getFullYear()

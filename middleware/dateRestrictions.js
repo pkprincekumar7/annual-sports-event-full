@@ -14,8 +14,8 @@ import { getEventYear } from '../utils/yearHelpers.js'
  */
 async function checkRegistrationDateRange(eventYear = null) {
   try {
-    const year = await getEventYear(eventYear, { returnDoc: true })
-    const eventYearDoc = year.doc
+    const eventYearData = await getEventYear(eventYear, { returnDoc: true })
+    const eventYearDoc = eventYearData.doc
 
     if (!eventYearDoc) {
       return {
@@ -59,8 +59,8 @@ async function checkRegistrationDateRange(eventYear = null) {
  */
 async function checkEventDateRange(eventYear = null) {
   try {
-    const year = await getEventYear(eventYear, { returnDoc: true })
-    const eventYearDoc = year.doc
+    const eventYearData = await getEventYear(eventYear, { returnDoc: true })
+    const eventYearDoc = eventYearData.doc
 
     if (!eventYearDoc) {
       return {
@@ -105,8 +105,8 @@ async function checkEventDateRange(eventYear = null) {
  */
 async function checkEventSchedulingDateRange(eventYear = null) {
   try {
-    const year = await getEventYear(eventYear, { returnDoc: true })
-    const eventYearDoc = year.doc
+    const eventYearData = await getEventYear(eventYear, { returnDoc: true })
+    const eventYearDoc = eventYearData.doc
 
     if (!eventYearDoc) {
       return {
@@ -151,8 +151,8 @@ async function checkEventSchedulingDateRange(eventYear = null) {
  */
 async function checkEventStatusUpdateDateRange(eventYear = null) {
   try {
-    const year = await getEventYear(eventYear, { returnDoc: true })
-    const eventYearDoc = year.doc
+    const eventYearData = await getEventYear(eventYear, { returnDoc: true })
+    const eventYearDoc = eventYearData.doc
 
     if (!eventYearDoc) {
       return {
@@ -224,7 +224,7 @@ function getOrdinal(day) {
 export const requireRegistrationPeriod = async (req, res, next) => {
   try {
     // Try to get event_year from query, body, or params
-    const eventYear = req.query.year || req.body.event_year || req.params.year || null
+    const eventYear = req.query.event_year || req.body.event_year || req.params.event_year || null
     const parsedYear = eventYear ? parseInt(eventYear) : null
 
     const check = await checkRegistrationDateRange(parsedYear)
@@ -248,7 +248,7 @@ export const requireRegistrationPeriod = async (req, res, next) => {
 export const requireEventPeriod = async (req, res, next) => {
   try {
     // Try to get event_year from query, body, or params
-    const eventYear = req.query.year || req.body.event_year || req.params.year || null
+    const eventYear = req.query.event_year || req.body.event_year || req.params.event_year || null
     const parsedYear = eventYear ? parseInt(eventYear) : null
 
     const check = await checkEventDateRange(parsedYear)
@@ -272,7 +272,7 @@ export const requireEventPeriod = async (req, res, next) => {
 export const requireEventSchedulingPeriod = async (req, res, next) => {
   try {
     // Try to get event_year from query, body, or params
-    const eventYear = req.query.year || req.body.event_year || req.params.year || null
+    const eventYear = req.query.event_year || req.body.event_year || req.params.event_year || null
     const parsedYear = eventYear ? parseInt(eventYear) : null
 
     const check = await checkEventSchedulingDateRange(parsedYear)
@@ -296,7 +296,7 @@ export const requireEventSchedulingPeriod = async (req, res, next) => {
 export const requireEventStatusUpdatePeriod = async (req, res, next) => {
   try {
     // Try to get event_year from query, body, or params
-    const eventYear = req.query.year || req.body.event_year || req.params.year || null
+    const eventYear = req.query.event_year || req.body.event_year || req.params.event_year || null
     const parsedYear = eventYear ? parseInt(eventYear) : null
 
     const check = await checkEventStatusUpdateDateRange(parsedYear)

@@ -62,7 +62,7 @@ async function getRegistrationDeadline() {
       return null
     }
 
-    // Cache the active year
+    // Cache the active event year
     setCache('/api/event-years/active', activeYear)
 
     return new Date(activeYear.registration_dates.end)

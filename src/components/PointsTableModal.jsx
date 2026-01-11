@@ -5,13 +5,13 @@ import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { useEventYearWithFallback, useApi } from '../hooks'
 import logger from '../utils/logger'
 
-function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = false, selectedYear, isActive = true, onStatusPopup }) {
+function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = false, selectedEventYear, isActive = true, onStatusPopup }) {
   const [pointsTable, setPointsTable] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [selectedGender, setSelectedGender] = useState('Male') // Default to Male
   const [hasLeagueMatches, setHasLeagueMatches] = useState(true) // Assume true initially
-  const eventYear = useEventYearWithFallback(selectedYear)
+  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
   const abortControllerRef = useRef(null)
   const currentSportRef = useRef(null)
   const previousIsActiveRef = useRef(false)
@@ -158,7 +158,7 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
 
     try {
       await executeBackfill(
-        () => fetchWithAuth(`/api/points-table/backfill/${encodeURIComponent(sport)}?year=${eventYear}`, {
+        () => fetchWithAuth(`/api/points-table/backfill/${encodeURIComponent(sport)}?event_year=${eventYear}`, {
           method: 'POST',
         }),
         {

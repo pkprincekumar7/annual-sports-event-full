@@ -5,7 +5,7 @@ import { fetchWithAuth } from '../utils/api'
 import { clearIndividualParticipationCaches } from '../utils/cacheHelpers'
 import logger from '../utils/logger'
 
-function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
+function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedEventYear }) {
   const { eventYearConfig } = useEventYear()
   const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [participants, setParticipants] = useState([])
@@ -16,7 +16,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
   const currentSportRef = useRef(null)
   const abortControllerRef = useRef(null)
   const { loading: deleting, execute } = useApi()
-  const eventYear = useEventYearWithFallback(selectedYear)
+  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
   const deleteConfirmModal = useModal(false)
 
   useEffect(() => {
@@ -84,7 +84,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
     try {
       // URL encode the sport name to handle special characters
       const encodedSport = encodeURIComponent(sport)
-      const url = `/api/participants/${encodedSport}${eventYear ? `?year=${eventYear}` : ''}`
+      const url = `/api/participants/${encodedSport}${eventYear ? `?event_year=${eventYear}` : ''}`
       // Fetching participants for sport
       
       const response = await fetchWithAuth(url, { signal })
@@ -296,7 +296,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
                       <div className="px-4 pb-4 pt-2 border-t border-[rgba(148,163,184,0.2)]">
                         <div className="text-[#cbd5ff] text-[0.85rem] ml-6 space-y-1">
                           <div>Department: <span className="text-[#e5e7eb]">{participant.department_branch}</span></div>
-                          <div>Year: <span className="text-[#e5e7eb]">{participant.year || ''}</span></div>
+                          <div>Batch: <span className="text-[#e5e7eb]">{participant.batch_name || ''}</span></div>
                           <div>Gender: <span className="text-[#e5e7eb]">{participant.gender}</span></div>
                           <div>Mobile: <span className="text-[#e5e7eb]">{participant.mobile_number}</span></div>
                           <div>Email: <span className="text-[#e5e7eb]">{participant.email_id}</span></div>

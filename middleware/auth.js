@@ -93,3 +93,64 @@ export const requireAdmin = (req, res, next) => {
   next()
 }
 
+/**
+ * Require admin or coordinator access for a specific sport
+ * Must be used after authenticateToken
+ * Expects sport name in req.body.sport or req.params.sport
+ * Also requires event_year in req.body.event_year or req.query.event_year
+ */
+export const requireAdminOrCoordinator = async (req, res, next) => {
+  const userRegNumber = req.user?.reg_number
+  
+  // Admin always has access
+  if (userRegNumber === ADMIN_REG_NUMBER) {
+    return next()
+  }
+
+  // Get sport name from body or params
+  const sportName = req.body?.sport || req.params?.sport || req.query?.sport
+  if (!sportName) {
+    return res.status(400).json({
+      success: false,
+      error: 'Sport name is required for coordinator check',
+    })
+  }
+
+  // Get event year from body or query
+  const eventYear = req.body?.event_year ? parseInt(req.body.event_year) : (req.query?.event_year ? parseInt(req.query.event_year) : null)
+  if (!eventYear) {
+    return res.status(400).json({
+      success: false,
+      error: 'Event year is required for coordinator check',
+    })
+  }
+
+  try {
+    // Import Sport model dynamically to avoid circular dependencies
+    const Sport = (await import('../models/Sport.js')).default
+    const { normalizeSportName } = await import('../utils/sportHelpers.js')
+    
+    // Check if user is coordinator for this sport
+    const sport = await Sport.findOne({
+      name: normalizeSportName(sportName),
+      event_year: eventYear,
+      eligible_coordinators: userRegNumber
+    }).lean()
+
+    if (!sport) {
+      return res.status(403).json({
+        success: false,
+        error: 'Admin or coordinator access required for this sport',
+      })
+    }
+
+    // User is coordinator for this sport, allow access
+    next()
+  } catch (error) {
+    logger.error('Error checking coordinator access:', error)
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to verify coordinator access',
+    })
+  }
+}

@@ -3,7 +3,7 @@ import { useEventYear } from '../hooks/useEventYear'
 function Navbar() {
   const { eventYearConfig } = useEventYear()
   const eventTitle = eventYearConfig?.event_title || 'Community Entertainment'
-  const eventYear = eventYearConfig?.year
+  const eventYear = eventYearConfig?.event_year
 
   const handleNavClick = (e, targetId) => {
     e.preventDefault()

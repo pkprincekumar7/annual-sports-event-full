@@ -1,5 +1,5 @@
 /**
- * Year Helper Functions (Backend)
+ * Event Year Helper Functions (Backend)
  * Centralized utilities for event year resolution and validation
  */
 
@@ -9,72 +9,80 @@ import { sendErrorResponse } from './errorHandler.js'
 
 /**
  * Get event year with caching and validation
- * @param {number|null} year - Optional year value (from query/body)
+ * @param {number|null} eventYear - Optional event year value (from query/body)
  * @param {Object} options - Options object
- * @param {boolean} options.requireYear - If true, year must be provided (default: false)
- * @param {boolean} options.returnDoc - If true, returns both year and document (default: false)
- * @returns {Promise<number|Object>} Returns year number, or { year, doc } if returnDoc is true
- * @throws {Error} Throws error if year validation fails (should be caught by asyncHandler)
+ * @param {boolean} options.requireYear - If true, event year must be provided (default: false)
+ * @param {boolean} options.returnDoc - If true, returns both event_year and document (default: false)
+ * @param {string|null} options.eventName - Optional event name for composite key filtering
+ * @returns {Promise<number|Object>} Returns event year number, or { event_year, doc } if returnDoc is true
+ * @throws {Error} Throws error if event year validation fails (should be caught by asyncHandler)
  */
-export async function getEventYear(year = null, options = {}) {
-  const { requireYear = false, returnDoc = false } = options
+export async function getEventYear(eventYear = null, options = {}) {
+  const { requireYear = false, returnDoc = false, eventName = null } = options
 
-  // If year is provided, validate it exists
-  if (year !== null && year !== undefined) {
-    const yearNum = parseInt(year)
-    if (isNaN(yearNum)) {
+  // Get active event year first (needed for fallback)
+  let activeEventYearDoc = null
+  const cachedActiveYear = getCache('/api/event-years/active')
+  if (cachedActiveYear && shouldEventYearBeActive(cachedActiveYear)) {
+    activeEventYearDoc = cachedActiveYear
+  } else {
+    if (cachedActiveYear) {
+      clearCache('/api/event-years/active')
+    }
+    activeEventYearDoc = await findActiveEventYear()
+    if (activeEventYearDoc) {
+      setCache('/api/event-years/active', activeEventYearDoc)
+    }
+  }
+
+  // If eventYear is provided, validate it exists
+  if (eventYear !== null && eventYear !== undefined) {
+    const eventYearNum = parseInt(eventYear)
+    if (isNaN(eventYearNum)) {
       throw new Error('Event year must be a valid number')
     }
 
-    const yearDoc = await EventYear.findOne({ year: yearNum }).lean()
-    if (!yearDoc) {
+    // Build query with both event_year and event_name
+    // If eventName is not provided, use active event's event_name for consistency
+    const query = { event_year: eventYearNum }
+    const eventNameToUse = eventName ? eventName.trim() : (activeEventYearDoc ? activeEventYearDoc.event_name : null)
+    if (eventNameToUse) {
+      query.event_name = eventNameToUse
+    }
+
+    const eventYearDoc = await EventYear.findOne(query).lean()
+    if (!eventYearDoc) {
       throw new Error('Event year not found')
     }
 
-    return returnDoc ? { year: yearNum, doc: yearDoc } : yearNum
+    return returnDoc ? { event_year: eventYearNum, doc: eventYearDoc } : eventYearNum
   }
 
-  // If year is required but not provided
+  // If eventYear is required but not provided
   if (requireYear) {
     throw new Error('Event year is required')
   }
 
-  // Get active year (with caching)
-  const cachedActiveYear = getCache('/api/event-years/active')
-  if (cachedActiveYear) {
-    // Verify cached year is still active
-    if (shouldEventYearBeActive(cachedActiveYear)) {
-      return returnDoc ? { year: cachedActiveYear.year, doc: cachedActiveYear } : cachedActiveYear.year
-    } else {
-      // Cache expired, clear it
-      clearCache('/api/event-years/active')
-    }
-  }
-
-  // Use automatic detection instead of is_active field
-  const activeYear = await findActiveEventYear()
-  if (!activeYear) {
+  // Use active event year (with both event_year and event_name)
+  if (!activeEventYearDoc) {
     throw new Error('No active event year found')
   }
 
-  // Cache the active year
-  setCache('/api/event-years/active', activeYear)
-
-  return returnDoc ? { year: activeYear.year, doc: activeYear } : activeYear.year
+  return returnDoc ? { event_year: activeEventYearDoc.event_year, doc: activeEventYearDoc } : activeEventYearDoc.event_year
 }
 
 /**
  * Validate that an event year exists
- * @param {number} year - Year to validate
- * @returns {Promise<boolean>} True if year exists
+ * @param {number} eventYear - Event year to validate
+ * @returns {Promise<boolean>} True if event year exists
  */
-export async function validateEventYearExists(year) {
-  if (!year) return false
-  const yearNum = parseInt(year)
-  if (isNaN(yearNum)) return false
+export async function validateEventYearExists(eventYear) {
+  if (!eventYear) return false
+  const eventYearNum = parseInt(eventYear)
+  if (isNaN(eventYearNum)) return false
   
-  const yearDoc = await EventYear.findOne({ year: yearNum }).lean()
-  return !!yearDoc
+  const eventYearDoc = await EventYear.findOne({ event_year: eventYearNum }).lean()
+  return !!eventYearDoc
 }
 
 /**
@@ -102,7 +110,7 @@ export function shouldEventYearBeActive(eventYearDoc) {
 
 /**
  * Find the active event year automatically based on dates
- * If multiple events are in their active period, returns the one with the most recent year
+ * If multiple events are in their active period, returns the one with the most recent event_year
  * @returns {Promise<Object|null>} Active event year document or null
  */
 export async function findActiveEventYear() {
@@ -110,16 +118,16 @@ export async function findActiveEventYear() {
   now.setHours(0, 0, 0, 0)
 
   // Get all event years
-  const allEventYears = await EventYear.find().sort({ year: -1 }).lean()
+  const allEventYears = await EventYear.find().sort({ event_year: -1 }).lean()
 
   // Find event years that should be active
-  const activeCandidates = allEventYears.filter(yearDoc => shouldEventYearBeActive(yearDoc))
+  const activeCandidates = allEventYears.filter(eventYearDoc => shouldEventYearBeActive(eventYearDoc))
 
   if (activeCandidates.length === 0) {
     return null
   }
 
-  // If multiple candidates, return the one with the most recent year (already sorted)
+  // If multiple candidates, return the one with the most recent event_year (already sorted)
   return activeCandidates[0]
 }
 

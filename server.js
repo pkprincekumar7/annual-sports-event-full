@@ -14,6 +14,8 @@ import authRoutes from './routes/auth.js'
 import playerRoutes from './routes/players.js'
 import sportsRoutes from './routes/sports.js'
 import captainRoutes from './routes/captains.js'
+import coordinatorRoutes from './routes/coordinators.js'
+import batchRoutes from './routes/batches.js'
 import teamRoutes from './routes/teams.js'
 import participantRoutes from './routes/participants.js'
 import eventScheduleRoutes from './routes/eventSchedule.js'
@@ -48,6 +50,8 @@ app.use('/api', authRoutes)
 app.use('/api', playerRoutes)
 app.use('/api', sportsRoutes)
 app.use('/api', captainRoutes)
+app.use('/api', coordinatorRoutes)
+app.use('/api', batchRoutes)
 app.use('/api', teamRoutes)
 app.use('/api', participantRoutes)
 app.use('/api', eventScheduleRoutes)

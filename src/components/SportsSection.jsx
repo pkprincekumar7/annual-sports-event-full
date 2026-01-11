@@ -82,7 +82,7 @@ function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUs
   )
 }
 
-function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selectedYear }) {
+function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selectedEventYear }) {
   const [sports, setSports] = useState([])
   const [sportsCounts, setSportsCounts] = useState({
     teams_counts: {},
@@ -91,7 +91,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
   const [loadingSports, setLoadingSports] = useState(false)
   const [loadingCounts, setLoadingCounts] = useState(false)
   const [error, setError] = useState(null)
-  const eventYear = useEventYearWithFallback(selectedYear)
+  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
   const prevLoggedInUserRef = useRef(null)
   const hasFetchedRef = useRef(false)
 
@@ -106,7 +106,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
       setLoadingSports(true)
       setError(null)
       try {
-        const response = await fetchWithAuth(`/api/sports?year=${eventYear}`, {
+        const response = await fetchWithAuth(`/api/sports?event_year=${eventYear}`, {
           signal: abortController.signal,
         })
 
@@ -190,7 +190,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
     const fetchAllCounts = async () => {
       setLoadingCounts(true)
       try {
-        const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports-counts', eventYear), {
+        const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports-counts', eventYear, null, eventName), {
           signal: abortController.signal,
         })
 

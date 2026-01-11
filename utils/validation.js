@@ -58,16 +58,8 @@ export const validatePlayerData = async (data) => {
     }
   }
 
-  // Validate year (formatted string like "1st Year (2025)")
-  if (!data.year?.trim()) {
-    errors.push('Year is required')
-  } else {
-    // Validate format: should match pattern like "1st Year (2025)", "2nd Year (2024)", etc.
-    const yearPattern = /^(1st|2nd|3rd|4th|5th)\s+Year\s+\(\d{4}\)$/
-    if (!yearPattern.test(data.year.trim())) {
-      errors.push('Year must be in the format "1st Year (2025)", "2nd Year (2024)", etc.')
-    }
-  }
+  // year field removed - now handled by Batch collection
+  // Batch assignment happens after player registration
 
   if (!data.mobile_number?.trim()) {
     errors.push('Mobile number is required')

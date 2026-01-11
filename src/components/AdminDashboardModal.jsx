@@ -16,7 +16,7 @@ import LoadingSpinner from './ui/LoadingSpinner'
 import ErrorMessage from './ui/ErrorMessage'
 import { formatSportName } from '../utils/stringHelpers'
 import ConfirmationDialog from './ui/ConfirmationDialog'
-import YearSelector from './YearSelector'
+import EventYearSelector from './EventYearSelector'
 import { validateDateRelationships, getUpdatableDateFields } from '../utils/yearHelpers'
 
 const TABS = {
@@ -25,16 +25,17 @@ const TABS = {
   DEPARTMENTS: 'departments'
 }
 
-function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onYearChange, loggedInUser }) {
+function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear, onEventYearChange, loggedInUser }) {
   const [activeTab, setActiveTab] = useState(TABS.EVENT_YEARS)
-  const { eventYear: activeEventYear } = useEventYear()
-  // Use selectedYear if admin selected one, otherwise use active year
-  const currentEventYear = selectedYear || activeEventYear
+  const { eventYear: activeEventYear, eventYearConfig } = useEventYear()
+  // Use selectedEventYear if admin selected one, otherwise use active event year
+  const currentEventYear = selectedEventYear || activeEventYear
+  const currentEventName = eventYearConfig?.event_name || null
 
   // Event Years State
   const [eventYears, setEventYears] = useState([])
   const [eventYearForm, setEventYearForm] = useState({
-    year: '',
+    event_year: '',
     event_name: '',
     event_organizer: '',
     event_title: '',
@@ -70,7 +71,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
   const [editingDept, setEditingDept] = useState(null)
   const [showDeleteDeptConfirm, setShowDeleteDeptConfirm] = useState(null)
 
-  // Fetch data when tab changes or selectedYear changes
+  // Fetch data when tab changes or selectedEventYear changes
   useEffect(() => {
     if (!isOpen) return
 
@@ -101,9 +102,9 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
       }
       const data = await response.json()
       // Backend returns { success: true, eventYears: [...] }
-      const years = data.eventYears || (Array.isArray(data) ? data : [])
-      // Always update with fresh data from server (this will include the newly created year)
-      setEventYears(Array.isArray(years) ? years.sort((a, b) => b.year - a.year) : [])
+      const eventYearsData = data.eventYears || (Array.isArray(data) ? data : [])
+      // Always update with fresh data from server (this will include the newly created event year)
+      setEventYears(Array.isArray(eventYearsData) ? eventYearsData.sort((a, b) => b.event_year - a.event_year) : [])
     } catch (error) {
       // Only show error popup for actual network errors (not empty data)
       // Network errors typically have message like "Failed to fetch" or "NetworkError"
@@ -124,7 +125,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
   const fetchSportsData = async () => {
     setLoadingSports(true)
     try {
-      const response = await fetchWithAuth(`/api/sports${currentEventYear ? `?year=${currentEventYear}` : ''}`)
+      const response = await fetchWithAuth(`/api/sports${currentEventYear ? `?event_year=${currentEventYear}` : ''}`)
       if (!response.ok) {
         // Only show error for actual server errors (5xx), not for empty data
         if (response.status >= 500) {
@@ -207,7 +208,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          year: eventYearForm.year,
+          event_year: eventYearForm.event_year,
           event_name: eventYearForm.event_name,
           event_organizer: eventYearForm.event_organizer || undefined,
           event_title: eventYearForm.event_title || undefined,
@@ -229,15 +230,15 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
       const createdYear = await response.json()
       clearCache('/api/event-years/active')
       onStatusPopup('✅ Event year created successfully', 'success', 2500)
-      setEventYearForm({ year: '', event_name: '', event_organizer: '', event_title: '', event_highlight: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
+      setEventYearForm({ event_year: '', event_name: '', event_organizer: '', event_title: '', event_highlight: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
       // Add the newly created year to the list immediately (optimistic update)
       setEventYears(prev => {
         // Check if year already exists to avoid duplicates
-        const exists = prev.some(y => y._id === createdYear._id || y.year === createdYear.year)
+        const exists = prev.some(y => y._id === createdYear._id || y.event_year === createdYear.event_year)
         if (exists) {
-          return prev.map(y => y._id === createdYear._id || y.year === createdYear.year ? createdYear : y).sort((a, b) => b.year - a.year)
+          return prev.map(y => y._id === createdYear._id || y.event_year === createdYear.event_year ? createdYear : y).sort((a, b) => b.event_year - a.event_year)
         }
-        return [createdYear, ...prev].sort((a, b) => b.year - a.year)
+        return [createdYear, ...prev].sort((a, b) => b.event_year - a.event_year)
       })
       // Refetch after a short delay to ensure consistency with server
       setTimeout(() => {
@@ -340,7 +341,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
     }
     
     try {
-      const response = await fetchWithAuth(`/api/event-years/${editingEventYear.year}`, {
+      const response = await fetchWithAuth(`/api/event-years/${editingEventYear.event_year}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
@@ -352,15 +353,15 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
       clearCache('/api/event-years/active')
       onStatusPopup('✅ Event year updated successfully', 'success', 2500)
       setEditingEventYear(null)
-      setEventYearForm({ year: '', event_name: '', event_organizer: '', event_title: '', event_highlight: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
+      setEventYearForm({ event_year: '', event_name: '', event_organizer: '', event_title: '', event_highlight: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
       fetchEventYearsData()
     } catch (error) {
       onStatusPopup(`❌ ${error.message}`, 'error', 3000)
     }
   }
 
-  const handleEditEventYear = (year) => {
-    setEditingEventYear(year)
+  const handleEditEventYear = (eventYear) => {
+    setEditingEventYear(eventYear)
     // Format dates for date input (YYYY-MM-DD)
     const formatDateForInput = (dateString) => {
       if (!dateString) return ''
@@ -371,25 +372,25 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
       return `${year}-${month}-${day}`
     }
     setEventYearForm({
-      year: year.year.toString(),
-      event_name: year.event_name,
-      event_organizer: year.event_organizer || '',
-      event_title: year.event_title || '',
-      event_highlight: year.event_highlight || '',
+      event_year: eventYear.event_year.toString(),
+      event_name: eventYear.event_name,
+      event_organizer: eventYear.event_organizer || '',
+      event_title: eventYear.event_title || '',
+      event_highlight: eventYear.event_highlight || '',
       event_dates: {
-        start: formatDateForInput(year.event_dates.start),
-        end: formatDateForInput(year.event_dates.end)
+        start: formatDateForInput(eventYear.event_dates.start),
+        end: formatDateForInput(eventYear.event_dates.end)
       },
       registration_dates: {
-        start: formatDateForInput(year.registration_dates.start),
-        end: formatDateForInput(year.registration_dates.end)
+        start: formatDateForInput(eventYear.registration_dates.start),
+        end: formatDateForInput(eventYear.registration_dates.end)
       }
     })
   }
 
-  const handleDeleteEventYear = async (year) => {
+  const handleDeleteEventYear = async (eventYear) => {
     try {
-      const response = await fetchWithAuth(`/api/event-years/${year}`, {
+      const response = await fetchWithAuth(`/api/event-years/${eventYear}`, {
         method: 'DELETE'
       })
       if (!response.ok) {
@@ -407,8 +408,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
   }
 
   // Helper function to validate if event year exists in database
-  const validateEventYearExists = (year) => {
-    if (!year) {
+  const validateEventYearExists = (eventYear) => {
+    if (!eventYear) {
       return { valid: false, message: 'Event year is required' }
     }
     
@@ -421,8 +422,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
       }
     }
     
-    // Check if year exists in the eventYears list
-    const yearExists = eventYears.some(ey => ey.year === year)
+    // Check if eventYear exists in the eventYears list
+    const yearExists = eventYears.some(ey => ey.event_year === eventYear)
     if (!yearExists) {
       return { 
         valid: false, 
@@ -444,9 +445,9 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
     }
     
     // Validate that the event year exists in the database
-    const yearValidation = validateEventYearExists(currentEventYear)
-    if (!yearValidation.valid) {
-      onStatusPopup(`❌ ${yearValidation.message}`, 'error', 4000)
+    const eventYearValidation = validateEventYearExists(currentEventYear)
+    if (!eventYearValidation.valid) {
+      onStatusPopup(`❌ ${eventYearValidation.message}`, 'error', 4000)
       return
     }
     
@@ -459,7 +460,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
     }
     
     try {
-      const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports', currentEventYear), {
+      const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports', currentEventYear, null, currentEventName), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -474,8 +475,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
         const error = await response.json()
         throw new Error(error.error || 'Failed to create sport')
       }
-      clearCache(`/api/sports?year=${currentEventYear}`)
-      clearCache(`/api/sports-counts?year=${currentEventYear}`)
+      clearCache(`/api/sports?event_year=${currentEventYear}`)
+      clearCache(`/api/sports-counts?event_year=${currentEventYear}`)
       onStatusPopup('✅ Sport created successfully', 'success', 2500)
       setSportForm({ name: '', type: '', category: '', team_size: '', imageUri: '' })
       fetchSportsData()
@@ -488,6 +489,22 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
     e.preventDefault()
     if (!editingSport) return
     
+    // Validate currentEventYear exists
+    if (!currentEventYear) {
+      onStatusPopup('❌ No event year selected. Please select an event year first.', 'error', 3000)
+      return
+    }
+    
+    // Validate sport belongs to the current event year
+    if (editingSport.event_year && editingSport.event_year !== currentEventYear) {
+      onStatusPopup(
+        `❌ Cannot update sport. This sport belongs to event year ${editingSport.event_year}, but you are viewing event year ${currentEventYear}.`,
+        'error',
+        4000
+      )
+      return
+    }
+    
     // Validate team_size is required for team sports
     const isTeamSport = sportForm.type === 'dual_team' || sportForm.type === 'multi_team'
     const teamSizeStr = String(sportForm.team_size || '')
@@ -497,7 +514,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
     }
     
     try {
-      const response = await fetchWithAuth(`/api/sports/${editingSport._id}`, {
+      const response = await fetchWithAuth(`/api/sports/${editingSport._id}?event_year=${currentEventYear}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -511,8 +528,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
         const error = await response.json()
         throw new Error(error.error || 'Failed to update sport')
       }
-      clearCache(`/api/sports?year=${currentEventYear}`)
-      clearCache(`/api/sports-counts?year=${currentEventYear}`)
+      clearCache(`/api/sports?event_year=${currentEventYear}`)
+      clearCache(`/api/sports-counts?event_year=${currentEventYear}`)
       onStatusPopup('✅ Sport updated successfully', 'success', 2500)
       setEditingSport(null)
       setSportForm({ name: '', type: '', category: '', team_size: '', imageUri: '' })
@@ -523,16 +540,35 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
   }
 
   const handleDeleteSport = async (sportId) => {
+    // Validate currentEventYear exists
+    if (!currentEventYear) {
+      onStatusPopup('❌ No event year selected. Please select an event year first.', 'error', 3000)
+      setShowDeleteSportConfirm(null)
+      return
+    }
+    
+    // Find the sport to validate it belongs to the current year
+    const sportToDelete = sports.find(s => s._id === sportId)
+    if (sportToDelete && sportToDelete.event_year && sportToDelete.event_year !== currentEventYear) {
+      onStatusPopup(
+        `❌ Cannot delete sport. This sport belongs to event year ${sportToDelete.event_year}, but you are viewing event year ${currentEventYear}.`,
+        'error',
+        4000
+      )
+      setShowDeleteSportConfirm(null)
+      return
+    }
+    
     try {
-      const response = await fetchWithAuth(`/api/sports/${sportId}`, {
+      const response = await fetchWithAuth(`/api/sports/${sportId}?event_year=${currentEventYear}`, {
         method: 'DELETE'
       })
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error || 'Failed to delete sport')
       }
-      clearCache(`/api/sports?year=${currentEventYear}`)
-      clearCache(`/api/sports-counts?year=${currentEventYear}`)
+      clearCache(`/api/sports?event_year=${currentEventYear}`)
+      clearCache(`/api/sports-counts?event_year=${currentEventYear}`)
       onStatusPopup('✅ Sport deleted successfully', 'success', 2500)
       setShowDeleteSportConfirm(null)
       fetchSportsData()
@@ -698,11 +734,11 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
               <h4 className="text-md font-bold text-[#cbd5ff] mb-3">Create New Event Year</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input
-                label="Year"
+                label="Event Year"
                 type="number"
-                name="year"
-                value={eventYearForm.year}
-                onChange={(e) => setEventYearForm({ ...eventYearForm, year: e.target.value })}
+                name="event_year"
+                value={eventYearForm.event_year}
+                onChange={(e) => setEventYearForm({ ...eventYearForm, event_year: e.target.value })}
                 required
               />
               <Input
@@ -766,17 +802,17 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
           </form>
           ) : (
             <form onSubmit={handleUpdateEventYear} className="mb-6 p-4 bg-[rgba(0,0,0,0.3)] rounded-lg">
-              <h4 className="text-md font-bold text-[#cbd5ff] mb-3">Edit Event Year: {editingEventYear.year}</h4>
+              <h4 className="text-md font-bold text-[#cbd5ff] mb-3">Edit Event Year: {editingEventYear.event_year}</h4>
               {(() => {
                 const updatableFields = getUpdatableDateFields(editingEventYear)
                 return (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="col-span-1 md:col-span-2">
                       <Input
-                        label="Year"
+                        label="Event Year"
                         type="number"
-                        name="year"
-                        value={eventYearForm.year}
+                        name="event_year"
+                        value={eventYearForm.event_year}
                         disabled
                         className="opacity-50"
                       />
@@ -879,7 +915,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                   variant="secondary"
                   onClick={() => {
                     setEditingEventYear(null)
-                    setEventYearForm({ year: '', event_name: '', event_organizer: '', event_title: '', event_highlight: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
+                    setEventYearForm({ event_year: '', event_name: '', event_organizer: '', event_title: '', event_highlight: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
                   }}
                 >
                   Cancel
@@ -897,13 +933,13 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
               <p className="text-[#94a3b8]">No event years found</p>
             ) : (
               <div className="space-y-2">
-                {eventYears.map((year) => (
-                  <div key={year._id || year.year} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                {eventYears.map((eventYear) => (
+                  <div key={eventYear._id || eventYear.event_year} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div className="flex flex-row items-center justify-start gap-2">
                       <div>
-                        <span className="font-bold text-[#ffe66d]">{year.year}</span>
-                        <span className="ml-2 text-[#e5e7eb]">- {year.event_name}</span>
-                        {year.is_active && (
+                        <span className="font-bold text-[#ffe66d]">{eventYear.event_year}</span>
+                        <span className="ml-2 text-[#e5e7eb]">- {eventYear.event_name}</span>
+                        {eventYear.is_active && (
                           <span className="ml-2 px-2 py-1 bg-[#22c55e] text-white text-xs rounded">Active</span>
                         )}
                       </div>
@@ -911,7 +947,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                     <div className="flex gap-2 md:ml-0">
                       <Button
                         variant="secondary"
-                        onClick={() => handleEditEventYear(year)}
+                        onClick={() => handleEditEventYear(eventYear)}
                         className="px-3 py-1 text-xs"
                         disabled={!!editingEventYear}
                       >
@@ -919,10 +955,10 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
                       </Button>
                       <Button
                         variant="danger"
-                        onClick={() => setShowDeleteConfirm(year.year)}
+                        onClick={() => setShowDeleteConfirm(eventYear.event_year)}
                         className="px-3 py-1 text-xs"
-                        disabled={!!editingEventYear || year.is_active}
-                        title={year.is_active ? 'Cannot delete the active event year. The event is currently active based on its registration and event dates.' : ''}
+                        disabled={!!editingEventYear || eventYear.is_active}
+                        title={eventYear.is_active ? 'Cannot delete the active event year. The event is currently active based on its registration and event dates.' : ''}
                       >
                         Delete
                       </Button>
@@ -940,15 +976,15 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedYear, onY
         <div>
           {loggedInUser && (
             <div className="flex items-center justify-end mb-4">
-              <YearSelector
-                selectedYear={selectedYear}
-                onYearChange={onYearChange}
+              <EventYearSelector
+                selectedEventYear={selectedEventYear}
+                onEventYearChange={onEventYearChange}
                 loggedInUser={loggedInUser}
               />
             </div>
           )}
           {!currentEventYear && (
-            <ErrorMessage message="No active event year. Please select a year from the dropdown above or wait for an event year's registration period to begin." />
+            <ErrorMessage message="No active event year. Please select an event year from the dropdown above or wait for an event year's registration period to begin." />
           )}
           
           {/* Create/Edit Form */}

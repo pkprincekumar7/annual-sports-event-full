@@ -5,6 +5,11 @@ const pointsTableSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  event_name: {
+    type: String,
+    required: true,
+    trim: true
+  },
   sports_name: {
     type: String,
     required: true,
@@ -57,9 +62,9 @@ const pointsTableSchema = new mongoose.Schema({
 })
 
 // Create indexes for faster lookups
-pointsTableSchema.index({ event_year: 1, sports_name: 1, participant: 1 }, { unique: true }) // Compound unique - unique participant per sport per year
-pointsTableSchema.index({ event_year: 1, sports_name: 1, points: -1 }) // For efficient sorted points table queries by year
-pointsTableSchema.index({ event_year: 1, sports_name: 1 }) // For efficient year + sport queries
+pointsTableSchema.index({ event_year: 1, event_name: 1, sports_name: 1, participant: 1 }, { unique: true }) // Compound unique - unique participant per sport per event year and name
+pointsTableSchema.index({ event_year: 1, event_name: 1, sports_name: 1, points: -1 }) // For efficient sorted points table queries by event year and name
+pointsTableSchema.index({ event_year: 1, event_name: 1, sports_name: 1 }) // For efficient event year + event name + sport queries
 
 // Pre-save hook to lowercase sports_name
 pointsTableSchema.pre('save', function(next) {

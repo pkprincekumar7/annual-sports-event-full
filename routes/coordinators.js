@@ -1,6 +1,6 @@
 /**
- * Captain Routes
- * Handles captain assignment and management using Sports collection
+ * Coordinator Routes
+ * Handles coordinator assignment and management using Sports collection
  */
 
 import express from 'express'
@@ -17,20 +17,20 @@ import { findSportByNameAndYear } from '../utils/sportHelpers.js'
 const router = express.Router()
 
 /**
- * POST /api/add-captain
- * Add captain role to a player (admin only)
- * Workflow: Admin assigns a player as captain for a sport (makes player eligible to create a team)
+ * POST /api/add-coordinator
+ * Add coordinator role to a player (admin only)
+ * Workflow: Admin assigns a player as coordinator for a sport
  * Event Year Required: event_year field required in request body (defaults to active event year)
- * Update Sports collection's eligible_captains array (add player reg_number for the specified event year)
+ * Update Sports collection's eligible_coordinators array (add player reg_number for the specified event year)
  */
 router.post(
-  '/add-captain',
+  '/add-coordinator',
   authenticateToken,
   requireAdmin,
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
-    const validation = validateCaptainAssignment(trimmed)
+    const validation = validateCaptainAssignment(trimmed) // Reuse same validation
 
     if (!validation.isValid) {
       return sendErrorResponse(res, 400, validation.errors.join('; '))
@@ -52,53 +52,40 @@ router.post(
     // Find sport by name, event_year, and event_name
     const sportDoc = await findSportByNameAndYear(sport, eventYear, eventName, { lean: false })
 
-    // Validate sport is a team sport
-    if (sportDoc.type !== 'dual_team' && sportDoc.type !== 'multi_team') {
-      return sendErrorResponse(res, 400, 'Captain assignment is only applicable for team sports (dual_team or multi_team)')
+    // Check if already in eligible_coordinators
+    if (sportDoc.eligible_coordinators && sportDoc.eligible_coordinators.includes(reg_number)) {
+      return sendErrorResponse(res, 400, `Player is already a coordinator for ${sport}`)
     }
 
-    // Check if already in eligible_captains
-    if (sportDoc.eligible_captains && sportDoc.eligible_captains.includes(reg_number)) {
-      return sendErrorResponse(res, 400, `Player is already an eligible captain for ${sport}`)
+    // Add to eligible_coordinators array
+    if (!sportDoc.eligible_coordinators) {
+      sportDoc.eligible_coordinators = []
     }
-
-    // Check if player has already created a team for this sport
-    const existingTeam = sportDoc.teams_participated.find(
-      team => team.captain === reg_number
-    )
-    if (existingTeam) {
-      return sendErrorResponse(res, 400, `Player has already created a team (${existingTeam.team_name}) for ${sport}. Cannot add as eligible captain.`)
-    }
-
-    // Add to eligible_captains array
-    if (!sportDoc.eligible_captains) {
-      sportDoc.eligible_captains = []
-    }
-    sportDoc.eligible_captains.push(reg_number)
+    sportDoc.eligible_coordinators.push(reg_number)
     await sportDoc.save()
 
     // Clear cache
     clearCache(`/api/sports?event_year=${eventYear}`)
     clearCache(`/api/sports/${sport}?event_year=${eventYear}`)
 
-    return sendSuccessResponse(res, { sport: sportDoc }, `Captain added successfully for ${sport}`)
+    return sendSuccessResponse(res, { sport: sportDoc }, `Coordinator added successfully for ${sport}`)
   })
 )
 
 /**
- * DELETE /api/remove-captain
- * Remove captain role from a player (admin only)
+ * DELETE /api/remove-coordinator
+ * Remove coordinator role from a player (admin only)
  * Event Year Required: event_year field required in request body (defaults to active event year)
- * Update Sports collection's eligible_captains array (remove player reg_number for the specified event year)
+ * Update Sports collection's eligible_coordinators array (remove player reg_number for the specified event year)
  */
 router.delete(
-  '/remove-captain',
+  '/remove-coordinator',
   authenticateToken,
   requireAdmin,
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
-    const validation = validateCaptainAssignment(trimmed)
+    const validation = validateCaptainAssignment(trimmed) // Reuse same validation
 
     if (!validation.isValid) {
       return sendErrorResponse(res, 400, validation.errors.join('; '))
@@ -114,42 +101,30 @@ router.delete(
     // Find sport by name, event_year, and event_name
     const sportDoc = await findSportByNameAndYear(sport, eventYear, eventName, { lean: false })
 
-    // Check if player is in eligible_captains
-    if (!sportDoc.eligible_captains || !sportDoc.eligible_captains.includes(reg_number)) {
-      return sendErrorResponse(res, 400, `Player is not an eligible captain for ${sport}`)
+    // Check if player is in eligible_coordinators
+    if (!sportDoc.eligible_coordinators || !sportDoc.eligible_coordinators.includes(reg_number)) {
+      return sendErrorResponse(res, 400, `Player is not a coordinator for ${sport}`)
     }
 
-    // Check if player has created a team for this sport
-    const existingTeam = sportDoc.teams_participated.find(
-      team => team.captain === reg_number
-    )
-    if (existingTeam) {
-      return sendErrorResponse(
-        res,
-        400,
-        `Cannot remove captain role. Player has already created a team (${existingTeam.team_name}) for ${sport}. Please delete the team first.`
-      )
-    }
-
-    // Remove from eligible_captains array
-    sportDoc.eligible_captains = sportDoc.eligible_captains.filter(c => c !== reg_number)
+    // Remove from eligible_coordinators array
+    sportDoc.eligible_coordinators = sportDoc.eligible_coordinators.filter(c => c !== reg_number)
     await sportDoc.save()
 
     // Clear cache
     clearCache(`/api/sports?event_year=${eventYear}`)
     clearCache(`/api/sports/${sport}?event_year=${eventYear}`)
 
-    return sendSuccessResponse(res, { sport: sportDoc }, `Captain role removed successfully for ${sport}`)
+    return sendSuccessResponse(res, { sport: sportDoc }, `Coordinator role removed successfully for ${sport}`)
   })
 )
 
 /**
- * GET /api/captains-by-sport
- * Get all captains grouped by sport (admin only)
+ * GET /api/coordinators-by-sport
+ * Get all coordinators grouped by sport (admin only)
  * Event Year Filter: Accepts ?event_year=2026 parameter (defaults to active event year)
  */
 router.get(
-  '/captains-by-sport',
+  '/coordinators-by-sport',
   authenticateToken,
   requireAdmin,
   asyncHandler(async (req, res) => {
@@ -163,7 +138,7 @@ router.get(
     } catch (error) {
       // If event year not found, return empty object instead of error
       if (error.message === 'Event year not found' || error.message === 'No active event year found') {
-        return sendSuccessResponse(res, { captainsBySport: {} })
+        return sendSuccessResponse(res, { coordinatorsBySport: {} })
       }
       // Re-throw other errors to be handled by asyncHandler
       throw error
@@ -172,52 +147,52 @@ router.get(
     const eventYear = eventYearData.event_year
     const eventName = eventYearData.doc.event_name
 
-    // Get all sports with eligible captains for this event year and event name
+    // Get all sports with eligible coordinators for this event year and event name
     const sports = await Sport.find({
       event_year: eventYear,
       event_name: eventName,
-      eligible_captains: { $exists: true, $ne: [] }
+      eligible_coordinators: { $exists: true, $ne: [] }
     }).lean()
 
-    const captainsBySport = {}
+    const coordinatorsBySport = {}
 
-    // Get all unique captain reg_numbers
-    const captainRegNumbers = new Set()
+    // Get all unique coordinator reg_numbers
+    const coordinatorRegNumbers = new Set()
     sports.forEach(sport => {
-      if (sport.eligible_captains && Array.isArray(sport.eligible_captains)) {
-        sport.eligible_captains.forEach(regNumber => {
-          captainRegNumbers.add(regNumber)
+      if (sport.eligible_coordinators && Array.isArray(sport.eligible_coordinators)) {
+        sport.eligible_coordinators.forEach(regNumber => {
+          coordinatorRegNumbers.add(regNumber)
         })
       }
     })
 
-    // Fetch all captains at once (only if there are any)
-    if (captainRegNumbers.size > 0) {
-      const captains = await Player.find({
-        reg_number: { $in: Array.from(captainRegNumbers) }
+    // Fetch all coordinators at once (only if there are any)
+    if (coordinatorRegNumbers.size > 0) {
+      const coordinators = await Player.find({
+        reg_number: { $in: Array.from(coordinatorRegNumbers) }
       })
         .select('-password')
         .lean()
 
-      const captainsMap = new Map(captains.map(p => [p.reg_number, p]))
+      const coordinatorsMap = new Map(coordinators.map(p => [p.reg_number, p]))
 
-      // Group captains by sport
+      // Group coordinators by sport
       sports.forEach(sport => {
-        if (sport.eligible_captains && Array.isArray(sport.eligible_captains)) {
-          if (!captainsBySport[sport.name]) {
-            captainsBySport[sport.name] = []
+        if (sport.eligible_coordinators && Array.isArray(sport.eligible_coordinators)) {
+          if (!coordinatorsBySport[sport.name]) {
+            coordinatorsBySport[sport.name] = []
           }
-          sport.eligible_captains.forEach(regNumber => {
-            const captain = captainsMap.get(regNumber)
-            if (captain) {
-              captainsBySport[sport.name].push(captain)
+          sport.eligible_coordinators.forEach(regNumber => {
+            const coordinator = coordinatorsMap.get(regNumber)
+            if (coordinator) {
+              coordinatorsBySport[sport.name].push(coordinator)
             }
           })
         }
       })
     }
 
-    return sendSuccessResponse(res, { captainsBySport })
+    return sendSuccessResponse(res, { coordinatorsBySport })
   })
 )
 

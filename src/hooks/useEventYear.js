@@ -30,7 +30,7 @@ export function useEventYear() {
         if (data.success) {
           if (data.eventYear) {
             setEventYearConfig(data.eventYear)
-            setEventYear(data.eventYear.year)
+            setEventYear(data.eventYear.event_year)
           } else {
             // No active event year found - use current year as fallback
             logger.warn('No active event year found, using current year as fallback')

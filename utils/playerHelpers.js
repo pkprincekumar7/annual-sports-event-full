@@ -10,14 +10,14 @@ import { findActiveEventYear } from './yearHelpers.js'
 /**
  * Compute player participation from Sports collection
  * @param {string} playerRegNumber - Player registration number
- * @param {number|null} eventYear - Event year (defaults to active year if not provided)
+ * @param {number|null} eventYear - Event year (defaults to active event year if not provided)
  * @returns {Promise<{participated_in: Array, captain_in: Array}>} Participation data
  */
 export async function computePlayerParticipation(playerRegNumber, eventYear = null) {
-  // If eventYear not provided, get active year
+  // If eventYear not provided, get active event year
   if (!eventYear) {
     const activeYear = await findActiveEventYear()
-    eventYear = activeYear ? activeYear.year : new Date().getFullYear()
+    eventYear = activeYear ? activeYear.event_year : new Date().getFullYear()
   }
   
   // Find all sports where player is:
@@ -87,7 +87,7 @@ export async function computePlayerParticipation(playerRegNumber, eventYear = nu
 /**
  * Compute player participation for multiple players in batch (optimized)
  * @param {Array<string>} playerRegNumbers - Array of player registration numbers
- * @param {number|null} eventYear - Event year (defaults to active year if not provided)
+ * @param {number|null} eventYear - Event year (defaults to active event year if not provided)
  * @returns {Promise<Object>} Map of reg_number -> {participated_in: Array, captain_in: Array}
  */
 export async function computePlayersParticipationBatch(playerRegNumbers, eventYear = null) {
@@ -95,10 +95,10 @@ export async function computePlayersParticipationBatch(playerRegNumbers, eventYe
     return {}
   }
 
-  // If eventYear not provided, get active year
+  // If eventYear not provided, get active event year
   if (!eventYear) {
     const activeYear = await findActiveEventYear()
-    eventYear = activeYear ? activeYear.year : new Date().getFullYear()
+    eventYear = activeYear ? activeYear.event_year : new Date().getFullYear()
   }
 
   // Initialize result map

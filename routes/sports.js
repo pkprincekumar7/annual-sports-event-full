@@ -19,16 +19,18 @@ const router = express.Router()
 /**
  * GET /api/sports
  * Get all sports (admin only, or public for display)
- * Accepts ?year=2026 parameter (defaults to active year)
+ * Accepts ?event_year=2026 parameter (defaults to active event year)
  * Filters by event_year
  * IMPORTANT: This route must come before /:name to avoid conflicts
  */
 router.get('/sports', asyncHandler(async (req, res) => {
-  let eventYear
+  let eventYearData
   
   try {
-    // Try to get event year - if it doesn't exist, return empty array
-    eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+    // Try to get event year with document - if it doesn't exist, return empty array
+    // Extract event_name from query if provided for composite key filtering
+    const eventName = req.query.event_name ? req.query.event_name.trim() : null
+    eventYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName })
   } catch (error) {
     // If event year not found, return empty array instead of error
     if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -37,16 +39,19 @@ router.get('/sports', asyncHandler(async (req, res) => {
     // Re-throw other errors to be handled by asyncHandler
     throw error
   }
-    
+  
+  const eventYear = eventYearData.event_year
+  const eventName = eventYearData.doc.event_name
+  
   // Check cache
-  const cacheKey = `/api/sports?year=${eventYear}`
+  const cacheKey = `/api/sports?event_year=${eventYear}`
   const cached = getCache(cacheKey)
   if (cached) {
     return res.json(cached)
   }
   
-  // Query database - this should never throw an error, just return empty array if no results
-  const sports = await Sport.find({ event_year: eventYear })
+  // Query database - filter by both event_year and event_name
+  const sports = await Sport.find({ event_year: eventYear, event_name: eventName })
     .sort({ category: 1, name: 1 })
     .lean()
   
@@ -84,7 +89,9 @@ router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPerio
     return sendErrorResponse(res, 400, 'event_year is required')
   }
   
-  const eventYear = await getEventYear(parseInt(event_year), { requireYear: true })
+  const eventYearData = await getEventYear(parseInt(event_year), { requireYear: true, returnDoc: true })
+  const eventYear = eventYearData.event_year
+  const eventName = eventYearData.doc.event_name
     
     // Validate team_size
   const teamSizeValidation = validateTeamSize(team_size, type)
@@ -93,18 +100,20 @@ router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPerio
       }
   const parsedTeamSize = teamSizeValidation.value
     
-    // Check if sport with same name already exists for this year
+    // Check if sport with same name already exists for this event year and name
     const existingSport = await Sport.findOne({ 
     name: normalizeSportName(name), 
-      event_year: eventYear 
+      event_year: eventYear,
+      event_name: eventName
     })
     if (existingSport) {
-    return sendErrorResponse(res, 409, 'Sport with this name already exists for this year')
+    return sendErrorResponse(res, 409, 'Sport with this name already exists for this event year')
     }
     
     const sport = new Sport({
     name: normalizeSportName(name),
       event_year: eventYear,
+      event_name: eventName,
       type,
       category,
     team_size: isTeamSportType(type) ? parsedTeamSize : null,
@@ -123,7 +132,9 @@ router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPerio
 /**
  * PUT /api/sports/:id
  * Update sport (admin only)
- * Update within same year (cannot change event_year)
+ * Accepts ?event_year=2026 parameter (defaults to active event year if not provided)
+ * Validates sport belongs to that event year
+ * Update within same event year (cannot change event_year)
  * Validates team_size if updated
  */
 router.put('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
@@ -133,6 +144,30 @@ router.put('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPe
     const sport = await Sport.findById(id)
     if (!sport) {
     return sendErrorResponse(res, 404, 'Sport not found')
+    }
+    
+    // Get event year parameter (defaults to active event year if not provided)
+    let requestedYearData
+    try {
+      // Extract event_name from query if provided for composite key filtering
+      const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
+      requestedYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+    } catch (error) {
+      // Provide more user-friendly error messages
+      if (error.message === 'Event year not found') {
+        return sendErrorResponse(res, 400, `Event year not found. Please ensure the event year parameter is valid.`)
+      } else if (error.message === 'No active event year found') {
+        return sendErrorResponse(res, 400, `No active event year found. Please configure an active event year first.`)
+      }
+      return sendErrorResponse(res, 400, error.message || 'Failed to get event year')
+    }
+    
+    const requestedYear = requestedYearData.event_year
+    const requestedEventName = requestedYearData.doc.event_name
+    
+    // Validate sport belongs to the requested event year and event name
+    if (sport.event_year !== requestedYear || sport.event_name !== requestedEventName) {
+      return sendErrorResponse(res, 400, `Cannot update sport. This sport belongs to event year ${sport.event_year} (${sport.event_name}), but you are trying to update it for event year ${requestedYear} (${requestedEventName}). Please select the correct event year to update this sport.`)
     }
     
     // Cannot change event_year
@@ -189,7 +224,9 @@ router.put('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPe
 /**
  * DELETE /api/sports/:id
  * Delete sport (admin only)
- * Validates no matches or points table entries exist for this sport in the same year
+ * Accepts ?event_year=2026 parameter (defaults to active event year if not provided)
+ * Validates sport belongs to that event year
+ * Validates no matches or points table entries exist for this sport in the same event year
  */
 router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
     const { id } = req.params
@@ -199,16 +236,42 @@ router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistratio
     return sendErrorResponse(res, 404, 'Sport not found')
     }
     
+    // Get event year parameter (defaults to active event year if not provided)
+    let requestedYearData
+    try {
+      // Extract event_name from query if provided for composite key filtering
+      const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
+      requestedYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+    } catch (error) {
+      // Provide more user-friendly error messages
+      if (error.message === 'Event year not found') {
+        return sendErrorResponse(res, 400, `Event year not found. Please ensure the event year parameter is valid.`)
+      } else if (error.message === 'No active event year found') {
+        return sendErrorResponse(res, 400, `No active event year found. Please configure an active event year first.`)
+      }
+      return sendErrorResponse(res, 400, error.message || 'Failed to get event year')
+    }
+    
+    const requestedYear = requestedYearData.event_year
+    const requestedEventName = requestedYearData.doc.event_name
+    
+    // Validate sport belongs to the requested event year and event name
+    if (sport.event_year !== requestedYear || sport.event_name !== requestedEventName) {
+      return sendErrorResponse(res, 400, `Cannot delete sport. This sport belongs to event year ${sport.event_year} (${sport.event_name}), but you are trying to delete it for event year ${requestedYear} (${requestedEventName}). Please select the correct event year to delete this sport.`)
+    }
+    
     // Check if any matches exist for this sport
     const schedulesCount = await EventSchedule.countDocuments({ 
       sports_name: sport.name, 
-      event_year: sport.event_year 
+      event_year: sport.event_year,
+      event_name: sport.event_name
     })
     
     // Check if any points table entries exist
     const pointsCount = await PointsTable.countDocuments({ 
       sports_name: sport.name, 
-      event_year: sport.event_year 
+      event_year: sport.event_year,
+      event_name: sport.event_name
     })
     
     if (schedulesCount > 0 || pointsCount > 0) {
@@ -233,11 +296,13 @@ router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistratio
  * IMPORTANT: This route must come BEFORE /:name to avoid route conflicts
  */
 router.get('/sports-counts', authenticateToken, asyncHandler(async (req, res) => {
-  let eventYear
+  let eventYearData
   
   try {
-    // Try to get event year - if it doesn't exist, return empty arrays
-    eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+    // Try to get event year with document - if it doesn't exist, return empty arrays
+    // Extract event_name from query if provided for composite key filtering
+    const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
+    eventYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
   } catch (error) {
     // If event year not found, return empty arrays instead of error
     if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -251,15 +316,18 @@ router.get('/sports-counts', authenticateToken, asyncHandler(async (req, res) =>
     throw error
   }
   
+  const eventYear = eventYearData.event_year
+  const eventName = eventYearData.doc.event_name
+  
   // Check cache
-  const cacheKey = `/api/sports-counts?year=${eventYear}`
+  const cacheKey = `/api/sports-counts?event_year=${eventYear}`
   const cached = getCache(cacheKey)
   if (cached) {
     return res.json(cached)
   }
   
-  // Query database - this should never throw an error, just return empty array if no results
-  const sports = await Sport.find({ event_year: eventYear }).lean()
+  // Query database - filter by both event_year and event_name
+  const sports = await Sport.find({ event_year: eventYear, event_name: eventName }).lean()
   
   const teamsCounts = {}
   const participantsCounts = {}
@@ -288,7 +356,7 @@ router.get('/sports-counts', authenticateToken, asyncHandler(async (req, res) =>
 /**
  * GET /api/sports/:name
  * Get sport by name
- * Accepts ?year=2026 parameter (defaults to active year)
+ * Accepts ?event_year=2026 parameter (defaults to active event year)
  * Queries by name and event_year
  * IMPORTANT: This route must come AFTER /sports-counts to avoid route conflicts
  * Also exclude 'sports-counts' from matching this route
@@ -305,11 +373,13 @@ router.get('/sports/:name', asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 404, 'Route not found')
   }
   
-  let eventYear
+  let eventYearData
   
   try {
-    // Try to get event year - if it doesn't exist, return 400 error
-    eventYear = await getEventYear(req.query.year ? parseInt(req.query.year) : null)
+    // Try to get event year with document - if it doesn't exist, return 400 error
+    // Extract event_name from query if provided for composite key filtering
+    const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
+    eventYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
   } catch (error) {
     // If event year not found, return 400 error
     if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -319,8 +389,11 @@ router.get('/sports/:name', asyncHandler(async (req, res) => {
     throw error
   }
   
+  const eventYear = eventYearData.event_year
+  const eventName = eventYearData.doc.event_name
+  
   try {
-    const sport = await findSportByNameAndYear(name, eventYear)
+    const sport = await findSportByNameAndYear(name, eventYear, eventName)
     res.json(sport)
   } catch (error) {
     // If sport not found, return 404 error

@@ -1,12 +1,12 @@
 import { Modal } from './ui'
 import { useEventYearWithFallback } from '../hooks'
 
-function ProfileModal({ isOpen, onClose, loggedInUser, selectedYear }) {
-  const eventYear = useEventYearWithFallback(selectedYear)
+function ProfileModal({ isOpen, onClose, loggedInUser, selectedEventYear }) {
+  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
   
   if (!loggedInUser) return null
 
-  const yearDisplay = loggedInUser.year || 'N/A'
+  const batchDisplay = loggedInUser.batch_name || 'N/A'
 
   return (
     <Modal
@@ -37,8 +37,8 @@ function ProfileModal({ isOpen, onClose, loggedInUser, selectedYear }) {
                 <td className="text-[#ffe66d] text-base py-2 break-words text-left font-semibold">{loggedInUser.department_branch || 'N/A'}</td>
               </tr>
               <tr>
-                <td className="text-[#cbd5ff] text-sm font-semibold py-2 pr-4 align-top text-left">Year:</td>
-                <td className="text-[#ffe66d] text-base py-2 break-words text-left font-semibold">{yearDisplay}</td>
+                <td className="text-[#cbd5ff] text-sm font-semibold py-2 pr-4 align-top text-left">Batch:</td>
+                <td className="text-[#ffe66d] text-base py-2 break-words text-left font-semibold">{batchDisplay}</td>
               </tr>
               <tr>
                 <td className="text-[#cbd5ff] text-sm font-semibold py-2 pr-4 align-top text-left">Mobile Number:</td>

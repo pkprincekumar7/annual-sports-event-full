@@ -13,14 +13,14 @@ export const clearSportCaches = (sportName, eventYear) => {
   if (!sportName) return
   
   const encodedSport = encodeURIComponent(sportName)
-  const yearParam = eventYear ? `?year=${eventYear}` : ''
+  const eventYearParam = eventYear ? `?event_year=${eventYear}` : ''
   
-  clearCache(`/api/teams/${encodedSport}${yearParam}`)
-  clearCache(`/api/participants/${encodedSport}${yearParam}`)
-  clearCache(`/api/participants-count/${encodedSport}${yearParam}`)
-  clearCache(`/api/event-schedule/${encodedSport}${yearParam}`)
-  clearCache(`/api/event-schedule/${encodedSport}/teams-players${yearParam}`)
-  clearCache(`/api/sports-counts${yearParam}`)
+  clearCache(`/api/teams/${encodedSport}${eventYearParam}`)
+  clearCache(`/api/participants/${encodedSport}${eventYearParam}`)
+  clearCache(`/api/participants-count/${encodedSport}${eventYearParam}`)
+  clearCache(`/api/event-schedule/${encodedSport}${eventYearParam}`)
+  clearCache(`/api/event-schedule/${encodedSport}/teams-players${eventYearParam}`)
+  clearCache(`/api/sports-counts${eventYearParam}`)
 }
 
 /**
@@ -48,8 +48,8 @@ export const clearIndividualParticipationCaches = (sportName, eventYear) => {
  * @param {number|null} eventYear - The event year
  */
 export const clearSportManagementCaches = (eventYear) => {
-  const yearParam = eventYear ? `?year=${eventYear}` : ''
-  clearCache(`/api/sports${yearParam}`)
-  clearCache(`/api/sports-counts${yearParam}`)
+  const eventYearParam = eventYear ? `?event_year=${eventYear}` : ''
+  clearCache(`/api/sports${eventYearParam}`)
+  clearCache(`/api/sports-counts${eventYearParam}`)
 }
 

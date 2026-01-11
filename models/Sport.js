@@ -34,6 +34,11 @@ const sportSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  event_name: {
+    type: String,
+    required: true,
+    trim: true
+  },
   type: {
     type: String,
     required: true,
@@ -69,6 +74,10 @@ const sportSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
+  eligible_coordinators: {
+    type: [String],
+    default: []
+  },
   teams_participated: {
     type: [teamParticipatedSchema],
     default: []
@@ -82,10 +91,10 @@ const sportSchema = new mongoose.Schema({
 })
 
 // Create indexes for faster lookups
-sportSchema.index({ name: 1, event_year: 1 }, { unique: true }) // Compound unique - unique sport name per year
-sportSchema.index({ event_year: 1, type: 1 }) // For efficient year + type queries
-sportSchema.index({ event_year: 1, category: 1 }) // For efficient year + category queries
-sportSchema.index({ event_year: 1 }) // For efficient year queries
+sportSchema.index({ name: 1, event_year: 1, event_name: 1 }, { unique: true }) // Compound unique - unique sport name per event year and name
+sportSchema.index({ event_year: 1, event_name: 1, type: 1 }) // For efficient event year + event name + type queries
+sportSchema.index({ event_year: 1, event_name: 1, category: 1 }) // For efficient event year + event name + category queries
+sportSchema.index({ event_year: 1, event_name: 1 }) // For efficient event year + event name queries
 
 // Pre-save hook to lowercase name
 sportSchema.pre('save', function(next) {

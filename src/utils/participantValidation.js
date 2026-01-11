@@ -37,22 +37,22 @@ export function validateGenderMatch(participants, expectedGender = null) {
 }
 
 /**
- * Validate that all participants have the same year
- * @param {Array} participants - Array of participant objects with year property
- * @param {string|number} expectedYear - Expected year (optional, will use first participant's year if not provided)
+ * Validate that all participants have the same batch
+ * @param {Array} participants - Array of participant objects with batch_name property
+ * @param {string} expectedBatch - Expected batch name (optional, will use first participant's batch_name if not provided)
  * @returns {Object} { isValid: boolean, error: string|null, mismatches: Array }
  */
-export function validateYearMatch(participants, expectedYear = null) {
+export function validateBatchMatch(participants, expectedBatch = null) {
   if (!participants || participants.length === 0) {
     return { isValid: true, error: null, mismatches: [] }
   }
 
-  const firstYear = expectedYear || participants[0]?.year
-  if (!firstYear) {
-    return { isValid: false, error: 'Could not determine year for participants', mismatches: [] }
+  const firstBatch = expectedBatch || participants[0]?.batch_name
+  if (!firstBatch) {
+    return { isValid: false, error: 'Could not determine batch for participants', mismatches: [] }
   }
 
-  const mismatches = participants.filter(p => p.year && p.year !== firstYear)
+  const mismatches = participants.filter(p => p.batch_name && p.batch_name !== firstBatch)
   
   if (mismatches.length > 0) {
     const mismatchNames = mismatches.map(p => 
@@ -61,7 +61,7 @@ export function validateYearMatch(participants, expectedYear = null) {
     
     return {
       isValid: false,
-      error: `Year mismatch: ${mismatchNames} must be in the same year (${firstYear}) as other participants.`,
+      error: `Batch mismatch: ${mismatchNames} must be in the same batch (${firstBatch}) as other participants.`,
       mismatches
     }
   }
@@ -181,7 +181,7 @@ export function validateDifferentParticipants(participant1, participant2, partic
  * Comprehensive validation for participant selection
  * @param {Object} options - Validation options
  * @param {Array} options.participantIds - Array of participant IDs
- * @param {Array} options.participantList - Array of participant objects (for gender/year validation)
+ * @param {Array} options.participantList - Array of participant objects (for gender/batch validation)
  * @param {Array} options.availableParticipants - Array of available participants
  * @param {number} options.requiredCount - Required number of participants
  * @param {string} options.participantType - Type of participant ('players', 'teams', etc.)
@@ -198,7 +198,7 @@ export function validateParticipantSelection({
   participantType = 'participants',
   idField = 'reg_number',
   expectedGender = null,
-  expectedYear = null
+  expectedBatch = null
 }) {
   const errors = []
 
@@ -232,11 +232,11 @@ export function validateParticipantSelection({
     }
   }
 
-  // Validate year match if participant list provided
+  // Validate batch match if participant list provided
   if (participantList.length > 0) {
-    const yearValidation = validateYearMatch(participantList, expectedYear)
-    if (!yearValidation.isValid) {
-      errors.push(yearValidation.error)
+    const batchValidation = validateBatchMatch(participantList, expectedBatch)
+    if (!batchValidation.isValid) {
+      errors.push(batchValidation.error)
     }
   }
 

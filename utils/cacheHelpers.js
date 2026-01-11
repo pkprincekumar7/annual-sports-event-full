@@ -18,7 +18,7 @@ export async function clearMatchCaches(match, gender = null, sportDoc = null) {
   const eventYear = match.event_year
 
   // Clear base cache (without gender for backward compatibility)
-  clearCache(`/api/event-schedule/${normalizedSportsName}?year=${eventYear}`)
+  clearCache(`/api/event-schedule/${normalizedSportsName}?event_year=${eventYear}`)
 
   // Derive gender if not provided
   let matchGender = gender
@@ -28,12 +28,12 @@ export async function clearMatchCaches(match, gender = null, sportDoc = null) {
 
   if (matchGender) {
     // Clear gender-specific caches
-    clearCache(`/api/event-schedule/${normalizedSportsName}?year=${eventYear}&gender=${matchGender}`)
-    clearCache(`/api/event-schedule/${normalizedSportsName}/teams-players?year=${eventYear}&gender=${matchGender}`)
+    clearCache(`/api/event-schedule/${normalizedSportsName}?event_year=${eventYear}&gender=${matchGender}`)
+    clearCache(`/api/event-schedule/${normalizedSportsName}/teams-players?event_year=${eventYear}&gender=${matchGender}`)
     
     // Clear points table cache if it's a league match
     if (match.match_type === 'league') {
-      clearCache(`/api/points-table/${normalizedSportsName}?year=${eventYear}&gender=${matchGender}`)
+      clearCache(`/api/points-table/${normalizedSportsName}?event_year=${eventYear}&gender=${matchGender}`)
     }
   }
 }
@@ -49,16 +49,16 @@ export function clearNewMatchCaches(sportsName, eventYear, gender, matchType) {
   const normalizedSportsName = normalizeSportName(sportsName)
 
   // Clear base cache (without gender for backward compatibility)
-  clearCache(`/api/event-schedule/${normalizedSportsName}?year=${eventYear}`)
+  clearCache(`/api/event-schedule/${normalizedSportsName}?event_year=${eventYear}`)
 
   if (gender) {
     // Clear gender-specific caches
-    clearCache(`/api/event-schedule/${normalizedSportsName}?year=${eventYear}&gender=${gender}`)
-    clearCache(`/api/event-schedule/${normalizedSportsName}/teams-players?year=${eventYear}&gender=${gender}`)
+    clearCache(`/api/event-schedule/${normalizedSportsName}?event_year=${eventYear}&gender=${gender}`)
+    clearCache(`/api/event-schedule/${normalizedSportsName}/teams-players?event_year=${eventYear}&gender=${gender}`)
     
     // Clear points table cache if it's a league match
     if (matchType === 'league') {
-      clearCache(`/api/points-table/${normalizedSportsName}?year=${eventYear}&gender=${gender}`)
+      clearCache(`/api/points-table/${normalizedSportsName}?event_year=${eventYear}&gender=${gender}`)
     }
   }
 }

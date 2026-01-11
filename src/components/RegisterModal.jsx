@@ -6,12 +6,11 @@ import { clearTeamParticipationCaches, clearIndividualParticipationCaches } from
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
 import { GENDER_OPTIONS } from '../constants/app'
-import { generateYearOfAdmissionOptions } from '../utils/yearHelpers'
 import { formatSportName } from '../utils/stringHelpers'
 import { isTeamSport, getSportType, getTeamSize, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual } from '../utils/sportHelpers'
-import { validateParticipantSelection, validateNoDuplicates, validateGenderMatch, validateYearMatch } from '../utils/participantValidation'
+import { validateParticipantSelection, validateNoDuplicates, validateGenderMatch, validateBatchMatch } from '../utils/participantValidation'
 
-function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate, embedded = false, selectedYear }) {
+function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate, embedded = false, selectedEventYear }) {
   const [players, setPlayers] = useState([])
   const [selectedPlayers, setSelectedPlayers] = useState({})
   const [totalTeams, setTotalTeams] = useState(0)
@@ -24,12 +23,12 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   const { loading: isSubmittingIndividual, execute: executeIndividual } = useApi()
   const { departments: departmentOptions, loading: loadingDepartments } = useDepartments()
   const { eventYear: activeEventYear, eventYearConfig } = useEventYear()
-  // Use selectedYear if provided (for admin), otherwise use active event year
-  const eventYear = selectedYear || activeEventYear
+  // Use selectedEventYear if provided (for admin), otherwise use active event year
+  const eventYear = selectedEventYear || activeEventYear
   
   // Build event display name from database
   const eventDisplayName = eventYearConfig 
-    ? `${eventYearConfig.event_organizer || 'Events Community'} • ${eventYearConfig.event_name} - ${eventYearConfig.year}`
+    ? `${eventYearConfig.event_organizer || 'Events Community'} • ${eventYearConfig.event_name} - ${eventYearConfig.event_year}`
     : 'Sports Event' // Fallback
   const eventName = eventYearConfig?.event_name || 'Sports Event'
 
@@ -39,9 +38,42 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   const isGeneralRegistration = !selectedSport
   const prevSportNameRef = useRef(null)
   const isMountedRef = useRef(true)
+  const [batches, setBatches] = useState([])
   
-  // Generate year of admission options
-  const yearOfAdmissionOptions = generateYearOfAdmissionOptions(eventYear)
+  // Fetch batches for batch_name dropdown
+  useEffect(() => {
+    if (!isOpen || isGeneralRegistration) return
+    
+    let isMounted = true
+    const abortController = new AbortController()
+    
+    const fetchBatches = async () => {
+      try {
+        const res = await fetchWithAuth(buildApiUrlWithYear('/api/batches', eventYear), { signal: abortController.signal })
+        if (!isMounted) return
+        
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success) {
+            setBatches(data.batches || [])
+          }
+        }
+      } catch (err) {
+        if (!isMounted || err.name === 'AbortError') return
+        setBatches([])
+      }
+    }
+    
+    fetchBatches()
+    
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
+  }, [isOpen, eventYear, isGeneralRegistration])
+  
+  // Generate batch options from fetched batches
+  const batchOptions = batches.map(batch => ({ value: batch.name, label: batch.name }))
 
   // Fetch players list for team player dropdowns
   useEffect(() => {
@@ -264,12 +296,12 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     const fullName = form.querySelector('[name="full_name"]')?.value?.trim()
     const gender = form.querySelector('[name="gender"]')?.value?.trim()
     const dept = form.querySelector('[name="department_branch"]')?.value?.trim()
-    const year = form.querySelector('[name="year"]')?.value?.trim()
+    const batch_name = form.querySelector('[name="batch_name"]')?.value?.trim()
     const phone = form.querySelector('[name="mobile_number"]')?.value?.trim()
     const email = form.querySelector('[name="email_id"]')?.value?.trim()
     const password = form.querySelector('[name="password"]')?.value?.trim()
 
-    if (!regNumber || !fullName || !gender || !dept || !year || !phone || !email || !password) {
+    if (!regNumber || !fullName || !gender || !dept || !batch_name || !phone || !email || !password) {
       onStatusPopup('❌ Please fill all required fields.', 'error', 2500)
       return
     }
@@ -286,7 +318,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             full_name: fullName,
             gender: gender,
             department_branch: dept,
-            year: year,
+            batch_name: batch_name,
             mobile_number: phone,
             email_id: email,
             password: password,
@@ -391,10 +423,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       return
     }
 
-    // Validate year match
-    const yearValidation = validateYearMatch(selectedPlayerObjects, loggedInUser.year)
-    if (!yearValidation.isValid) {
-      onStatusPopup(`❌ ${yearValidation.error}`, 'error', 5000)
+    // Validate batch match
+    const batchValidation = validateBatchMatch(selectedPlayerObjects, loggedInUser.batch_name)
+    if (!batchValidation.isValid) {
+      onStatusPopup(`❌ ${batchValidation.error}`, 'error', 5000)
       return
     }
 
@@ -699,9 +731,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                 .filter(([key, value]) => key !== String(index) && value)
                 .map(([_, value]) => value)
 
-              // Get team gender and year for filtering
+              // Get team gender and batch for filtering
               const teamGender = loggedInUser?.gender
-              const teamYear = loggedInUser?.year
+              const teamBatch = loggedInUser?.batch_name
 
               // Filter players for this dropdown
               const filteredPlayers = players.length === 0 ? [] : (() => {
@@ -723,7 +755,8 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
                   // Basic filters
                   if (player.reg_number === 'admin') return false
                   if (player.gender !== teamGender) return false
-                  if (player.year !== teamYear) return false
+                  // Filter by batch name
+                  if (player.batch_name !== teamBatch) return false
                   
                   // Allow currently selected player to remain in list
                   if (player.reg_number === selectedPlayers[index]) return true
@@ -874,12 +907,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         />
 
         <Input
-          label="Year"
-          id="year"
-          name="year"
+          label="Batch"
+          id="batch_name"
+          name="batch_name"
           type="select"
           required
-          options={yearOfAdmissionOptions}
+          options={batchOptions.length > 0 ? batchOptions : [{ value: '', label: 'Loading batches...' }]}
+          disabled={batchOptions.length === 0}
         />
 
         <Input

@@ -5,9 +5,9 @@ import { fetchWithAuth, clearCache } from '../utils/api'
 import { clearSportCaches } from '../utils/cacheHelpers'
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
-import { validateGenderMatch, validateYearMatch, validateNoDuplicates } from '../utils/participantValidation'
+import { validateGenderMatch, validateBatchMatch, validateNoDuplicates } from '../utils/participantValidation'
 
-function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
+function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedEventYear }) {
   const { eventYearConfig } = useEventYear()
   const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [teams, setTeams] = useState([])
@@ -23,7 +23,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
   const abortControllerRef = useRef(null)
   const { loading: updating, execute: executeUpdate } = useApi()
   const { loading: deleting, execute: executeDelete } = useApi()
-  const eventYear = useEventYearWithFallback(selectedYear)
+  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
   const deleteConfirmModal = useModal(false)
   
   const isAdmin = loggedInUser?.reg_number === 'admin'
@@ -295,12 +295,12 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
         return
       }
 
-      // CRITICAL: Validate year match
-      const teamYear = currentTeam.players[0].year
-      const yearValidation = validateYearMatch([newPlayer], teamYear)
-      if (!yearValidation.isValid) {
+      // CRITICAL: Validate batch match
+      const teamBatch = currentTeam.players[0].batch_name
+      const batchValidation = validateBatchMatch([newPlayer], teamBatch)
+      if (!batchValidation.isValid) {
         if (onStatusPopup) {
-          onStatusPopup(`❌ ${yearValidation.error}`, 'error', 4000)
+          onStatusPopup(`❌ ${batchValidation.error}`, 'error', 4000)
         }
         return
       }
@@ -515,9 +515,9 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                             .filter(p => p.reg_number !== player.reg_number)
                             .map(p => p.reg_number)
                           
-                          // Get team gender and year for filtering
+                          // Get team gender and batch for filtering
                           const teamGender = team.players.length > 0 ? team.players[0].gender : null
-                          const teamYear = team.players.length > 0 ? team.players[0].year : null
+                          const teamBatch = team.players.length > 0 ? team.players[0].batch_name : null
 
                           return (
                             <div
@@ -543,7 +543,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                     <div className="text-[#cbd5ff] text-[0.8rem] ml-6 space-y-0.5">
                                       <div>Reg. No: <span className="text-[#e5e7eb]">{player.reg_number}</span></div>
                                       <div>Department: <span className="text-[#e5e7eb]">{player.department_branch}</span></div>
-                                      <div>Year: <span className="text-[#e5e7eb]">{player.year || ''}</span></div>
+                                      <div>Batch: <span className="text-[#e5e7eb]">{player.batch_name || ''}</span></div>
                                       <div>Gender: <span className="text-[#e5e7eb]">{player.gender}</span></div>
                                     </div>
                                   </div>
@@ -575,7 +575,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                         .filter((player) => 
                                           player.reg_number !== 'admin' && 
                                           player.gender === teamGender &&
-                                          player.year === teamYear &&
+                                          player.batch_name === teamBatch &&
                                           (player.reg_number === selectedReplacementPlayer || !otherSelectedRegNumbers.includes(player.reg_number))
                                         )
                                         .map((player) => ({

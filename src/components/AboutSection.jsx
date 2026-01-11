@@ -3,7 +3,7 @@ import { useEventYear } from '../hooks/useEventYear'
 function AboutSection() {
   const { eventYearConfig } = useEventYear()
   const eventDisplayName = eventYearConfig 
-    ? `${eventYearConfig.event_name} - ${eventYearConfig.year}`
+    ? `${eventYearConfig.event_name} - ${eventYearConfig.event_year}`
     : 'Championship' // Fallback to default value if no active year
   const eventOrganizer = eventYearConfig?.event_organizer || 'Events Community'
 

@@ -49,7 +49,7 @@ export const validatePlayerForm = (data) => {
     'Full name': data.full_name,
     'Gender': data.gender,
     'Department/Branch': data.department_branch,
-    'Year': data.year,
+    'Batch': data.batch_name,
     'Mobile number': data.mobile_number,
     'Email ID': data.email_id,
     'Password': data.password,

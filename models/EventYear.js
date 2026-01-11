@@ -1,10 +1,9 @@
 import mongoose from 'mongoose'
 
 const eventYearSchema = new mongoose.Schema({
-  year: {
+  event_year: {
     type: Number,
-    required: true,
-    unique: true
+    required: true
   },
   event_name: {
     type: String,
@@ -56,7 +55,8 @@ const eventYearSchema = new mongoose.Schema({
 })
 
 // Create indexes for faster lookups
-eventYearSchema.index({ year: 1 }, { unique: true })
+eventYearSchema.index({ event_year: 1, event_name: 1 }, { unique: true }) // Compound unique index - unique combination of event_year and event_name
+eventYearSchema.index({ event_year: 1 }) // For efficient event year queries
 // Note: Active status is now determined automatically based on dates, not stored in database
 
 const EventYear = mongoose.model('EventYear', eventYearSchema)

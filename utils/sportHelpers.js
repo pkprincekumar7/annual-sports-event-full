@@ -96,16 +96,17 @@ export function normalizeSportName(name) {
 }
 
 /**
- * Find sport by name and event year
+ * Find sport by name, event year, and event name
  * @param {string} sportName - Sport name (will be normalized)
  * @param {number} eventYear - Event year
+ * @param {string} eventName - Event name (optional for backward compatibility, but recommended)
  * @param {Object} options - Query options
  * @param {boolean} options.lean - Use lean() for read-only queries (default: true)
  * @param {string} options.select - Fields to select
  * @returns {Promise<Object|null>} Sport document or null if not found
  * @throws {Error} Throws error if sport not found (should be caught by asyncHandler)
  */
-export async function findSportByNameAndYear(sportName, eventYear, options = {}) {
+export async function findSportByNameAndYear(sportName, eventYear, eventName = null, options = {}) {
   const { lean = true, select = null } = options
 
   if (!sportName || !eventYear) {
@@ -119,10 +120,18 @@ export async function findSportByNameAndYear(sportName, eventYear, options = {})
     throw new Error('Event year must be a valid number')
   }
 
-  let query = Sport.findOne({
+  // Build query with event_year and optionally event_name
+  const queryFilter = {
     name: normalizedName,
     event_year: yearNum
-  })
+  }
+  
+  // If event_name is provided, include it in the filter
+  if (eventName) {
+    queryFilter.event_name = eventName
+  }
+
+  let query = Sport.findOne(queryFilter)
 
   if (select) {
     query = query.select(select)
@@ -135,7 +144,8 @@ export async function findSportByNameAndYear(sportName, eventYear, options = {})
   const sportDoc = await query
 
   if (!sportDoc) {
-    throw new Error(`Sport "${sportName}" not found for year ${yearNum}`)
+    const eventInfo = eventName ? `event year ${yearNum} (${eventName})` : `event year ${yearNum}`
+    throw new Error(`Sport "${sportName}" not found for ${eventInfo}`)
   }
 
   return sportDoc

@@ -12,7 +12,7 @@ import {
   validateDifferentParticipants 
 } from '../utils/participantValidation'
 
-function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, onStatusPopup, embedded = false, selectedYear }) {
+function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, onStatusPopup, embedded = false, selectedEventYear }) {
   const { eventYearConfig } = useEventYear()
   const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [matches, setMatches] = useState([])
@@ -52,7 +52,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const { loading: updatingWinner, execute: executeWinnerUpdate } = useApi()
   const { loading: updatingQualifiers, execute: executeQualifiersUpdate } = useApi()
   const { loading: deleting, execute: executeDelete } = useApi()
-  const eventYear = useEventYearWithFallback(selectedYear)
+  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
   const deleteConfirmModal = useModal(false)
 
   // Helper function to check if match date is in the future
@@ -125,7 +125,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
     if (!sport || !eventYear) return
     
     try {
-      const response = await fetchWithAuth(buildSportApiUrl('sports', sport, eventYear))
+      const response = await fetchWithAuth(buildSportApiUrl('sports', sport, eventYear, eventName))
       
       if (response.ok) {
         const data = await response.json()
@@ -145,7 +145,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
     
     setLoading(true)
     try {
-      const response = await fetchWithAuth(buildEventScheduleApiUrl(sport, '', eventYear))
+      const response = await fetchWithAuth(buildEventScheduleApiUrl(sport, '', eventYear, null, eventName))
       
       if (!response.ok) {
         // Clone response to read error text without consuming the original
@@ -196,7 +196,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       // 1. Teams/players that have been knocked out in previous completed knockout/final matches
       // 2. Teams/players that are already in scheduled knockout/final matches
       // This ensures only eligible participants are shown in the dropdowns
-      const response = await fetchWithAuth(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, genderToUse))
+      const response = await fetchWithAuth(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, genderToUse, eventName))
       
       if (!response.ok) {
         // Clone response to read error text without consuming the original
@@ -367,22 +367,22 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
               onStatusPopup(`✅ Match status updated to ${newStatus}!`, 'success', 2500)
             }
             // Clear cache and refresh matches (with and without gender for backward compatibility)
-            clearCache(buildEventScheduleApiUrl(sport, '', eventYear))
+            clearCache(buildEventScheduleApiUrl(sport, '', eventYear, null, eventName))
             // Clear teams-players cache if status changed for knockout/final matches
             // - If status is 'completed': knocked-out participants need to be excluded
             // - If status is 'draw' or 'cancelled': participants become eligible again (need to refresh)
             const match = matches.find(m => m._id === matchId)
             if (match) {
-              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender))
+              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender, eventName))
               if (match.match_type === 'knockout' || match.match_type === 'final') {
                 if (newStatus === 'completed' || newStatus === 'draw' || newStatus === 'cancelled') {
-                  clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender))
+                  clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender, eventName))
                 }
               }
               // Clear points-table cache if this is a league match (affects points table)
               if (match.match_type === 'league') {
                 const encodedSport = encodeURIComponent(sport)
-                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender))
+                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender, eventName))
               }
             }
             fetchMatches()
@@ -446,16 +446,16 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
               onStatusPopup(`✅ Winner updated successfully!`, 'success', 2500)
             }
             // Clear cache and refresh matches (with and without gender for backward compatibility)
-            clearCache(buildEventScheduleApiUrl(sport, '', eventYear))
+            clearCache(buildEventScheduleApiUrl(sport, '', eventYear, null, eventName))
             // Clear teams-players cache to refresh dropdowns (knocked-out participants are now excluded)
             const match = matches.find(m => m._id === matchId)
             if (match) {
-              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender))
+              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender, eventName))
               clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender))
               // Clear points-table cache if this is a league match (affects points table)
               if (match.match_type === 'league') {
                 const encodedSport = encodeURIComponent(sport)
-                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender))
+                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender, eventName))
               }
             }
             fetchMatches()
@@ -545,16 +545,16 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             delete newPendingQualifiers[matchId]
             setPendingQualifiers(newPendingQualifiers)
             // Clear cache and refresh matches (with and without gender for backward compatibility)
-            clearCache(buildEventScheduleApiUrl(sport, '', eventYear))
+            clearCache(buildEventScheduleApiUrl(sport, '', eventYear, null, eventName))
             // Clear teams-players cache to refresh dropdowns (knocked-out participants are now excluded)
             const match = matches.find(m => m._id === matchId)
             if (match) {
-              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender))
+              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender, eventName))
               clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender))
               // Clear points-table cache if this is a league match (affects points table)
               if (match.match_type === 'league') {
                 const encodedSport = encodeURIComponent(sport)
-                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender))
+                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender, eventName))
               }
             }
             fetchMatches()
@@ -599,11 +599,11 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
               onStatusPopup('✅ Match deleted successfully!', 'success', 2500)
             }
             // Clear cache for event-schedule endpoint to ensure fresh data (with and without gender for backward compatibility)
-            clearCache(buildEventScheduleApiUrl(sport, '', eventYear))
+            clearCache(buildEventScheduleApiUrl(sport, '', eventYear, null, eventName))
             // Clear teams-players cache if deleted match was knockout/final (participants are now available again)
             const match = matches.find(m => m._id === deletingMatchId)
             if (match) {
-              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender))
+              clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender, eventName))
               if (match.match_type === 'knockout' || match.match_type === 'final') {
                 clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender))
               }
@@ -1164,7 +1164,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             }
             setShowAddForm(false)
             // Clear cache for event-schedule endpoint to ensure fresh data (with and without gender for backward compatibility)
-            clearCache(buildEventScheduleApiUrl(sport, '', eventYear))
+            clearCache(buildEventScheduleApiUrl(sport, '', eventYear, null, eventName))
             clearCache(buildEventScheduleApiUrl(sport, '', eventYear, selectedGender))
             // Clear teams-players cache if new match is knockout/final (participants are now in scheduled match)
             if (matchType === 'knockout' || matchType === 'final') {

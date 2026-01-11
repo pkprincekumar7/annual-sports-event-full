@@ -1401,7 +1401,7 @@ sudo journalctl -u annual-sports-backend -n 50
   - Three tabs: Event Years, Sports, Departments
   - Full CRUD operations for each entity
   - Year selector integration for sports management
-- **YearSelector.jsx** - Year selector component for admin users
+- **EventYearSelector.jsx** - Event year selector component for admin users
   - Allows switching between event years
   - Shows active year indicator
   - Auto-selects active year on load

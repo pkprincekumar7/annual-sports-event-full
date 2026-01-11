@@ -11,13 +11,13 @@ import { buildSportApiUrl } from '../utils/apiHelpers'
 import { useEventYearWithFallback } from '../hooks'
 import logger from '../utils/logger'
 
-function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onStatusPopup, onUserUpdate, onEventScheduleClick, selectedYear }) {
+function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onStatusPopup, onUserUpdate, onEventScheduleClick, selectedEventYear }) {
   const [activeTab, setActiveTab] = useState(null)
   const hasSetInitialTabRef = useRef(false)
   const lastSportRef = useRef(null)
   const initialTabSetRef = useRef(false)
   const [sportDetails, setSportDetails] = useState(null) // Store fetched sport details with type
-  const eventYear = useEventYearWithFallback(selectedYear)
+  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
   
   // Fetch sport details to get the type
   useEffect(() => {
@@ -28,7 +28,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
 
     const fetchSportDetails = async () => {
       try {
-        const response = await fetchWithAuth(buildSportApiUrl('sports', selectedSport.name, eventYear))
+        const response = await fetchWithAuth(buildSportApiUrl('sports', selectedSport.name, eventYear, eventName))
         if (response.ok) {
           const data = await response.json()
           if (data && data.name) {
@@ -220,7 +220,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             loggedInUser={loggedInUser}
             onUserUpdate={onUserUpdate}
             embedded={true}
-            selectedYear={selectedYear}
+            selectedEventYear={selectedEventYear}
           />
         )
           }
@@ -239,7 +239,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
               loggedInUser={loggedInUser}
               onStatusPopup={onStatusPopup}
               embedded={true}
-              selectedYear={selectedYear}
+              selectedEventYear={selectedEventYear}
             />
           )
         } else {
@@ -254,7 +254,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
               loggedInUser={loggedInUser}
               onUserUpdate={onUserUpdate}
               embedded={true}
-              selectedYear={selectedYear}
+              selectedEventYear={selectedEventYear}
             />
           )
         }
@@ -269,7 +269,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
-            selectedYear={selectedYear}
+            selectedEventYear={selectedEventYear}
           />
         )
       
@@ -283,7 +283,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
-            selectedYear={selectedYear}
+            selectedEventYear={selectedEventYear}
           />
         )
       
@@ -298,7 +298,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
-            selectedYear={selectedYear}
+            selectedEventYear={selectedEventYear}
           />
         )
       
@@ -324,7 +324,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
               // The modal will close automatically via RegisterModal's onClose after success
             }}
             embedded={true}
-            selectedYear={selectedYear}
+            selectedEventYear={selectedEventYear}
           />
         )
       
@@ -337,7 +337,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             sport={selectedSport.name}
             loggedInUser={loggedInUser}
             embedded={true}
-            selectedYear={selectedYear}
+            selectedEventYear={selectedEventYear}
             isActive={activeTab === 'points'}
             onStatusPopup={onStatusPopup}
           />
@@ -346,7 +346,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       default:
         return null
     }
-  }, [activeTab, selectedSport?.name, isTeam, legacySportType, isOpen, onClose, loggedInUser, onStatusPopup, onUserUpdate, isCaptainForThisSport, isEnrolledInTeam, selectedYear])
+  }, [activeTab, selectedSport?.name, isTeam, legacySportType, isOpen, onClose, loggedInUser, onStatusPopup, onUserUpdate, isCaptainForThisSport, isEnrolledInTeam, selectedEventYear])
 
   // Determine available tabs based on user type and sport type
   const getAvailableTabs = () => {

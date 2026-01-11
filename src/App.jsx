@@ -8,8 +8,9 @@ import Hero from './components/Hero'
 import SportsSection from './components/SportsSection'
 import RegisterModal from './components/RegisterModal'
 import LoginModal from './components/LoginModal'
-import AddCaptainModal from './components/AddCaptainModal'
-import RemoveCaptainModal from './components/RemoveCaptainModal'
+import CaptainManagementModal from './components/CaptainManagementModal'
+import CoordinatorManagementModal from './components/CoordinatorManagementModal'
+import BatchManagementModal from './components/BatchManagementModal'
 import TeamDetailsModal from './components/TeamDetailsModal'
 import ParticipantDetailsModal from './components/ParticipantDetailsModal'
 import PlayerListModal from './components/PlayerListModal'
@@ -24,15 +25,16 @@ import ErrorBoundary from './components/ErrorBoundary'
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
-  const [isAddCaptainModalOpen, setIsAddCaptainModalOpen] = useState(false)
-  const [isRemoveCaptainModalOpen, setIsRemoveCaptainModalOpen] = useState(false)
+  const [isCaptainManagementModalOpen, setIsCaptainManagementModalOpen] = useState(false)
+  const [isCoordinatorManagementModalOpen, setIsCoordinatorManagementModalOpen] = useState(false)
+  const [isBatchManagementModalOpen, setIsBatchManagementModalOpen] = useState(false)
   const [isTeamDetailsModalOpen, setIsTeamDetailsModalOpen] = useState(false)
   const [isParticipantDetailsModalOpen, setIsParticipantDetailsModalOpen] = useState(false)
   const [isPlayerListModalOpen, setIsPlayerListModalOpen] = useState(false)
   const [isEventScheduleModalOpen, setIsEventScheduleModalOpen] = useState(false)
   const [isSportDetailsModalOpen, setIsSportDetailsModalOpen] = useState(false)
   const [isAdminDashboardModalOpen, setIsAdminDashboardModalOpen] = useState(false)
-  const [selectedYear, setSelectedYear] = useState(null) // Admin can select a year to view
+  const [selectedEventYear, setSelectedEventYear] = useState(null) // Admin can select an event year to view
   const [selectedSport, setSelectedSport] = useState(null)
   const [selectedEventSport, setSelectedEventSport] = useState(null)
   const [statusPopup, setStatusPopup] = useState({ show: false, message: '', type: 'success' })
@@ -46,10 +48,10 @@ function App() {
   const [isLoadingUser, setIsLoadingUser] = useState(true)
   
   // Fetch active event year for dynamic event name display
-  const { eventYearConfig } = useEventYear()
+  const { eventYear, eventYearConfig, loading: eventYearLoading } = useEventYear()
   const eventDisplayName = eventYearConfig 
-    ? `${eventYearConfig.event_name} - ${eventYearConfig.year}`
-    : 'Championship' // Fallback to default value if no active year
+    ? `${eventYearConfig.event_name} - ${eventYearConfig.event_year}`
+    : 'Championship' // Fallback to default value if no active event year
   const eventOrganizer = eventYearConfig?.event_organizer || 'Events Community'
 
   // Fetch user data from server on mount if token exists
@@ -336,7 +338,24 @@ function App() {
 
   const handleExportExcel = async () => {
     try {
-      const response = await fetchWithAuth('/api/export-excel')
+      // Wait for event year to load if still loading
+      if (eventYearLoading) {
+        showStatusPopup('⏳ Please wait while event year is being loaded...', 'info', 2000)
+        return
+      }
+
+      // Validate event year exists before export
+      if (!eventYear) {
+        showStatusPopup(
+          '❌ No active event year found. Please ensure an event year is configured.',
+          'error',
+          4000
+        )
+        return
+      }
+
+      // Use eventYear (already validated to exist)
+      const response = await fetchWithAuth(`/api/export-excel?event_year=${eventYear}`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -432,19 +451,20 @@ function App() {
                 onRegisterClick={() => setIsModalOpen(true)} 
                 onLoginClick={() => setIsLoginModalOpen(true)}
                 onLogout={handleLogout}
-                onAddCaptainClick={() => setIsAddCaptainModalOpen(true)}
-                onRemoveCaptainClick={() => setIsRemoveCaptainModalOpen(true)}
+                onCaptainManagementClick={() => setIsCaptainManagementModalOpen(true)}
+                onCoordinatorManagementClick={() => setIsCoordinatorManagementModalOpen(true)}
+                onBatchManagementClick={() => setIsBatchManagementModalOpen(true)}
                 onListPlayersClick={() => setIsPlayerListModalOpen(true)}
                 onExportExcel={handleExportExcel}
                 onAdminDashboardClick={() => setIsAdminDashboardModalOpen(true)}
-                onYearChange={(year) => {
-                  setSelectedYear(year)
-                  // Clear caches when year changes
+                onEventYearChange={(eventYear) => {
+                  setSelectedEventYear(eventYear)
+                  // Clear caches when event year changes
                   clearCache('/api/sports')
                   clearCache('/api/sports-counts')
                   clearCache('/api/event-schedule')
                 }}
-                selectedYear={selectedYear}
+                selectedEventYear={selectedEventYear}
                 loggedInUser={loggedInUser}
               />
               <SportsSection 
@@ -470,17 +490,23 @@ function App() {
         onLoginSuccess={handleLoginSuccess}
         onStatusPopup={showStatusPopup}
       />
-      <AddCaptainModal
-        isOpen={isAddCaptainModalOpen}
-        onClose={() => setIsAddCaptainModalOpen(false)}
+      <CaptainManagementModal
+        isOpen={isCaptainManagementModalOpen}
+        onClose={() => setIsCaptainManagementModalOpen(false)}
         onStatusPopup={showStatusPopup}
-        selectedYear={selectedYear}
+        selectedEventYear={selectedEventYear}
       />
-      <RemoveCaptainModal
-        isOpen={isRemoveCaptainModalOpen}
-        onClose={() => setIsRemoveCaptainModalOpen(false)}
+      <CoordinatorManagementModal
+        isOpen={isCoordinatorManagementModalOpen}
+        onClose={() => setIsCoordinatorManagementModalOpen(false)}
         onStatusPopup={showStatusPopup}
-        selectedYear={selectedYear}
+        selectedEventYear={selectedEventYear}
+      />
+      <BatchManagementModal
+        isOpen={isBatchManagementModalOpen}
+        onClose={() => setIsBatchManagementModalOpen(false)}
+        onStatusPopup={showStatusPopup}
+        selectedEventYear={selectedEventYear}
       />
       <TeamDetailsModal
         isOpen={isTeamDetailsModalOpen}
@@ -491,7 +517,7 @@ function App() {
         sport={selectedSport?.name}
         loggedInUser={loggedInUser}
         onStatusPopup={showStatusPopup}
-        selectedYear={selectedYear}
+        selectedEventYear={selectedEventYear}
       />
       <ParticipantDetailsModal
         isOpen={isParticipantDetailsModalOpen}
@@ -502,13 +528,13 @@ function App() {
         sport={selectedSport?.name}
         loggedInUser={loggedInUser}
         onStatusPopup={showStatusPopup}
-        selectedYear={selectedYear}
+        selectedEventYear={selectedEventYear}
       />
       <PlayerListModal
         isOpen={isPlayerListModalOpen}
         onClose={() => setIsPlayerListModalOpen(false)}
         onStatusPopup={showStatusPopup}
-        selectedYear={selectedYear}
+        selectedEventYear={selectedEventYear}
       />
       <EventScheduleModal
         isOpen={isEventScheduleModalOpen}
@@ -520,7 +546,7 @@ function App() {
         sportType={selectedEventSport?.sportType || (selectedEventSport?.type === 'team' ? 'team' : 'individual')}
         loggedInUser={loggedInUser}
         onStatusPopup={showStatusPopup}
-        selectedYear={selectedYear}
+        selectedEventYear={selectedEventYear}
       />
       <SportDetailsModal
         isOpen={isSportDetailsModalOpen}
@@ -533,16 +559,16 @@ function App() {
         onStatusPopup={showStatusPopup}
         onUserUpdate={handleUserUpdate}
         onEventScheduleClick={handleEventScheduleClick}
-        selectedYear={selectedYear}
+        selectedEventYear={selectedEventYear}
       />
       <AdminDashboardModal
         isOpen={isAdminDashboardModalOpen}
         onClose={() => setIsAdminDashboardModalOpen(false)}
         onStatusPopup={showStatusPopup}
-        selectedYear={selectedYear}
-        onYearChange={(year) => {
-          setSelectedYear(year)
-          // Clear caches when year changes
+        selectedEventYear={selectedEventYear}
+          onEventYearChange={(eventYear) => {
+            setSelectedEventYear(eventYear)
+            // Clear caches when event year changes
           clearCache('/api/sports')
           clearCache('/api/sports-counts')
           clearCache('/api/event-schedule')

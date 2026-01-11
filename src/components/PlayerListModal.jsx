@@ -6,7 +6,7 @@ import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { GENDER_OPTIONS, DEFAULT_PLAYERS_PAGE_SIZE } from '../constants/app'
 import logger from '../utils/logger'
 
-function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
+function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) {
   const [players, setPlayers] = useState([])
   const [loading, setLoading] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState(null)
@@ -42,7 +42,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
   const { loading: deleting, execute: executeDelete } = useApi()
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const { departments: departmentOptions, loading: loadingDepartments } = useDepartments()
-  const eventYear = useEventYearWithFallback(selectedYear)
+  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
   const isRefreshingRef = useRef(false) // Use ref to track if we're refreshing after update
   const searchTimeoutRef = useRef(null) // Use ref for debouncing search
   const clearButtonRef = useRef(null) // Ref for clear button
@@ -236,7 +236,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
       full_name: player.full_name,
       gender: player.gender,
       department_branch: player.department_branch,
-      year: player.year, // Store year string
+      batch_name: player.batch_name, // Store batch name
       mobile_number: player.mobile_number,
       email_id: player.email_id,
     })
@@ -1031,7 +1031,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                             {player.full_name}
                           </div>
                           <div className="text-[#a5b4fc] text-[0.7rem] sm:text-[0.8rem] mt-0.5 sm:mt-1">
-                            Reg. No: {player.reg_number} • {player.department_branch} • {player.year || ''}
+                            Reg. No: {player.reg_number} • {player.department_branch} • {player.batch_name || ''}
                           </div>
                         </div>
                       </div>
@@ -1089,9 +1089,9 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedYear }) {
                         />
 
                         <Input
-                          label="Year"
+                          label="Batch"
                           type="text"
-                          value={editedData.year || ''}
+                          value={editedData.batch_name || ''}
                           disabled={true}
                           required
                         />

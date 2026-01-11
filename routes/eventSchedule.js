@@ -7,7 +7,7 @@ import express from 'express'
 import EventSchedule from '../models/EventSchedule.js'
 import Player from '../models/Player.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
-import { requireEventPeriod, isMatchDateWithinEventRange } from '../middleware/dateRestrictions.js'
+import { requireEventPeriod, requireEventSchedulingPeriod, requireEventStatusUpdatePeriod, isMatchDateWithinEventRange } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import logger from '../utils/logger.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
@@ -258,8 +258,8 @@ router.post(
         // Validate number_of_participants for multi_team
         if (number_of_participants !== undefined) {
           const num = parseInt(number_of_participants)
-          if (isNaN(num) || num < 3 || num > 20) {
-            return sendErrorResponse(res, 400, 'number_of_participants must be between 3 and 20')
+          if (isNaN(num) || num < 3 || num > 100) {
+            return sendErrorResponse(res, 400, 'number_of_participants must be between 3 and 100')
           }
           if (uniqueTeams.length !== num) {
             return sendErrorResponse(res, 400, `Number of teams (${uniqueTeams.length}) does not match number_of_participants (${num})`)
@@ -330,8 +330,8 @@ router.post(
         // Validate number_of_participants for multi_player
         if (number_of_participants !== undefined) {
           const num = parseInt(number_of_participants)
-          if (isNaN(num) || num < 3 || num > 20) {
-            return sendErrorResponse(res, 400, 'number_of_participants must be between 3 and 20')
+          if (isNaN(num) || num < 3 || num > 100) {
+            return sendErrorResponse(res, 400, 'number_of_participants must be between 3 and 100')
           }
           if (uniquePlayers.length !== num) {
             return sendErrorResponse(res, 400, `Number of players (${uniquePlayers.length}) does not match number_of_participants (${num})`)
@@ -647,7 +647,7 @@ router.put(
   '/event-schedule/:id',
   authenticateToken,
   requireAdmin,
-  requireEventPeriod,
+  requireEventStatusUpdatePeriod,
   asyncHandler(async (req, res) => {
     const { id } = req.params
     const { winner, qualifiers, status, match_date } = req.body

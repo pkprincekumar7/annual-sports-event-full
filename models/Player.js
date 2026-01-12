@@ -41,6 +41,10 @@ const playerSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true
+  },
+  change_password_required: {
+    type: Boolean,
+    default: false
   }
   // participated_in and captain_in removed - computed dynamically from Sports collection
 }, {

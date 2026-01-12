@@ -4,7 +4,7 @@ import { useApi } from '../hooks'
 import { API_URL, clearCache } from '../utils/api'
 import logger from '../utils/logger'
 
-function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
+function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup, onResetPasswordClick }) {
   const [regNumber, setRegNumber] = useState('')
   const [password, setPassword] = useState('')
   const { loading, execute } = useApi()
@@ -54,12 +54,18 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
               localStorage.setItem('authToken', data.token)
             }
             
-            onStatusPopup('✅ Login successful!', 'success', 2000)
             // Pass player data to App.jsx (will be stored in memory only)
-            onLoginSuccess(data.player, data.token)
+            // Also pass change_password_required flag so App.jsx can handle showing the modal
+            onLoginSuccess(data.player, data.token, data.change_password_required)
             setRegNumber('')
             setPassword('')
             onClose()
+            
+            // Show success message only if password change is not required
+            // If password change is required, App.jsx will show the change password modal
+            if (!data.change_password_required) {
+              onStatusPopup('✅ Login successful!', 'success', 2000)
+            }
           },
           onError: (err) => {
             // The useApi hook extracts the error message from the API response
@@ -123,10 +129,23 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup }) {
             Cancel
           </Button>
         </div>
+        {onResetPasswordClick && (
+          <div className="mt-3 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                onClose()
+                onResetPasswordClick()
+              }}
+              className="text-sm text-[#8b5cf6] hover:text-[#a78bfa] underline"
+            >
+              Forgot Password? Reset it here
+            </button>
+          </div>
+        )}
       </form>
     </Modal>
   )
 }
 
 export default LoginModal
-

@@ -4,7 +4,7 @@ import { formatDateRange } from '../utils/dateFormatters'
 import EventYearSelector from './EventYearSelector'
 import ProfileModal from './ProfileModal'
 
-function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCaptainManagementClick, onCoordinatorManagementClick, onBatchManagementClick, onListPlayersClick, onExportExcel, onAdminDashboardClick, onEventYearChange, selectedEventYear, loggedInUser }) {
+function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCaptainManagementClick, onCoordinatorManagementClick, onBatchManagementClick, onListPlayersClick, onExportExcel, onAdminDashboardClick, onEventYearChange, selectedEventYear, loggedInUser, onChangePasswordClick, onResetPasswordClick }) {
   const { eventYearConfig } = useEventYear()
   const eventOrganizer = eventYearConfig?.event_organizer || 'Events Community'
   const [eventCountdown, setEventCountdown] = useState('')
@@ -176,6 +176,17 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
                         >
                           <span className="text-[#ffe66d]">●</span> Profile
                         </button>
+                        {onChangePasswordClick && (
+                          <button
+                            onClick={() => {
+                              setIsMenuOpen(false)
+                              onChangePasswordClick()
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
+                          >
+                            <span className="text-[#8b5cf6]">●</span> Change Password
+                          </button>
+                        )}
                         {loggedInUser?.reg_number === 'admin' && onCaptainManagementClick && (
                           <button
                             onClick={() => {
@@ -270,11 +281,11 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
             )}
           </div>
         ) : (
-          <div className="mt-4 mb-2 text-center flex gap-4 justify-center items-center">
+          <div className="mt-4 mb-2 text-center flex gap-2 sm:gap-4 justify-center items-center flex-wrap">
             {onLoginClick && (
               <button
                 onClick={onLoginClick}
-                className="px-8 py-3 rounded-full border border-[rgba(148,163,184,0.7)] text-base font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] shadow-[0_10px_24px_rgba(0,0,0,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(0,0,0,0.8)]"
+                className="px-4 py-2 sm:px-8 sm:py-3 rounded-full border border-[rgba(148,163,184,0.7)] text-sm sm:text-base font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] shadow-[0_10px_24px_rgba(0,0,0,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(0,0,0,0.8)]"
               >
                 Login
               </button>
@@ -282,9 +293,17 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
             {onRegisterClick && (
               <button
                 onClick={onRegisterClick}
-                className="px-8 py-3 rounded-full border-none text-base font-bold uppercase tracking-[0.1em] cursor-pointer bg-gradient-to-r from-[#ffe66d] to-[#ff9f1c] text-[#111827] shadow-[0_10px_24px_rgba(250,204,21,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(250,204,21,0.75)]"
+                className="px-4 py-2 sm:px-8 sm:py-3 rounded-full border-none text-sm sm:text-base font-bold uppercase tracking-[0.1em] cursor-pointer bg-gradient-to-r from-[#ffe66d] to-[#ff9f1c] text-[#111827] shadow-[0_10px_24px_rgba(250,204,21,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(250,204,21,0.75)]"
               >
                 Register
+              </button>
+            )}
+            {onResetPasswordClick && (
+              <button
+                onClick={onResetPasswordClick}
+                className="px-4 py-2 sm:px-8 sm:py-3 rounded-full border border-[rgba(148,163,184,0.7)] text-sm sm:text-base font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] shadow-[0_10px_24px_rgba(0,0,0,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(0,0,0,0.8)]"
+              >
+                Reset Password
               </button>
             )}
           </div>

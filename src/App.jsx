@@ -8,6 +8,8 @@ import Hero from './components/Hero'
 import SportsSection from './components/SportsSection'
 import RegisterModal from './components/RegisterModal'
 import LoginModal from './components/LoginModal'
+import ChangePasswordModal from './components/ChangePasswordModal'
+import ResetPasswordModal from './components/ResetPasswordModal'
 import CaptainManagementModal from './components/CaptainManagementModal'
 import CoordinatorManagementModal from './components/CoordinatorManagementModal'
 import BatchManagementModal from './components/BatchManagementModal'
@@ -25,6 +27,8 @@ import ErrorBoundary from './components/ErrorBoundary'
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false)
+  const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false)
   const [isCaptainManagementModalOpen, setIsCaptainManagementModalOpen] = useState(false)
   const [isCoordinatorManagementModalOpen, setIsCoordinatorManagementModalOpen] = useState(false)
   const [isBatchManagementModalOpen, setIsBatchManagementModalOpen] = useState(false)
@@ -267,7 +271,7 @@ function App() {
     loginSuccessRef.current = false // Reset the flag
   }
 
-  const handleLoginSuccess = (player, token) => {
+  const handleLoginSuccess = (player, token, changePasswordRequired = false) => {
     // Store player data in memory only (excluding password)
     // Do NOT store in localStorage - only token is stored
     setLoggedInUser(player)
@@ -282,6 +286,13 @@ function App() {
     setIsLoginModalOpen(false)
     // Clear selected sport - let user choose what to do after login
     setSelectedSport(null)
+    
+    // If password change is required, show change password modal
+    if (changePasswordRequired) {
+      setTimeout(() => {
+        setIsChangePasswordModalOpen(true)
+      }, 300)
+    }
   }
 
   // Function to refresh user data from server (optimized with cache)
@@ -457,6 +468,8 @@ function App() {
                 onListPlayersClick={() => setIsPlayerListModalOpen(true)}
                 onExportExcel={handleExportExcel}
                 onAdminDashboardClick={() => setIsAdminDashboardModalOpen(true)}
+                onChangePasswordClick={() => setIsChangePasswordModalOpen(true)}
+                onResetPasswordClick={() => setIsResetPasswordModalOpen(true)}
                 onEventYearChange={(eventYear) => {
                   setSelectedEventYear(eventYear)
                   // Clear caches when event year changes
@@ -488,6 +501,20 @@ function App() {
         isOpen={isLoginModalOpen}
         onClose={handleCloseLoginModal}
         onLoginSuccess={handleLoginSuccess}
+        onStatusPopup={showStatusPopup}
+      />
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onClose={() => setIsChangePasswordModalOpen(false)}
+        onStatusPopup={showStatusPopup}
+        onPasswordChanged={async () => {
+          // Refresh user data after password change
+          await refreshUserData()
+        }}
+      />
+      <ResetPasswordModal
+        isOpen={isResetPasswordModalOpen}
+        onClose={() => setIsResetPasswordModalOpen(false)}
         onStatusPopup={showStatusPopup}
       />
       <CaptainManagementModal

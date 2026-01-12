@@ -65,6 +65,26 @@ PORT=3001
 MONGODB_URI=mongodb://localhost:27017/annual-sports-event
 JWT_SECRET=your-secret-key-change-in-production
 REGISTRATION_DEADLINE=2026-01-07T00:00:00
+
+# Email Configuration (for password reset)
+# Option 1: Gmail SMTP (Free - recommended)
+EMAIL_PROVIDER=gmail
+GMAIL_USER=your-email@gmail.com
+GMAIL_APP_PASSWORD=your-16-char-app-password
+EMAIL_FROM=your-email@gmail.com
+EMAIL_FROM_NAME=Sports Event Management
+APP_NAME=Sports Event Management System
+
+# Option 2: SendGrid (Free tier: 100 emails/day)
+# EMAIL_PROVIDER=sendgrid
+# SENDGRID_USER=apikey
+# SENDGRID_API_KEY=your-sendgrid-api-key
+# EMAIL_FROM=your-verified-sender@yourdomain.com
+
+# Option 3: Resend (Free tier: 3,000 emails/month)
+# EMAIL_PROVIDER=resend
+# RESEND_API_KEY=your-resend-api-key
+# EMAIL_FROM=noreply@yourdomain.com
 ```
 
 For production, update these values accordingly:
@@ -119,6 +139,19 @@ The application uses environment variables for configuration:
 - `JWT_SECRET` - Secret key for JWT token signing (default: `your-secret-key-change-in-production`)
 
 **Note:** Registration and event periods are now managed per event year through the Event Year management interface. The `REGISTRATION_DEADLINE` environment variable is no longer used.
+
+### Email Configuration Variables
+- `EMAIL_PROVIDER` - Email provider: `gmail`, `sendgrid`, `resend`, or `smtp` (default: `gmail`)
+- `GMAIL_USER` - Gmail email address (required if using Gmail)
+- `GMAIL_APP_PASSWORD` - Gmail app password (required if using Gmail)
+- `SENDGRID_USER` - SendGrid username (usually `apikey`, required if using SendGrid)
+- `SENDGRID_API_KEY` - SendGrid API key (required if using SendGrid)
+- `RESEND_API_KEY` - Resend API key (required if using Resend)
+- `EMAIL_FROM` - Sender email address (optional, uses provider default if not set)
+- `EMAIL_FROM_NAME` - Sender display name (optional, default: `Sports Event Management`)
+- `APP_NAME` - Application name for emails (optional, default: `Sports Event Management System`)
+
+**Note:** For detailed email setup instructions, see **[EMAIL_SETUP.md](./EMAIL_SETUP.md)**.
 
 Create a `.env` file in the root directory to set these values. For production builds, set these variables in your hosting platform's environment settings.
 

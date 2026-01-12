@@ -66,6 +66,16 @@ const eventScheduleSchema = new mongoose.Schema({
     type: String,
     enum: ['completed', 'draw', 'cancelled', 'scheduled'],
     default: 'scheduled'
+  },
+  createdBy: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  updatedBy: {
+    type: String,
+    trim: true,
+    default: null
   }
 }, {
   timestamps: true

@@ -255,7 +255,12 @@ router.post(
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
-    const { batch_name, ...playerData } = trimmed // Extract batch_name, rest goes to player
+    const { batch_name, createdBy, updatedBy, ...playerData } = trimmed // Extract batch_name and exclude createdBy/updatedBy (set from token only)
+
+    // Explicitly reject if user tries to send createdBy or updatedBy
+    if (createdBy !== undefined || updatedBy !== undefined) {
+      return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+    }
 
     const validation = await validatePlayerData(playerData)
 
@@ -334,13 +339,20 @@ router.put(
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
-    const validation = await validateUpdatePlayerData(trimmed)
+    const { createdBy, updatedBy, ...updateData } = trimmed // Exclude createdBy/updatedBy (set from token only)
+
+    // Explicitly reject if user tries to send createdBy or updatedBy
+    if (createdBy !== undefined || updatedBy !== undefined) {
+      return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+    }
+
+    const validation = await validateUpdatePlayerData(updateData)
 
     if (!validation.isValid) {
       return sendErrorResponse(res, 400, validation.errors.join('; '))
     }
 
-    const { reg_number, full_name, department_branch, mobile_number, email_id, gender } = trimmed
+    const { reg_number, full_name, department_branch, mobile_number, email_id, gender } = updateData
 
     const player = await Player.findOne({ reg_number })
     if (!player) {
@@ -365,6 +377,9 @@ router.put(
     player.department_branch = department_branch
     player.mobile_number = mobile_number
     player.email_id = email_id
+
+    // Set updatedBy from token
+    player.updatedBy = req.user.reg_number
 
     await player.save()
 
@@ -457,7 +472,7 @@ router.post(
       sportQuery.event_name = eventName
     }
     
-    const allSports = await Sport.find(sportQuery).lean()).lean()
+    const allSports = await Sport.find(sportQuery).lean()
 
     // OPTIMIZATION: Build enrollment maps for all players
     const enrollmentsMap = {}
@@ -631,7 +646,14 @@ router.get(
         { 'teams_participated.players': reg_number },
         { players_participated: reg_number }
       ]
-    }).lean()
+    }
+    
+    // Add event_name to query if available
+    if (eventName) {
+      sportQuery.event_name = eventName
+    }
+    
+    const sports = await Sport.find(sportQuery).lean()
 
     const nonTeamEvents = []
     const teams = []
@@ -849,6 +871,10 @@ router.delete(
         sport.players_participated = sport.players_participated.filter(
           p => p !== reg_number
         )
+        // Set updatedBy from token if available
+        if (req.user && req.user.reg_number) {
+          sport.updatedBy = req.user.reg_number
+        }
         await sport.save()
 
         // Clear cache for this sport

@@ -41,7 +41,14 @@ router.get('/active', asyncHandler(async (req, res) => {
  * Note: Department creation is not restricted by registration period
  */
 router.post('/', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
-  const { name, code, display_order } = req.body
+  const { createdBy, updatedBy, ...bodyData } = req.body
+  
+  // Explicitly reject if user tries to send createdBy or updatedBy
+  if (createdBy !== undefined || updatedBy !== undefined) {
+    return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+  }
+  
+  const { name, code, display_order } = bodyData
   
   if (!name || !name.trim()) {
     return sendErrorResponse(res, 400, 'Department name is required')
@@ -57,7 +64,7 @@ router.post('/', authenticateToken, requireAdmin, asyncHandler(async (req, res) 
     name: name.trim(),
     code: code?.trim() || '',
     display_order: display_order || 0,
-    created_by: req.user.reg_number
+    createdBy: req.user.reg_number
   })
   
   await department.save()
@@ -78,7 +85,14 @@ router.post('/', authenticateToken, requireAdmin, asyncHandler(async (req, res) 
  */
 router.put('/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
   const { id } = req.params
-  const { display_order } = req.body
+  const { createdBy, updatedBy, ...bodyData } = req.body
+  
+  // Explicitly reject if user tries to send createdBy or updatedBy
+  if (createdBy !== undefined || updatedBy !== undefined) {
+    return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+  }
+  
+  const { display_order } = bodyData
   
   // Check if trying to update immutable fields
   if (req.body.name !== undefined || req.body.code !== undefined) {
@@ -94,6 +108,9 @@ router.put('/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res
   if (display_order !== undefined) {
     department.display_order = display_order
   }
+  
+  // Set updatedBy from token
+  department.updatedBy = req.user.reg_number
   
   await department.save()
   

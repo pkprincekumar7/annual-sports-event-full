@@ -20,11 +20,17 @@ const departmentSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  created_by: {
+  createdBy: {
     type: String,
-    required: true,
-    trim: true
+    trim: true,
+    default: null
+  },
+  updatedBy: {
+    type: String,
+    trim: true,
+    default: null
   }
+  // Note: created_by field removed - using createdBy instead for consistency
 }, {
   timestamps: true
 })

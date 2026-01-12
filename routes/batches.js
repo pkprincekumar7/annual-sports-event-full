@@ -50,13 +50,20 @@ router.post(
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
-    const validation = validateBatchAssignment(trimmed)
+    const { createdBy, updatedBy, ...batchData } = trimmed // Exclude createdBy/updatedBy (set from token only)
+    
+    // Explicitly reject if user tries to send createdBy or updatedBy
+    if (createdBy !== undefined || updatedBy !== undefined) {
+      return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+    }
+    
+    const validation = validateBatchAssignment(batchData)
 
     if (!validation.isValid) {
       return sendErrorResponse(res, 400, validation.errors.join('; '))
     }
 
-    const { name, event_year } = trimmed
+    const { name, event_year } = batchData
 
     // Get event year with document (default to active event year if not provided)
     // Extract event_name from body if provided for composite key filtering
@@ -81,7 +88,8 @@ router.post(
       name: name.trim(),
       event_year: eventYear,
       event_name: eventName,
-      players: []
+      players: [],
+      createdBy: req.user.reg_number
     })
 
     await batch.save()

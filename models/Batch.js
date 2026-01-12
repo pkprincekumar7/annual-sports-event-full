@@ -20,6 +20,16 @@ const batchSchema = new mongoose.Schema({
     type: [String],
     default: []
     // Array of player registration numbers
+  },
+  createdBy: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  updatedBy: {
+    type: String,
+    trim: true,
+    default: null
   }
 }, {
   timestamps: true

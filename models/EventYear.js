@@ -45,11 +45,17 @@ const eventYearSchema = new mongoose.Schema({
     trim: true,
     default: 'Community Entertainment Fest'
   },
-  created_by: {
+  createdBy: {
     type: String,
-    required: true,
-    trim: true
+    trim: true,
+    default: null
+  },
+  updatedBy: {
+    type: String,
+    trim: true,
+    default: null
   }
+  // Note: created_by field removed - using createdBy instead for consistency
 }, {
   timestamps: true
 })

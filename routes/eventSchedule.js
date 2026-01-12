@@ -221,7 +221,14 @@ router.post(
   authenticateToken,
   requireEventPeriod,
   asyncHandler(async (req, res) => {
-    const { match_type, sports_name, teams, players, match_date, event_year, number_of_participants } = req.body
+    const { createdBy, updatedBy, ...bodyData } = req.body
+    
+    // Explicitly reject if user tries to send createdBy or updatedBy
+    if (createdBy !== undefined || updatedBy !== undefined) {
+      return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+    }
+    
+    const { match_type, sports_name, teams, players, match_date, event_year, number_of_participants } = bodyData
 
     // Get event year (default to active event year if not provided)
     // Extract event_name from body if provided for composite key filtering
@@ -638,7 +645,10 @@ router.post(
     }
 
     try {
-      const newMatch = new EventSchedule(matchData)
+      const newMatch = new EventSchedule({
+        ...matchData,
+        createdBy: req.user.reg_number
+      })
       await newMatch.save()
       
       // Clear caches using helper function
@@ -682,7 +692,14 @@ router.put(
   requireEventStatusUpdatePeriod,
   asyncHandler(async (req, res) => {
     const { id } = req.params
-    const { winner, qualifiers, status, match_date } = req.body
+    const { createdBy, updatedBy, ...bodyData } = req.body
+    
+    // Explicitly reject if user tries to send createdBy or updatedBy
+    if (createdBy !== undefined || updatedBy !== undefined) {
+      return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+    }
+    
+    const { winner, qualifiers, status, match_date } = bodyData
 
     // Find the match
     const match = await EventSchedule.findById(id)
@@ -872,6 +889,9 @@ router.put(
       }
     }
 
+    // Set updatedBy from token
+    updateData.updatedBy = req.user.reg_number
+
     // Update match
     const updatedMatch = await EventSchedule.findByIdAndUpdate(
       id,
@@ -885,7 +905,7 @@ router.put(
 
     // Update points table for league matches
     if (match.match_type === 'league') {
-      await updatePointsTable(updatedMatch, previousStatus, previousWinner)
+      await updatePointsTable(updatedMatch, previousStatus, previousWinner, req.user.reg_number)
     }
 
     // Clear caches using helper function (reuse sportDoc from above)

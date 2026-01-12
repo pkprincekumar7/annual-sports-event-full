@@ -70,7 +70,14 @@ router.get('/sports', asyncHandler(async (req, res) => {
  * Validates team_size only for team sports
  */
 router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
-    const { name, event_year, type, category, team_size, imageUri } = req.body
+    const { createdBy, updatedBy, ...bodyData } = req.body
+    
+    // Explicitly reject if user tries to send createdBy or updatedBy
+    if (createdBy !== undefined || updatedBy !== undefined) {
+      return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+    }
+    
+    const { name, event_year, type, category, team_size, imageUri } = bodyData
     
     if (!name || !name.trim()) {
     return sendErrorResponse(res, 400, 'Sport name is required')
@@ -117,7 +124,8 @@ router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPerio
       type,
       category,
     team_size: isTeamSportType(type) ? parsedTeamSize : null,
-      imageUri: imageUri?.trim() || null
+      imageUri: imageUri?.trim() || null,
+      createdBy: req.user.reg_number
     })
     
     await sport.save()
@@ -139,7 +147,14 @@ router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPerio
  */
 router.put('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
     const { id } = req.params
-  const { type, category, team_size, imageUri } = req.body
+  const { createdBy, updatedBy, ...bodyData } = req.body
+  
+  // Explicitly reject if user tries to send createdBy or updatedBy
+  if (createdBy !== undefined || updatedBy !== undefined) {
+    return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+  }
+  
+  const { type, category, team_size, imageUri } = bodyData
     
     const sport = await Sport.findById(id)
     if (!sport) {
@@ -211,6 +226,9 @@ router.put('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPe
     if (imageUri !== undefined) {
       sport.imageUri = imageUri?.trim() || null
     }
+    
+    // Set updatedBy from token
+    sport.updatedBy = req.user.reg_number
     
     await sport.save()
     

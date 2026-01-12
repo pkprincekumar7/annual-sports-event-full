@@ -85,6 +85,16 @@ const sportSchema = new mongoose.Schema({
   players_participated: {
     type: [String],
     default: []
+  },
+  createdBy: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  updatedBy: {
+    type: String,
+    trim: true,
+    default: null
   }
 }, {
   timestamps: true

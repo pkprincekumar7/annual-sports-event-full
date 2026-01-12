@@ -56,6 +56,16 @@ const pointsTableSchema = new mongoose.Schema({
     type: Number,
     required: true,
     default: 0
+  },
+  createdBy: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  updatedBy: {
+    type: String,
+    trim: true,
+    default: null
   }
 }, {
   timestamps: true

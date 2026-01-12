@@ -71,7 +71,14 @@ router.get('/active', asyncHandler(async (req, res) => {
  * Validates that registration start date is not in the past
  */
 router.post('/', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
-  const { event_year, event_name, event_dates, registration_dates, event_organizer, event_title, event_highlight } = req.body
+  const { createdBy, updatedBy, ...bodyData } = req.body
+  
+  // Explicitly reject if user tries to send createdBy or updatedBy
+  if (createdBy !== undefined || updatedBy !== undefined) {
+    return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+  }
+  
+  const { event_year, event_name, event_dates, registration_dates, event_organizer, event_title, event_highlight } = bodyData
   
   if (!event_year || !event_name || !event_dates || !registration_dates) {
     return sendErrorResponse(res, 400, 'All required fields are required (event_year, event_name, event_dates, registration_dates)')
@@ -121,7 +128,7 @@ router.post('/', authenticateToken, requireAdmin, requireRegistrationPeriod, asy
     event_organizer: event_organizer ? event_organizer.trim() : undefined, // Will use default if not provided
     event_title: event_title ? event_title.trim() : undefined, // Will use default if not provided
     event_highlight: event_highlight ? event_highlight.trim() : undefined, // Will use default if not provided
-    created_by: req.user.reg_number
+    createdBy: req.user.reg_number
   })
   
   await eventYear.save()
@@ -139,7 +146,14 @@ router.post('/', authenticateToken, requireAdmin, requireRegistrationPeriod, asy
  */
 router.put('/:event_year', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
   const { event_year } = req.params
-  const { event_name, event_dates, registration_dates, event_organizer, event_title, event_highlight } = req.body
+  const { createdBy, updatedBy, ...bodyData } = req.body
+  
+  // Explicitly reject if user tries to send createdBy or updatedBy
+  if (createdBy !== undefined || updatedBy !== undefined) {
+    return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+  }
+  
+  const { event_name, event_dates, registration_dates, event_organizer, event_title, event_highlight } = bodyData
   
   const eventYear = await EventYear.findOne({ event_year: parseInt(event_year) })
   if (!eventYear) {
@@ -210,6 +224,9 @@ router.put('/:event_year', authenticateToken, requireAdmin, requireRegistrationP
       eventYear.event_dates = finalEventDates
     }
   }
+  
+  // Set updatedBy from token
+  eventYear.updatedBy = req.user.reg_number
   
   await eventYear.save()
   

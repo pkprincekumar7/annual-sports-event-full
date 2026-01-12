@@ -119,6 +119,7 @@ export async function recalculatePointsTableForGender(sportName, eventYear, gend
   for (const [participant, stats] of pointsMap) {
     let pointsEntry = await PointsTable.findOne({
       event_year: eventYear,
+      event_name: sportDoc.event_name, // Include event_name for composite key
       sports_name: normalizedSportsName,
       participant: participant
     })
@@ -126,6 +127,7 @@ export async function recalculatePointsTableForGender(sportName, eventYear, gend
     if (!pointsEntry) {
       pointsEntry = new PointsTable({
         event_year: eventYear,
+        event_name: sportDoc.event_name, // Include event_name for composite key
         sports_name: normalizedSportsName,
         participant: participant,
         participant_type: participantType,
@@ -135,6 +137,7 @@ export async function recalculatePointsTableForGender(sportName, eventYear, gend
         matches_lost: 0,
         matches_draw: 0,
         matches_cancelled: 0
+        // Note: createdBy/updatedBy not set here as this is a utility function without user context
       })
     }
 
@@ -156,9 +159,10 @@ export async function recalculatePointsTableForGender(sportName, eventYear, gend
  * @param {Object} match - EventSchedule match document (updated match)
  * @param {string} previousStatus - Previous status of the match
  * @param {string} previousWinner - Previous winner of the match (if any)
+ * @param {string} userRegNumber - User registration number for updatedBy field (optional)
  * @returns {Promise<void>}
  */
-export async function updatePointsTable(match, previousStatus, previousWinner = null) {
+export async function updatePointsTable(match, previousStatus, previousWinner = null, userRegNumber = null) {
   // Only update points table for league matches
   if (match.match_type !== 'league') {
     return
@@ -212,6 +216,7 @@ export async function updatePointsTable(match, previousStatus, previousWinner = 
     if (!pointsEntry) {
       pointsEntry = new PointsTable({
         event_year: match.event_year,
+        event_name: match.event_name, // Add event_name for composite key
         sports_name: normalizedSportsName,
         participant: trimmedParticipant,
         participant_type: participantType,
@@ -220,8 +225,14 @@ export async function updatePointsTable(match, previousStatus, previousWinner = 
         matches_won: 0,
         matches_lost: 0,
         matches_draw: 0,
-        matches_cancelled: 0
+        matches_cancelled: 0,
+        createdBy: userRegNumber || null
       })
+    } else {
+      // Set updatedBy if entry exists
+      if (userRegNumber) {
+        pointsEntry.updatedBy = userRegNumber
+      }
     }
 
     // Trim previousWinner for consistent comparison

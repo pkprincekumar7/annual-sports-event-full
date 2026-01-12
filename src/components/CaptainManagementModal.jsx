@@ -134,7 +134,7 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
       confirmModal.close()
       setCaptainToRemove(null)
     }
-  }, [isOpen, confirmModal])
+  }, [isOpen]) // Removed confirmModal from dependencies to prevent infinite loop
 
   // Filter players based on search query
   const filteredPlayers = players.filter((player) =>

@@ -72,7 +72,7 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
       confirmModal.close()
       setBatchToRemove(null)
     }
-  }, [isOpen, confirmModal])
+  }, [isOpen]) // Removed confirmModal from dependencies to prevent infinite loop
 
   const handleAddBatchSubmit = async (e) => {
     e.preventDefault()

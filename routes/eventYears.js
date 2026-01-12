@@ -4,12 +4,31 @@ import Sport from '../models/Sport.js'
 import EventSchedule from '../models/EventSchedule.js'
 import PointsTable from '../models/PointsTable.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
-import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { findActiveEventYear, shouldEventYearBeActive, validateDateRelationships, getUpdatableDateFields } from '../utils/yearHelpers.js'
 
 const router = express.Router()
+
+// Helper function to format date for display
+function formatDate(date) {
+  const d = new Date(date)
+  const day = d.getDate()
+  const month = d.toLocaleString('en-US', { month: 'short' })
+  const year = d.getFullYear()
+  const ordinal = getOrdinal(day)
+  return `${ordinal} ${month} ${year}`
+}
+
+// Helper function to get ordinal suffix for day
+function getOrdinal(day) {
+  const j = day % 10
+  const k = day % 100
+  if (j === 1 && k !== 11) return day + 'st'
+  if (j === 2 && k !== 12) return day + 'nd'
+  if (j === 3 && k !== 13) return day + 'rd'
+  return day + 'th'
+}
 
 // Debug middleware removed - no longer needed
 
@@ -69,8 +88,9 @@ router.get('/active', asyncHandler(async (req, res) => {
  * Create new event year (admin only)
  * Validates date relationships: regStart < regEnd < eventStart < eventEnd
  * Validates that registration start date is not in the past
+ * Note: requireRegistrationPeriod is not applied here to allow creation of first event year
  */
-router.post('/', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
+router.post('/', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
   const { createdBy, updatedBy, ...bodyData } = req.body
   
   // Explicitly reject if user tries to send createdBy or updatedBy
@@ -143,8 +163,9 @@ router.post('/', authenticateToken, requireAdmin, requireRegistrationPeriod, asy
  * PUT /api/event-years/:event_year
  * Update event year configuration (admin only)
  * Validates date relationships and enforces update restrictions based on current date
+ * Allows updates until registration end date (current date <= registration end date)
  */
-router.put('/:event_year', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
+router.put('/:event_year', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
   const { event_year } = req.params
   const { createdBy, updatedBy, ...bodyData } = req.body
   
@@ -159,10 +180,20 @@ router.put('/:event_year', authenticateToken, requireAdmin, requireRegistrationP
   if (!eventYear) {
     return handleNotFoundError(res, 'Event year')
   }
-  
-  // Check if event has ended
+
+  // Check if update is allowed: must be before or on registration end date
   const now = new Date()
   now.setHours(0, 0, 0, 0)
+  const regEnd = new Date(eventYear.registration_dates.end)
+  regEnd.setHours(23, 59, 59, 999)
+  
+  if (now > regEnd) {
+    return sendErrorResponse(res, 400, 
+      `Cannot update event year. Updates are only allowed until registration end date (${formatDate(eventYear.registration_dates.end)}).`
+    )
+  }
+  
+  // Check if event has ended
   const eventEnd = new Date(eventYear.event_dates.end)
   eventEnd.setHours(23, 59, 59, 999)
   const eventHasEnded = now > eventEnd
@@ -240,8 +271,9 @@ router.put('/:event_year', authenticateToken, requireAdmin, requireRegistrationP
 /**
  * DELETE /api/event-years/:event_year
  * Delete event year (admin only, only if no data exists and not active)
+ * Allows deletion only before registration start date
  */
-router.delete('/:event_year', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
+router.delete('/:event_year', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
   const { event_year } = req.params
   const eventYear = parseInt(event_year)
   
@@ -249,8 +281,20 @@ router.delete('/:event_year', authenticateToken, requireAdmin, requireRegistrati
   if (!yearDoc) {
     return handleNotFoundError(res, 'Event year')
   }
+
+  // Check if deletion is allowed: must be before registration start date
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  const regStart = new Date(yearDoc.registration_dates.start)
+  regStart.setHours(0, 0, 0, 0)
   
-  // Prevent deletion of active event year (based on dates)
+  if (now >= regStart) {
+    return sendErrorResponse(res, 400, 
+      `Cannot delete event year. Deletion is only allowed before registration start date (${formatDate(yearDoc.registration_dates.start)}).`
+    )
+  }
+  
+  // Prevent deletion of active event year (based on dates) - additional safety check
   if (shouldEventYearBeActive(yearDoc)) {
     return sendErrorResponse(res, 400, 
       'Cannot delete the active event year. The event is currently active based on its registration and event dates.'

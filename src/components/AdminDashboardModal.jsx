@@ -229,6 +229,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
       }
       const createdYear = await response.json()
       clearCache('/api/event-years/active')
+      // Dispatch custom event to trigger refetch in all components using useEventYear hook
+      window.dispatchEvent(new CustomEvent('eventYearUpdated'))
       onStatusPopup('✅ Event year created successfully', 'success', 2500)
       setEventYearForm({ event_year: '', event_name: '', event_organizer: '', event_title: '', event_highlight: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
       // Add the newly created year to the list immediately (optimistic update)
@@ -351,6 +353,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
         throw new Error(error.error || 'Failed to update event year')
       }
       clearCache('/api/event-years/active')
+      // Dispatch custom event to trigger refetch in all components using useEventYear hook
+      window.dispatchEvent(new CustomEvent('eventYearUpdated'))
       onStatusPopup('✅ Event year updated successfully', 'success', 2500)
       setEditingEventYear(null)
       setEventYearForm({ event_year: '', event_name: '', event_organizer: '', event_title: '', event_highlight: '', event_dates: { start: '', end: '' }, registration_dates: { start: '', end: '' } })
@@ -398,6 +402,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
         throw new Error(error.error || 'Failed to delete event year')
       }
       clearCache('/api/event-years/active')
+      // Dispatch custom event to trigger refetch in all components using useEventYear hook
+      window.dispatchEvent(new CustomEvent('eventYearUpdated'))
       onStatusPopup('✅ Event year deleted successfully', 'success', 2500)
       setShowDeleteConfirm(null)
       fetchEventYearsData()
@@ -606,7 +612,6 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
         throw new Error(error.error || 'Failed to create department')
       }
       clearCache('/api/departments')
-      clearCache('/api/departments/active')
       onStatusPopup('✅ Department created successfully', 'success', 2500)
       setDeptForm({ name: '', code: '', display_order: 0 })
       fetchDepartmentsData()
@@ -631,7 +636,6 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
         throw new Error(error.error || 'Failed to update department')
       }
       clearCache('/api/departments')
-      clearCache('/api/departments/active')
       onStatusPopup('✅ Department updated successfully', 'success', 2500)
       setEditingDept(null)
       setDeptForm({ name: '', code: '', display_order: 0 })
@@ -651,7 +655,6 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
         throw new Error(error.error || 'Failed to delete department')
       }
       clearCache('/api/departments')
-      clearCache('/api/departments/active')
       onStatusPopup('✅ Department deleted successfully', 'success', 2500)
       setShowDeleteDeptConfirm(null)
       fetchDepartmentsData()

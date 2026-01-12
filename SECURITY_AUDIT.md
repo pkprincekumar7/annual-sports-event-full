@@ -98,7 +98,7 @@ This document provides a comprehensive security audit of the Annual Sports Event
 
 #### Department Management
 10. `GET /api/departments` - ✅ `authenticateToken, requireAdmin`
-11. `GET /api/departments/active` - ✅ `authenticateToken, requireAdmin`
+11. `GET /api/departments` - ✅ Public (no auth required - departments are not year-dependent)
 12. `POST /api/departments` - ✅ `authenticateToken, requireAdmin`
 13. `PUT /api/departments/:id` - ✅ `authenticateToken, requireAdmin`
 14. `DELETE /api/departments/:id` - ✅ `authenticateToken, requireAdmin`

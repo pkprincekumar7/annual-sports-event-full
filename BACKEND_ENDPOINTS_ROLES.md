@@ -302,14 +302,8 @@ This document lists all backend endpoints and the roles that can access them, al
 ## Department Routes (`/api/departments`)
 
 ### GET `/api/departments`
-- **Access**: Authenticated (Admin, Coordinator, Captain, Player)
-- **Description**: Get all departments (sorted by display_order)
-- **Auth**: `authenticateToken`
-- **Date Validation**: None (GET requests are exempt from registration deadline check)
-
-### GET `/api/departments/active`
 - **Access**: Public
-- **Description**: Get all departments (public, for dropdowns)
+- **Description**: Get all departments (sorted by display_order). Departments are not year-dependent, so there's no "active" concept.
 - **Auth**: None
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
 
@@ -389,7 +383,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - POST `/api/login`
 - GET `/api/sports`
 - GET `/api/sports/:name`
-- GET `/api/departments/active`
+- GET `/api/departments`
 - GET `/api/event-years/active`
 - POST `/api/save-player` (during registration period)
 

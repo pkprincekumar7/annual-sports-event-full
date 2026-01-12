@@ -10,7 +10,6 @@ const cache = new Map()
 // Cache TTL configuration (in milliseconds)
 const CACHE_TTL = {
   '/api/departments': 10000, // 10 seconds
-  '/api/departments/active': 10000, // 10 seconds
   '/api/event-years/active': 10000, // 10 seconds
   '/api/sports': 10000, // 10 seconds
   '/api/sports-counts': 10000, // 10 seconds

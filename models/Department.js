@@ -12,10 +12,6 @@ const departmentSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
-  is_active: {
-    type: Boolean,
-    default: true
-  },
   display_order: {
     type: Number,
     default: 0
@@ -37,7 +33,7 @@ const departmentSchema = new mongoose.Schema({
 
 // Create indexes for faster lookups
 departmentSchema.index({ name: 1 }, { unique: true })
-departmentSchema.index({ is_active: 1, display_order: 1 }) // For efficient queries of active departments sorted by display_order
+departmentSchema.index({ display_order: 1 }) // For efficient queries sorted by display_order
 
 const Department = mongoose.model('Department', departmentSchema)
 

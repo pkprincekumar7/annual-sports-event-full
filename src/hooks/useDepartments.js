@@ -1,6 +1,7 @@
 /**
  * Custom hook to fetch departments
- * Fetches active departments for dropdowns
+ * Fetches all departments for dropdowns
+ * Note: Departments are not year-dependent
  */
 
 import { useState, useEffect } from 'react'
@@ -18,7 +19,7 @@ export function useDepartments() {
       setError(null)
       
       try {
-        const response = await fetchWithAuth('/api/departments/active')
+        const response = await fetchWithAuth('/api/departments')
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)

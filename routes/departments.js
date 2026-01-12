@@ -10,23 +10,11 @@ const router = express.Router()
 
 /**
  * GET /api/departments
- * Get all departments (public or authenticated)
+ * Get all departments (public)
  * Sort by display_order ascending
+ * Note: Departments are not year-dependent, so there's no "active" concept
  */
-router.get('/', authenticateToken, asyncHandler(async (req, res) => {
-  const departments = await Department.find({})
-    .sort({ display_order: 1, name: 1 })
-    .lean()
-  
-  return sendSuccessResponse(res, { departments })
-}))
-
-/**
- * GET /api/departments/active
- * Get all departments (public, for dropdowns)
- * Sort by display_order ascending
- */
-router.get('/active', asyncHandler(async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
   const departments = await Department.find({})
     .sort({ display_order: 1, name: 1 })
     .lean()
@@ -71,7 +59,6 @@ router.post('/', authenticateToken, requireAdmin, asyncHandler(async (req, res) 
   
   // Clear department cache
   clearCache('/api/departments')
-  clearCache('/api/departments/active')
   
   return sendSuccessResponse(res, department, 'Department created successfully', 201)
 }))
@@ -116,7 +103,6 @@ router.put('/:id', authenticateToken, requireAdmin, asyncHandler(async (req, res
   
   // Clear department cache
   clearCache('/api/departments')
-  clearCache('/api/departments/active')
   
   return sendSuccessResponse(res, department, 'Department updated successfully')
 }))
@@ -148,7 +134,6 @@ router.delete('/:id', authenticateToken, requireAdmin, asyncHandler(async (req, 
   
   // Clear department cache
   clearCache('/api/departments')
-  clearCache('/api/departments/active')
   
   return sendSuccessResponse(res, {}, 'Department deleted successfully')
 }))

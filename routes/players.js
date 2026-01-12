@@ -33,6 +33,7 @@ async function addComputedFields(player, eventYear = null) {
   const participation = await computePlayerParticipation(playerObj.reg_number, eventYear)
   playerObj.participated_in = participation.participated_in
   playerObj.captain_in = participation.captain_in
+  playerObj.coordinator_in = participation.coordinator_in
   
   // Get batch name from Batch collection
   if (eventYear) {
@@ -54,7 +55,7 @@ async function addComputedFields(player, eventYear = null) {
 /**
  * GET /api/me
  * Get current authenticated user data
- * Add computed participated_in, captain_in, and batch_name fields (filtered by active event year or provided event year)
+ * Add computed participated_in, captain_in, coordinator_in, and batch_name fields (filtered by active event year or provided event year)
  */
 router.get(
   '/me',
@@ -111,7 +112,7 @@ router.get(
 /**
  * GET /api/players
  * Get players (requires authentication)
- * Add computed participated_in, captain_in, and batch_name fields (filtered by active event year or provided event year)
+ * Add computed participated_in, captain_in, coordinator_in, and batch_name fields (filtered by active event year or provided event year)
  * Supports search query parameter to search by registration number or name
  * 
  * Pagination behavior:
@@ -208,9 +209,10 @@ router.get(
     // Add computed fields to all players using batch results
     const playersWithComputed = players.map(player => {
       const playerObj = player
-      const participation = participationMap[player.reg_number] || { participated_in: [], captain_in: [] }
+      const participation = participationMap[player.reg_number] || { participated_in: [], captain_in: [], coordinator_in: [] }
       playerObj.participated_in = participation.participated_in
       playerObj.captain_in = participation.captain_in
+      playerObj.coordinator_in = participation.coordinator_in
       return playerObj
     })
 

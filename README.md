@@ -380,8 +380,7 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
 - `DELETE /api/sports/:id` - Delete sport (admin only, only if no matches or points entries exist)
 
 #### Department Management
-- `GET /api/departments` - Get all departments
-- `GET /api/departments/active` - Get active departments
+- `GET /api/departments` - Get all departments (public, departments are not year-dependent)
 - `POST /api/departments` - Create new department (admin only)
 - `PUT /api/departments/:id` - Update department (admin only, only display_order can be updated)
 - `DELETE /api/departments/:id` - Delete department (admin only, only if no players are registered)

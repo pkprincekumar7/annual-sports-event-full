@@ -106,7 +106,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
       setLoadingSports(true)
       setError(null)
       try {
-        const response = await fetchWithAuth(`/api/sports?event_year=${eventYear}`, {
+        const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports', eventYear, null, eventName), {
           signal: abortController.signal,
         })
 
@@ -182,7 +182,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
       return
     }
 
-    clearSportManagementCaches(eventYear)
+    clearSportManagementCaches(eventYear, eventName)
 
     let isMounted = true
     const abortController = new AbortController()

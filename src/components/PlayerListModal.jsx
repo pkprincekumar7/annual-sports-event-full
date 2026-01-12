@@ -55,7 +55,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
   const fetchPlayers = async (signal = null, showError = true, search = null, page = 1) => {
     setLoading(true)
     try {
-      let url = buildApiUrlWithYear('/api/players', eventYear)
+      let url = buildApiUrlWithYear('/api/players', eventYear, null, eventName)
       url += `&page=${page}&limit=${PAGE_SIZE}`
       if (search && search.trim()) {
         url += `&search=${encodeURIComponent(search.trim())}`
@@ -256,7 +256,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
     try {
       // Fetch player enrollments
       const response = await fetchWithAuth(
-        buildApiUrlWithYear(`/api/player-enrollments/${player.reg_number}`, eventYear)
+        buildApiUrlWithYear(`/api/player-enrollments/${player.reg_number}`, eventYear, null, eventName)
       )
 
       if (!response.ok) {
@@ -304,7 +304,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
     try {
       await executeDelete(
         () => fetchWithAuth(
-          buildApiUrlWithYear(`/api/delete-player/${playerToDelete.reg_number}`, eventYear),
+          buildApiUrlWithYear(`/api/delete-player/${playerToDelete.reg_number}`, eventYear, null, eventName),
           {
             method: 'DELETE',
           }
@@ -430,7 +430,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
     try {
       // OPTIMIZATION: Fetch enrollments for all selected players in a single API call
       const response = await fetchWithAuth(
-        buildApiUrlWithYear('/api/bulk-player-enrollments', eventYear),
+        buildApiUrlWithYear('/api/bulk-player-enrollments', eventYear, null, eventName),
         {
           method: 'POST',
           body: JSON.stringify({ reg_numbers: regNumbers }),
@@ -503,7 +503,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
 
     try {
       const response = await fetchWithAuth(
-        buildApiUrlWithYear('/api/bulk-delete-players', eventYear),
+        buildApiUrlWithYear('/api/bulk-delete-players', eventYear, null, eventName),
         {
           method: 'POST',
           body: JSON.stringify({ reg_numbers: regNumbers }),
@@ -664,7 +664,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
             clearCache('/api/players')
             
             // Use a separate function to avoid showing loading state and errors
-            let refreshUrl = buildApiUrlWithYear('/api/players', eventYear)
+            let refreshUrl = buildApiUrlWithYear('/api/players', eventYear, null, eventName)
             refreshUrl += `&page=${currentPage}&limit=${PAGE_SIZE}`
             if (searchQuery && searchQuery.trim()) {
               refreshUrl += `&search=${encodeURIComponent(searchQuery.trim())}`

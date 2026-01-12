@@ -29,18 +29,30 @@ router.post(
   authenticateToken,
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
-    let { team_name, sport, reg_numbers, event_year } = req.body
+    let { team_name, sport, reg_numbers, event_year, event_name } = req.body
 
     // Trim fields
-    const trimmed = trimObjectFields({ team_name, sport, event_year })
+    const trimmed = trimObjectFields({ team_name, sport, event_year, event_name })
     sport = trimmed.sport
     team_name = trimmed.team_name
     event_year = trimmed.event_year
+    event_name = trimmed.event_name
+
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = event_year !== undefined && event_year !== null && event_year !== ''
+    const hasEventName = event_name !== undefined && event_name !== null && event_name !== '' && event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    }
 
     // Get event year (default to active event year if not provided)
-    // Extract event_name from body if provided for composite key filtering
-    const eventNameBody = req.body.event_name ? req.body.event_name.trim() : null
-    const eventYearData = await getEventYear(event_year ? parseInt(event_year) : null, { returnDoc: true, eventName: eventNameBody })
+    const eventNameBody = hasEventName ? event_name.trim() : null
+    const eventYearData = await getEventYear(hasEventYear ? parseInt(event_year) : null, { returnDoc: true, eventName: eventNameBody })
     const eventYear = eventYearData.event_year
     const eventName = eventYearData.doc.event_name
 
@@ -250,11 +262,23 @@ router.get(
 
     let eventYearData
     
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    }
+    
     try {
       // Try to get event year with document - if it doesn't exist, return empty teams array
       // Extract event_name from query if provided for composite key filtering
-      const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
-      eventYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
+      eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
     } catch (error) {
       // If event year not found, return empty teams array instead of error
       if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -524,18 +548,30 @@ router.delete(
   authenticateToken,
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
-    let { team_name, sport, event_year } = req.body
+    let { team_name, sport, event_year, event_name } = req.body
 
     // Trim fields
-    const trimmed = trimObjectFields({ team_name, sport, event_year })
+    const trimmed = trimObjectFields({ team_name, sport, event_year, event_name })
     sport = trimmed.sport
     team_name = trimmed.team_name
     event_year = trimmed.event_year
+    event_name = trimmed.event_name
+
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = event_year !== undefined && event_year !== null && event_year !== ''
+    const hasEventName = event_name !== undefined && event_name !== null && event_name !== '' && event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    }
 
     // Get event year with document (default to active event year if not provided)
-    // Extract event_name from body if provided for composite key filtering
-    const eventNameBody = req.body.event_name ? req.body.event_name.trim() : null
-    const eventYearData = await getEventYear(event_year ? parseInt(event_year) : null, { returnDoc: true, eventName: eventNameBody })
+    const eventNameBody = hasEventName ? event_name.trim() : null
+    const eventYearData = await getEventYear(hasEventYear ? parseInt(event_year) : null, { returnDoc: true, eventName: eventNameBody })
     const eventYear = eventYearData.event_year
     const eventName = eventYearData.doc.event_name
 

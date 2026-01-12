@@ -38,9 +38,22 @@ router.get(
   authenticateToken,
   asyncHandler(async (req, res) => {
     const { sport } = req.params
+    
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    }
+    
     // Extract event_name from query if provided for composite key filtering
-    const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
-    const eventYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
+    const eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
     const eventYear = eventYearData.event_year
     const eventName = eventYearData.doc.event_name
     const gender = req.query.gender // Optional: 'Male' or 'Female'
@@ -228,12 +241,23 @@ router.post(
       return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
     }
     
-    const { match_type, sports_name, teams, players, match_date, event_year, number_of_participants } = bodyData
+    const { match_type, sports_name, teams, players, match_date, event_year, event_name, number_of_participants } = bodyData
+
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = event_year !== undefined && event_year !== null && event_year !== ''
+    const hasEventName = event_name !== undefined && event_name !== null && event_name !== '' && event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    }
 
     // Get event year (default to active event year if not provided)
-    // Extract event_name from body if provided for composite key filtering
-    const eventNameBody = req.body.event_name ? req.body.event_name.trim() : null
-    const eventYear = await getEventYear(event_year ? parseInt(event_year) : null, { returnDoc: true, eventName: eventNameBody })
+    const eventNameBody = hasEventName ? event_name.trim() : null
+    const eventYear = await getEventYear(hasEventYear ? parseInt(event_year) : null, { returnDoc: true, eventName: eventNameBody })
     const eventYearDoc = eventYear.doc
 
     // Validate required fields (gender will be derived from participants)

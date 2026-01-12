@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
 import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
 import { fetchWithAuth } from '../utils/api'
+import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { clearIndividualParticipationCaches } from '../utils/cacheHelpers'
 import logger from '../utils/logger'
 
@@ -84,7 +85,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
     try {
       // URL encode the sport name to handle special characters
       const encodedSport = encodeURIComponent(sport)
-      const url = `/api/participants/${encodedSport}${eventYear ? `?event_year=${eventYear}` : ''}`
+      const url = buildApiUrlWithYear(`/api/participants/${encodedSport}`, eventYear, null, eventName)
       // Fetching participants for sport
       
       const response = await fetchWithAuth(url, { signal })
@@ -182,7 +183,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
               )
             }
             // Clear cache before refreshing to ensure we get fresh data
-            clearIndividualParticipationCaches(sport, eventYear)
+            clearIndividualParticipationCaches(sport, eventYear, eventName)
             // Remove deleted participant from expanded participants if it was expanded
             setExpandedParticipants(prev => {
               const newSet = new Set(prev)

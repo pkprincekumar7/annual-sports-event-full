@@ -45,8 +45,8 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
     const fetchData = async () => {
       try {
         const [playersRes, sportsRes] = await Promise.all([
-          fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear), { signal: abortController.signal }),
-          fetchWithAuth(buildApiUrlWithYear('/api/sports', eventYear), { signal: abortController.signal }),
+          fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear, null, eventName), { signal: abortController.signal }),
+          fetchWithAuth(buildApiUrlWithYear('/api/sports', eventYear, null, eventName), { signal: abortController.signal }),
         ])
 
         if (!isMounted) return
@@ -94,7 +94,7 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
   // Fetch captains by sport for Remove tab
   useEffect(() => {
     if (isOpen && activeTab === TABS.REMOVE && eventYear) {
-      fetchWithAuth(buildApiUrlWithYear('/api/captains-by-sport', eventYear))
+      fetchWithAuth(buildApiUrlWithYear('/api/captains-by-sport', eventYear, null, eventName))
         .then((res) => {
           if (!res.ok) {
             if (res.status >= 500) {
@@ -235,11 +235,12 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
               3000
             )
             isRefreshingRef.current = true
-            clearCache(buildApiUrlWithYear('/api/captains-by-sport', eventYear))
+            clearCache(buildApiUrlWithYear('/api/captains-by-sport', eventYear, null, eventName))
             clearCache('/api/players')
             clearCache('/api/me')
             
-            fetchWithAuth(`/api/captains-by-sport${eventYear ? `?event_year=${eventYear}` : ''}`, { skipCache: true })
+            const captainsUrl = buildApiUrlWithYear('/api/captains-by-sport', eventYear, null, eventName)
+            fetchWithAuth(captainsUrl, { skipCache: true })
               .then((res) => {
                 if (!res.ok) {
                   throw new Error(`HTTP error! status: ${res.status}`)

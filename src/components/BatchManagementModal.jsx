@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input, EmptyState, ConfirmationDialog } from './ui'
-import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
+import { useApi, useModal, useEventYearWithFallback } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
-import { generateYearOfAdmissionOptions } from '../utils/yearHelpers'
 import logger from '../utils/logger'
 
 const TABS = {
@@ -27,13 +26,11 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
   const { loading, execute } = useApi()
   const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
   const confirmModal = useModal(false)
-  const { eventYear: activeEventYear } = useEventYear()
-  const yearOfAdmissionOptions = generateYearOfAdmissionOptions(activeEventYear)
 
   // Fetch batches for Remove Batch tab
   useEffect(() => {
     if (isOpen && activeTab === TABS.REMOVE_BATCH && eventYear) {
-      fetchWithAuth(buildApiUrlWithYear('/api/batches', eventYear))
+      fetchWithAuth(buildApiUrlWithYear('/api/batches', eventYear, null, eventName))
         .then((res) => {
           if (!res.ok) {
             if (res.status >= 500) {
@@ -93,7 +90,7 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
         }),
         {
           onSuccess: (data) => {
-            clearCache(buildApiUrlWithYear('/api/batches', eventYear))
+            clearCache(buildApiUrlWithYear('/api/batches', eventYear, null, eventName))
             
             onStatusPopup(
               `✅ Batch "${batchName}" created successfully!`,
@@ -142,10 +139,10 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
               3000
             )
             isRefreshingRef.current = true
-            clearCache(buildApiUrlWithYear('/api/batches', eventYear))
+            clearCache(buildApiUrlWithYear('/api/batches', eventYear, null, eventName))
             clearCache('/api/players')
             
-            fetchWithAuth(buildApiUrlWithYear('/api/batches', eventYear), { skipCache: true })
+            fetchWithAuth(buildApiUrlWithYear('/api/batches', eventYear, null, eventName), { skipCache: true })
               .then((res) => {
                 if (!res.ok) {
                   throw new Error(`HTTP error! status: ${res.status}`)
@@ -183,10 +180,6 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
     setBatchToRemove(null)
   }
 
-  const handleBatchNameSelect = (value) => {
-    setBatchName(value)
-    setBatchNameInput(value)
-  }
 
   const toggleBatch = (batchName) => {
     setExpandedBatches(prev => {
@@ -242,20 +235,15 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
               label="Batch Name"
               id="batchName"
               name="batchName"
-              type="select"
-              value={batchName}
-              onChange={(e) => handleBatchNameSelect(e.target.value)}
+              type="text"
+              value={batchNameInput}
+              onChange={(e) => {
+                setBatchNameInput(e.target.value)
+                setBatchName(e.target.value)
+              }}
               required
-              options={yearOfAdmissionOptions}
-              placeholder="Select or type batch name"
+              placeholder="Enter batch name (e.g., 2024-2028, 2025 Batch)"
             />
-            {batchName && (
-              <div className="mt-2 px-[10px] py-2 rounded-[10px] bg-[rgba(255,230,109,0.1)] border border-[rgba(255,230,109,0.3)]">
-                <div className="text-[#ffe66d] text-[0.85rem] font-semibold">
-                  Selected: {batchName}
-                </div>
-              </div>
-            )}
 
             <div className="flex gap-[0.6rem] mt-[0.8rem]">
               <Button

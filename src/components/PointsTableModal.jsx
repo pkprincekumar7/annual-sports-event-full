@@ -158,7 +158,7 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
 
     try {
       await executeBackfill(
-        () => fetchWithAuth(`/api/points-table/backfill/${encodeURIComponent(sport)}?event_year=${eventYear}`, {
+        () => fetchWithAuth(buildApiUrlWithYear(`/api/points-table/backfill/${encodeURIComponent(sport)}`, eventYear, null, eventName), {
           method: 'POST',
         }),
         {
@@ -168,8 +168,8 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
               onStatusPopup(`✅ ${message}`, 'success', 4000)
             }
             // Clear cache and refresh points table
-            clearCache(buildApiUrlWithYear(`/api/points-table/${encodeURIComponent(sport)}`, eventYear, 'Male'))
-            clearCache(buildApiUrlWithYear(`/api/points-table/${encodeURIComponent(sport)}`, eventYear, 'Female'))
+            clearCache(buildApiUrlWithYear(`/api/points-table/${encodeURIComponent(sport)}`, eventYear, 'Male', eventName))
+            clearCache(buildApiUrlWithYear(`/api/points-table/${encodeURIComponent(sport)}`, eventYear, 'Female', eventName))
             // Reset current sport ref to force refresh
             currentSportRef.current = null
             // Refresh points table (create new abort controller for refresh)

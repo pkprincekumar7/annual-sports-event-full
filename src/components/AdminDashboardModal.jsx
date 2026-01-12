@@ -125,7 +125,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
   const fetchSportsData = async () => {
     setLoadingSports(true)
     try {
-      const response = await fetchWithAuth(`/api/sports${currentEventYear ? `?event_year=${currentEventYear}` : ''}`)
+      const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports', currentEventYear, null, currentEventName))
       if (!response.ok) {
         // Only show error for actual server errors (5xx), not for empty data
         if (response.status >= 500) {
@@ -481,8 +481,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
         const error = await response.json()
         throw new Error(error.error || 'Failed to create sport')
       }
-      clearCache(`/api/sports?event_year=${currentEventYear}`)
-      clearCache(`/api/sports-counts?event_year=${currentEventYear}`)
+      clearCache(buildApiUrlWithYear('/api/sports', currentEventYear, null, currentEventName))
+      clearCache(buildApiUrlWithYear('/api/sports-counts', currentEventYear, null, currentEventName))
       onStatusPopup('✅ Sport created successfully', 'success', 2500)
       setSportForm({ name: '', type: '', category: '', team_size: '', imageUri: '' })
       fetchSportsData()
@@ -520,7 +520,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
     }
     
     try {
-      const response = await fetchWithAuth(`/api/sports/${editingSport._id}?event_year=${currentEventYear}`, {
+      const response = await fetchWithAuth(buildApiUrlWithYear(`/api/sports/${editingSport._id}`, currentEventYear, null, currentEventName), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -534,8 +534,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
         const error = await response.json()
         throw new Error(error.error || 'Failed to update sport')
       }
-      clearCache(`/api/sports?event_year=${currentEventYear}`)
-      clearCache(`/api/sports-counts?event_year=${currentEventYear}`)
+      clearCache(buildApiUrlWithYear('/api/sports', currentEventYear, null, currentEventName))
+      clearCache(buildApiUrlWithYear('/api/sports-counts', currentEventYear, null, currentEventName))
       onStatusPopup('✅ Sport updated successfully', 'success', 2500)
       setEditingSport(null)
       setSportForm({ name: '', type: '', category: '', team_size: '', imageUri: '' })
@@ -566,15 +566,15 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
     }
     
     try {
-      const response = await fetchWithAuth(`/api/sports/${sportId}?event_year=${currentEventYear}`, {
+      const response = await fetchWithAuth(buildApiUrlWithYear(`/api/sports/${sportId}`, currentEventYear, null, currentEventName), {
         method: 'DELETE'
       })
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error || 'Failed to delete sport')
       }
-      clearCache(`/api/sports?event_year=${currentEventYear}`)
-      clearCache(`/api/sports-counts?event_year=${currentEventYear}`)
+      clearCache(buildApiUrlWithYear('/api/sports', currentEventYear, null, currentEventName))
+      clearCache(buildApiUrlWithYear('/api/sports-counts', currentEventYear, null, currentEventName))
       onStatusPopup('✅ Sport deleted successfully', 'success', 2500)
       setShowDeleteSportConfirm(null)
       fetchSportsData()

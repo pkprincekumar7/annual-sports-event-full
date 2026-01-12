@@ -611,7 +611,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             // Clear points-table cache if this is a league match (affects points table)
             if (match && match.match_type === 'league') {
               const encodedSport = encodeURIComponent(sport)
-              clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender))
+              clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, match.gender, eventName))
             }
             fetchMatches()
             // Refresh teams/players list if deleted match was knockout/final (participants are now available)
@@ -1173,7 +1173,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             // Clear points-table cache if this is a league match (affects points table)
             if (matchType === 'league') {
               const encodedSport = encodeURIComponent(sport)
-              clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, selectedGender))
+              clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, selectedGender, eventName))
             }
             fetchMatches()
             // Refresh teams/players list if new match is knockout/final (participants are now in scheduled match)

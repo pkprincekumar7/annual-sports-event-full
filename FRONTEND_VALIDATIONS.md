@@ -10,6 +10,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 4. **Date-Based UI**: Enable/disable based on registration/event periods
 5. **Conditional Rendering**: Show/hide forms, buttons, tabs based on state
 6. **Button States**: Disabled states during loading, form submission, or based on conditions
+7. **Event Year/Name Parameters**: Validation that both `event_year` and `event_name` are provided together when required, or neither when optional
 
 ---
 
@@ -76,12 +77,13 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 #### Field-Level Validations:
 - ✅ **Event Year**: Required, must be a number
-- ✅ **Event Name**: Required
+- ✅ **Event Name**: Required (both `event_year` and `event_name` are mandatory together for event year creation)
 - ✅ **Date Relationships**: Validates `registration_dates.start < registration_dates.end < event_dates.start < event_dates.end`
 - ✅ **Date Restrictions**: Registration start and event start cannot be in the past
 - ✅ **Sport Name**: Required
 - ✅ **Sport Type**: Required, must be one of: dual_team, multi_team, dual_player, multi_player
 - ✅ **Sport Category**: Required, must be one of: team events, individual events, literary and cultural activities
+- ✅ **Event Year/Name for Sports**: When creating/updating sports, both `event_year` and `event_name` are required
 - ✅ **Team Size**: Validated based on sport type (only for team sports)
 - ✅ **Department Name**: Required
 - ✅ **Display Order**: Must be a number
@@ -201,13 +203,29 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 ### 8. PointsTableModal.jsx
 
+#### Field-Level Validations:
+- ✅ **Gender Selection**: Required (Male or Female)
+- ✅ **Sport Type**: Only available for dual_team and dual_player sports
+
+#### Business Logic Validations:
+- ✅ **Event Year/Name**: Optional query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- ✅ **Points Calculation**: Points automatically calculated from league matches (2 for win, 1 for draw/cancelled, 0 for loss)
+
 #### Conditional Rendering:
+- ✅ **Points Table**: Only shown for dual_team and dual_player sports
 - ✅ **Backfill Button**: Only shown for admin users
 - ✅ **Gender Tabs**: Shows Male/Female tabs
+- ✅ **Empty State**: Shows message when no points table entries exist
+- ✅ **Gender Filtering**: Points table filtered by selected gender
 
 #### Enable/Disable States:
 - ✅ **Backfill Button**: Disabled during backfilling or loading (`backfilling || loading`)
 - ✅ **Gender Tab Buttons**: Disabled during loading
+
+#### Data Display:
+- ✅ **Sorting**: Automatically sorted by points (descending), then matches won (descending)
+- ✅ **Statistics**: Shows points, matches played, won, lost, draw, cancelled
+- ✅ **Auto-Refresh**: Refreshes when tab becomes active
 
 ---
 
@@ -216,6 +234,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 #### Field-Level Validations:
 - ✅ **Player Selection**: Required
 - ✅ **Sport Selection**: Required
+- ✅ **Event Year/Name**: Both `event_year` and `event_name` are required in request body (mandatory together)
 
 #### Conditional Rendering:
 - ✅ **Tabs**: Shows "Add" and "Remove" tabs
@@ -233,6 +252,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 #### Field-Level Validations:
 - ✅ **Player Selection**: Required
 - ✅ **Sport Selection**: Required
+- ✅ **Event Year/Name**: Both `event_year` and `event_name` are required in request body (mandatory together)
 
 #### Conditional Rendering:
 - ✅ **Tabs**: Shows "Add" and "Remove" tabs
@@ -249,6 +269,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 #### Field-Level Validations:
 - ✅ **Batch Name**: Required (trimmed and validated)
+- ✅ **Event Year/Name**: Both `event_year` and `event_name` are required in request body (mandatory together)
 
 #### Conditional Rendering:
 - ✅ **Tabs**: Shows "Add Batch" and "Remove Batch" tabs
@@ -292,11 +313,59 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 ---
 
-### 14. ProfileModal.jsx
+### 13. ChangePasswordModal.jsx
+
+#### Field-Level Validations:
+- ✅ **Required Fields**: All fields validated (current_password, new_password, confirm_password)
+- ✅ **Password Length**: Validates new password is at least 6 characters long
+- ✅ **Password Match**: Validates new password and confirm password match
+- ✅ **Password Difference**: Validates new password is different from current password
+
+#### Business Logic Validations:
+- ✅ **Current Password Verification**: Validates current password is correct (via API)
+- ✅ **Password Strength**: Minimum 6 characters (enforced in frontend)
+
+#### Enable/Disable States:
+- ✅ **Submit Button**: Disabled during submission (`loading`)
+- ✅ **Form Fields**: Disabled during submission
 
 #### Conditional Rendering:
-- ✅ **Edit Button**: May be conditionally shown based on user role
-- ✅ **Fields**: Some fields may be read-only
+- ✅ **Error Messages**: Shows error messages for validation failures
+- ✅ **Success Message**: Shows success message on successful password change
+
+---
+
+### 14. ResetPasswordModal.jsx
+
+#### Field-Level Validations:
+- ✅ **Required Fields**: Email ID is required
+- ✅ **Email Format**: Validated using regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
+
+#### Business Logic Validations:
+- ✅ **Email Existence**: Validates email exists in system (but response doesn't reveal if email exists for security)
+
+#### Enable/Disable States:
+- ✅ **Submit Button**: Disabled during submission (`loading`)
+- ✅ **Form Fields**: Disabled during submission
+
+#### Conditional Rendering:
+- ✅ **Success Message**: Always shows success message (doesn't reveal if email exists for security)
+- ✅ **Error Messages**: Shows error messages for validation failures (email format)
+
+---
+
+### 15. ProfileModal.jsx
+
+#### Conditional Rendering:
+- ✅ **Profile Information**: Displays all profile fields (read-only)
+- ✅ **Batch Display**: Shows batch name (or "N/A" if not assigned)
+- ✅ **Captain Roles**: Shows list of sports where user is captain (if any)
+- ✅ **Coordinator Roles**: Shows list of sports where user is coordinator (if any)
+- ✅ **Participation History**: Shows all sports/events registered for with team names (if applicable)
+- ✅ **Event Year Filtering**: Profile data can be filtered by event year and event name
+
+#### Enable/Disable States:
+- ✅ **All Fields**: Read-only (editing done through PlayerListModal for admin)
 
 ---
 
@@ -337,6 +406,30 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **Disabled State**: Supports `disabled` prop
 - ✅ **Required State**: Supports `required` prop
 - ✅ **Date Validation**: Built-in date picker validation
+
+---
+
+## Event Year and Event Name Parameter Validations
+
+### Frontend API Calls
+The frontend now ensures that both `event_year` and `event_name` are passed together in API calls:
+
+**Mandatory Parameters** (both required):
+- ✅ Creating sports - Both `event_year` and `event_name` required
+- ✅ Adding/removing captains - Both `event_year` and `event_name` required
+- ✅ Adding/removing coordinators - Both `event_year` and `event_name` required
+- ✅ Creating/deleting batches - Both `event_year` and `event_name` required
+
+**Optional Parameters** (both or neither):
+- ✅ Team participation endpoints - If `event_year` is provided, `event_name` must also be provided
+- ✅ Individual participation endpoints - If `event_year` is provided, `event_name` must also be provided
+- ✅ Event schedule endpoints - If `event_year` is provided, `event_name` must also be provided
+- ✅ All GET endpoints - Query parameters follow the same rule
+
+**Implementation:**
+- ✅ All API calls use `buildApiUrlWithYear` helper which includes both parameters
+- ✅ `useEventYearWithFallback` hook provides both `eventYear` and `eventName` to components
+- ✅ Cache clearing functions updated to use composite keys
 
 ---
 

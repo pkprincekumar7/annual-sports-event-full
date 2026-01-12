@@ -31,9 +31,21 @@ router.get(
   authenticateToken,
   requireAdmin,
   asyncHandler(async (req, res) => {
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    }
+    
     // Extract event_year and event_name from query (defaults to active event if not provided)
-    const eventYearQuery = req.query.event_year ? parseInt(req.query.event_year) : null
-    const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
+    const eventYearQuery = hasEventYear ? parseInt(req.query.event_year) : null
+    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
 
     // Validate year parameter if provided
     if (eventYearQuery !== null && (isNaN(eventYearQuery) || eventYearQuery <= 0)) {

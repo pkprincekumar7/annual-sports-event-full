@@ -28,13 +28,25 @@ router.get(
   asyncHandler(async (req, res) => {
     const { sport } = req.params
     
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    }
+    
     let eventYearData
     
     try {
       // Try to get event year with document - if it doesn't exist, return empty points table
       // Extract event_name from query if provided for composite key filtering
-      const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
-      eventYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
+      eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
     } catch (error) {
       // If event year not found, return empty points table instead of error
       if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -189,7 +201,21 @@ router.post(
   requireEventStatusUpdatePeriod,
   asyncHandler(async (req, res) => {
     const { sport } = req.params
-    const eventYear = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null)
+    
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    }
+    
+    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
+    const eventYear = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { eventName: eventNameQuery })
     
     const { backfillPointsTableForSport } = await import('../utils/backfillPointsTable.js')
     const result = await backfillPointsTableForSport(sport, eventYear)

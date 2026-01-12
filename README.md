@@ -191,22 +191,25 @@ Create a `.env` file in the root directory to set these values. For production b
 ├── models/
 │   ├── Player.js        # Player Mongoose model with indexes
 │   ├── Sport.js          # Sport Mongoose model (dual_team, multi_team, dual_player, multi_player)
-│   ├── EventYear.js      # Event year Mongoose model
-│   ├── Department.js     # Department Mongoose model
+│   ├── EventYear.js      # Event year Mongoose model (composite key: event_year + event_name)
+│   ├── Department.js     # Department Mongoose model (not year-dependent)
+│   ├── Batch.js          # Batch Mongoose model (organizes players by admission year)
 │   ├── EventSchedule.js  # Event schedule Mongoose model (league, knockout, final)
 │   └── PointsTable.js    # Points table Mongoose model (for league matches)
 ├── routes/              # Express.js route handlers
-│   ├── auth.js          # Authentication routes
-│   ├── players.js       # Player management routes
+│   ├── auth.js          # Authentication routes (login, change-password, reset-password)
+│   ├── players.js       # Player management routes (CRUD, enrollments, bulk operations)
 │   ├── sports.js        # Sport management routes
 │   ├── eventYears.js    # Event year management routes
 │   ├── departments.js  # Department management routes
+│   ├── batches.js       # Batch management routes
 │   ├── teams.js         # Team management routes
 │   ├── participants.js  # Participant management routes
 │   ├── captains.js      # Captain management routes
+│   ├── coordinators.js  # Coordinator management routes
 │   ├── eventSchedule.js # Event schedule management routes
-│   ├── pointsTable.js   # Points table routes
-│   └── exports.js       # Data export routes
+│   ├── pointsTable.js   # Points table routes (view, backfill)
+│   └── exports.js       # Data export routes (Excel export)
 ├── utils/
 │   ├── logger.js        # Backend logging utility
 │   ├── cache.js         # In-memory cache utility
@@ -230,24 +233,32 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Countdown timer for event start (shows "Registration closed!" when timer reaches zero)
 - ✅ Dynamic registration form (team/individual events)
 - ✅ Player login and JWT authentication
-- ✅ Admin panel with player management
+- ✅ Password management - Change password (authenticated users) and reset password (public via email)
+- ✅ Profile management - View and edit profile information (admin can edit any player)
+- ✅ Admin panel with comprehensive player management
+- ✅ Coordinator role support - Coordinators can manage assigned sports
 - ✅ Captain assignment and team management
+- ✅ Batch management - Admin can create and manage batches for organizing players
 - ✅ Team and individual event registration
 - ✅ Participation tracking and limits
 - ✅ Total teams/participants count display - Shows total teams participated for team events and total players participated for non-team events on sports cards (logged-in users only)
 - ✅ Already participated view - Shows popup with participation status and total count when user has already participated
 - ✅ Unified sport details modal - Single modal with tabs for all sport-related actions (View Teams/Participants, Create Team/Enroll, View Events)
-- ✅ Event schedule management - Admin can create, view, update, and delete matches; users can view scheduled matches
+- ✅ Event schedule management - Admin/coordinators can create, view, update, and delete matches; users can view scheduled matches
 - ✅ Match scheduling - Support for league, knockout, and final match types with automatic match number generation
-- ✅ Match status updates - Admin can update match status (scheduled, completed, draw, cancelled) with future date validation
-- ✅ Winner/Loser selection - Admin can declare winners for completed matches (dual sports) with automatic loser assignment
-- ✅ Qualifiers system - Admin can set qualifiers with positions for multi sports matches
+- ✅ Match status updates - Admin/coordinators can update match status (scheduled, completed, draw, cancelled) with future date validation
+- ✅ Winner/Loser selection - Admin/coordinators can declare winners for completed matches (dual sports) with automatic loser assignment
+- ✅ Qualifiers system - Admin/coordinators can set qualifiers with positions for multi sports matches
 - ✅ Future date restrictions - Status updates and winner/qualifier selection are blocked for future-dated matches (both frontend and backend validation)
 - ✅ Points table display - View league standings with points, matches played, won, lost, draw, cancelled (dual sports only)
+- ✅ Points table backfill - Admin can recalculate points table entries for existing completed matches
 - ✅ Year selector - Admin can switch between event years for viewing/managing data
-- ✅ Event year management - Admin can create, update, activate, and delete event years
+- ✅ Event year management - Admin can create, update, activate, and delete event years with composite key (event_year + event_name)
 - ✅ Sport management - Admin can create, update, and delete sports with sport types and categories
-- ✅ Department management - Admin can create, update, and delete departments
+- ✅ Department management - Admin can create, update, and delete departments (not year-dependent)
+- ✅ Player enrollment viewing - Admin can view all enrollments (non-team events, teams, matches) for any player
+- ✅ Bulk player operations - Bulk enroll and bulk delete players from sports
+- ✅ Player search and pagination - Server-side search and pagination for efficient player management
 - ✅ Status popups for success/error messages
 - ✅ Loading states for all API operations
 - ✅ Form validation with proper error handling
@@ -265,17 +276,20 @@ Create a `.env` file in the root directory to set these values. For production b
 ### Backend Features
 - ✅ RESTful API with Express.js
 - ✅ MongoDB database with optimized indexes
-- ✅ JWT-based authentication
-- ✅ Registration deadline enforcement
-- ✅ Excel export functionality
+- ✅ JWT-based authentication with token expiration
+- ✅ Password management - Change password and reset password (via email) endpoints
+- ✅ Registration deadline enforcement - Per event year with composite key (event_year + event_name)
+- ✅ Excel export functionality - Comprehensive player data export with participation status
 - ✅ Team and individual event management
-- ✅ Captain role management
+- ✅ Captain role management - Assign and remove captain roles for team sports
+- ✅ Coordinator role management - Assign and remove coordinator roles for sports
+- ✅ Batch management - Create and manage batches for organizing players by admission year
 - ✅ Participants count endpoint - Efficient aggregation-based endpoint for counting participants in non-team events
 - ✅ Teams count in response - Team endpoints return total teams count along with team data
 - ✅ Optimized MongoDB queries - Uses indexes and projections for better performance
 - ✅ Password exclusion - Passwords never sent in API responses
 - ✅ Production-ready logging - Environment-aware logging utility (debug logs only in development)
-- ✅ Optimized user endpoint - `/api/me` endpoint for fetching current user (more efficient than fetching all players)
+- ✅ Optimized user endpoint - `/api/me` endpoint for fetching current user with computed fields (more efficient than fetching all players)
 - ✅ Bulk sports counts endpoint - `/api/sports-counts` fetches all team and participant counts in a single request
 - ✅ Event schedule management - Full CRUD operations for match scheduling with automatic match number generation per sport
 - ✅ Match eligibility validation - Automatic validation for knockout matches (only winners/qualifiers can proceed)
@@ -283,14 +297,21 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Qualifiers management - Set qualifiers with positions for multi sports matches
 - ✅ Future date validation - Prevents status updates and winner/qualifier selection for future-dated matches (both frontend and backend)
 - ✅ Points table system - Automatic points calculation and tracking for league matches (dual sports only)
-- ✅ Event year management - Full CRUD operations for event years with registration and event periods
+- ✅ Points table backfill - Recalculate points table entries for existing completed matches
+- ✅ Event year management - Full CRUD operations for event years with registration and event periods (composite key: event_year + event_name)
 - ✅ Sport management - Full CRUD operations for sports with sport types (dual_team, multi_team, dual_player, multi_player)
-- ✅ Department management - Full CRUD operations for departments
+- ✅ Department management - Full CRUD operations for departments (not year-dependent, no "active" concept)
+- ✅ Player enrollment viewing - View all enrollments (non-team events, teams, matches) for any player
+- ✅ Bulk player operations - Bulk enroll and bulk delete players from sports
+- ✅ Player search and pagination - Server-side search and pagination for efficient player management
+- ✅ Role-based access control - Admin, coordinator, captain, and player roles with appropriate permissions
+- ✅ Composite key filtering - All operations use both event_year and event_name for proper data isolation
 - ✅ In-memory caching - Request caching with configurable TTL for improved performance
 - ✅ EventSchedule model - Database model for storing match schedules with support for all sport types
 - ✅ PointsTable model - Database model for tracking league match points and statistics
 - ✅ Sport model - Database model for sports with type, category, and participation tracking
 - ✅ EventYear model - Database model for event years with registration and event periods
+- ✅ Batch model - Database model for organizing players by admission year/batch
 
 ## API Integration
 
@@ -308,85 +329,113 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
 
 #### Authentication
 - `POST /api/login` - User authentication (returns JWT token)
-- `GET /api/me` - Get current user data (requires authentication, optimized endpoint)
+- `GET /api/me` - Get current user data (requires authentication, optimized endpoint, includes computed fields: participated_in, captain_in, coordinator_in, batch_name)
+- `POST /api/change-password` - Change password (requires authentication)
+- `POST /api/reset-password` - Reset password via email (public endpoint)
 
 #### Player Management
-- `GET /api/players` - Get all players (requires authentication)
-- `POST /api/save-player` - Register new player
-- `POST /api/save-players` - Register multiple players (batch)
+- `GET /api/players` - Get all players with pagination and search (requires authentication, supports ?page, ?limit, ?search, ?event_year, ?event_name)
+- `POST /api/save-player` - Register new player (public, during registration period)
+- `POST /api/save-players` - Register multiple players (batch, admin only)
 - `PUT /api/update-player` - Update player data (admin only)
+- `GET /api/player-enrollments/:reg_number` - Get all enrollments for a player (admin only, supports ?event_year, ?event_name)
+- `POST /api/bulk-player-enrollments` - Bulk enroll players to a sport (admin only)
+- `POST /api/bulk-delete-players` - Bulk delete players from a sport (admin only)
 
 #### Participation Management
-- `POST /api/update-participation` - Update individual participation (requires authentication)
-- `POST /api/update-team-participation` - Update team participation (requires authentication)
-- `POST /api/validate-participations` - Validate participations before team registration
-- `DELETE /api/remove-participation` - Remove participation (admin only)
+- `POST /api/update-participation` - Update individual participation (requires authentication, optional event_year and event_name in body - both or neither)
+- `POST /api/update-team-participation` - Update team participation (requires authentication, optional event_year and event_name in body - both or neither)
+- `POST /api/validate-participations` - Validate participations before team registration (requires authentication)
+- `DELETE /api/remove-participation` - Remove participation (admin only, optional event_year and event_name in body - both or neither)
 
 #### Captain Management
-- `GET /api/sports` - Get team sports list (admin only)
-- `GET /api/captains-by-sport` - Get captains grouped by sport (admin only)
-- `POST /api/add-captain` - Assign captain role (admin only)
-- `DELETE /api/remove-captain` - Remove captain role (admin only)
+- `GET /api/sports` - Get sports list (public, supports ?event_year, ?event_name)
+- `GET /api/captains-by-sport` - Get captains grouped by sport (admin only, supports ?event_year, ?event_name)
+- `POST /api/add-captain` - Assign captain role (admin only, requires event_year and event_name)
+- `DELETE /api/remove-captain` - Remove captain role (admin only, requires event_year and event_name)
+
+#### Coordinator Management
+- `GET /api/coordinators-by-sport` - Get coordinators grouped by sport (admin only, supports ?event_year, ?event_name)
+- `POST /api/add-coordinator` - Assign coordinator role (admin only, requires event_year and event_name)
+- `DELETE /api/remove-coordinator` - Remove coordinator role (admin only, requires event_year and event_name)
+
+#### Batch Management
+- `GET /api/batches` - Get all batches (admin only, supports ?event_year, ?event_name)
+- `POST /api/add-batch` - Create new batch (admin only, requires event_year and event_name)
+- `DELETE /api/remove-batch` - Delete batch (admin only, requires event_year and event_name)
 
 #### Team Management
-- `GET /api/teams/:sport` - Get teams for a specific sport (requires authentication, returns `total_teams` count)
-- `POST /api/update-team-player` - Replace player in team (admin only)
-- `DELETE /api/delete-team` - Delete a team (admin only)
+- `GET /api/teams/:sport` - Get teams for a specific sport (requires authentication, returns `total_teams` count, supports ?event_year, ?event_name - both or neither)
+- `POST /api/update-team-player` - Replace player in team (admin/coordinator only, optional event_year and event_name in body - both or neither)
+- `DELETE /api/delete-team` - Delete a team (admin/coordinator only, optional event_year and event_name in body - both or neither)
 
 #### Participant Management
-- `GET /api/participants/:sport` - Get participants for a specific sport (admin only)
-- `GET /api/participants-count/:sport` - Get total participants count for a specific sport (requires authentication, no admin required)
+- `GET /api/participants/:sport` - Get participants for a specific sport (admin/coordinator only, supports ?event_year, ?event_name - both or neither)
+- `GET /api/participants-count/:sport` - Get total participants count for a specific sport (requires authentication, no admin required, supports ?event_year, ?event_name - both or neither)
 
 #### Sports Counts (Bulk)
 - `GET /api/sports-counts` - Get all teams and participants counts for all sports in a single request (requires authentication, optimized bulk endpoint)
 
 #### Event Schedule Management
-- `GET /api/event-schedule/:sport` - Get all matches for a specific sport (requires authentication, supports ?year parameter)
-- `GET /api/event-schedule/:sport/teams-players` - Get teams/players list for match scheduling dropdowns (admin only, supports ?year parameter)
-- `POST /api/event-schedule` - Create a new match (admin only, auto-generates match number per sport)
+- `GET /api/event-schedule/:sport` - Get all matches for a specific sport (requires authentication, supports ?event_year, ?event_name - both or neither)
+- `GET /api/event-schedule/:sport/teams-players` - Get teams/players list for match scheduling dropdowns (admin/coordinator only, supports ?event_year, ?event_name - both or neither)
+- `POST /api/event-schedule` - Create a new match (admin/coordinator only, auto-generates match number per sport, optional event_year and event_name in body - both or neither)
   - Supports match types: league (dual sports only), knockout, final
   - Validates participant eligibility for knockout/final matches
   - Enforces league vs knockout restrictions
   - Validates final match restrictions
-- `PUT /api/event-schedule/:id` - Update match winner, qualifiers, and status (admin only)
+  - Match date must be within event period
+- `PUT /api/event-schedule/:id` - Update match winner, qualifiers, and status (admin/coordinator only)
   - Status updates: Can update status to 'completed', 'draw', 'cancelled', or 'scheduled'
   - Winner selection: Can declare winner for completed matches in dual sports (automatically marks other participant as loser)
   - Qualifiers selection: Can set qualifiers with positions for completed matches in multi sports
   - Future date validation: Status updates and winner/qualifier selection are blocked for future-dated matches
   - Status change restrictions: Cannot change status from completed/draw/cancelled to any other status
-- `DELETE /api/event-schedule/:id` - Delete a match (admin only, only if status is 'scheduled', allowed for future matches)
+- `DELETE /api/event-schedule/:id` - Delete a match (admin/coordinator only, only if status is 'scheduled', allowed for future matches)
 
 #### Points Table Management
-- `GET /api/points-table/:sport` - Get points table for a specific sport (requires authentication, supports ?year parameter)
+- `GET /api/points-table/:sport` - Get points table for a specific sport (requires authentication, supports ?event_year, ?event_name, ?gender)
   - Only available for dual_team and dual_player sports
   - Returns points, matches played, won, lost, draw, cancelled
   - Automatically sorted by points (descending), then matches won (descending)
-- `GET /api/points-table/:sport/:participant` - Get points for a specific participant (requires authentication, supports ?year parameter)
+  - Gender parameter required (Male or Female)
+- `POST /api/points-table/backfill/:sport` - Backfill points table for a sport (admin only, supports ?event_year, ?event_name)
+  - Recalculates points table entries for existing completed matches
+  - Only processes league matches
+  - Requires event status update period
 
 #### Event Year Management
 - `GET /api/event-years` - Get all event years (admin only)
 - `GET /api/event-years/active` - Get active event year (public)
-- `POST /api/event-years` - Create new event year (admin only)
-- `PUT /api/event-years/:year` - Update event year (admin only)
-- `PUT /api/event-years/:year/activate` - Activate event year (admin only, deactivates all other years)
-- `DELETE /api/event-years/:year` - Delete event year (admin only, only if not active and no data exists)
+- `POST /api/event-years` - Create new event year (admin only, requires event_year and event_name)
+  - Allowed even when no active event year exists (enables initial setup)
+- `PUT /api/event-years/:event_year` - Update event year (admin only)
+  - Updates allowed until registration end date
+  - Supports updating event_name, event dates, registration dates, organizer, title, highlight
+- `DELETE /api/event-years/:event_year` - Delete event year (admin only)
+  - Can only delete before registration start date
+  - Cannot delete if active or if data exists
 
 #### Sport Management
-- `GET /api/sports` - Get all sports (supports ?year parameter)
-- `GET /api/sports/:name` - Get sport by name (supports ?year parameter)
-- `GET /api/sports-counts` - Get all sports with participation counts (supports ?year parameter)
-- `POST /api/sports` - Create new sport (admin only)
-- `PUT /api/sports/:id` - Update sport (admin only)
-- `DELETE /api/sports/:id` - Delete sport (admin only, only if no matches or points entries exist)
+- `GET /api/sports` - Get all sports (public, supports ?event_year, ?event_name - both or neither)
+- `GET /api/sports/:name` - Get sport by name (public, supports ?event_year, ?event_name - both or neither)
+- `GET /api/sports-counts` - Get all sports with participation counts (requires authentication, supports ?event_year, ?event_name - both or neither)
+- `POST /api/sports` - Create new sport (admin only, requires event_year and event_name)
+- `PUT /api/sports/:id` - Update sport (admin only, optional ?event_year, ?event_name - both or neither)
+- `DELETE /api/sports/:id` - Delete sport (admin only, optional ?event_year, ?event_name - both or neither, only if no matches or points entries exist)
 
 #### Department Management
-- `GET /api/departments` - Get all departments (public, departments are not year-dependent)
+- `GET /api/departments` - Get all departments (public, departments are not year-dependent, no "active" concept)
 - `POST /api/departments` - Create new department (admin only)
 - `PUT /api/departments/:id` - Update department (admin only, only display_order can be updated)
 - `DELETE /api/departments/:id` - Delete department (admin only, only if no players are registered)
 
 #### Data Export
-- `GET /api/export-excel` - Export players data to Excel (admin only, supports ?year parameter)
+- `GET /api/export-excel` - Export players data to Excel (admin only, supports ?event_year, ?event_name - both or neither)
+  - Includes all player information and participation status for all sports
+  - Shows CAPTAIN, PARTICIPANT, or NA for each sport
+  - Includes team names for team sports
+  - Dynamic sport columns based on event year
 
 ### Authentication
 
@@ -1535,7 +1584,7 @@ The application uses React hooks for state management:
 - Match Eligibility: Knockout/final matches automatically validate that only eligible participants (winners/qualifiers) can proceed
 - League Matches: Only allowed for dual_team and dual_player sports, cannot be scheduled if knockout matches exist
 - Final Matches: Cannot schedule new matches if final match exists (scheduled or completed), can reschedule if draw or cancelled
-- Match Deletion: Only matches with 'scheduled' status can be deleted by admin (including future matches)
+- Match Deletion: Only matches with 'scheduled' status can be deleted by admin/coordinator (including future matches)
 - Match Status Updates: Status can only be updated for matches that are not in the future (both frontend and backend validation)
 - Status Change Restrictions: Cannot change status from completed/draw/cancelled to any other status
 - Winner Selection: Winners can only be declared for completed matches in dual sports that are not in the future (both frontend and backend validation)
@@ -1543,10 +1592,21 @@ The application uses React hooks for state management:
 - Winner/Loser Assignment: When a winner is selected in dual sports, the other participant is automatically marked as loser
 - Qualifiers Assignment: When qualifiers are set in multi sports, participants not in qualifiers are marked as knocked out
 - Points Table: Automatically calculated and updated for league matches in dual sports (2 points for win, 1 for draw/cancelled, 0 for loss)
+- Points Table Backfill: Admin can recalculate points table entries for existing completed matches
 - Remove Button: Available for all scheduled matches (including future matches) to allow cancellation/rescheduling
 - Status Dropdown: Only visible for scheduled matches that are not in the future
-- Event Year Management: Registration and event periods are managed per event year, not via environment variables
+- Event Year Management: Registration and event periods are managed per event year with composite key (event_year + event_name)
+- Composite Key Filtering: All operations use both event_year and event_name together for proper data isolation
+- Event Year Restrictions: Updates allowed until registration end date; deletes allowed only before registration start date
 - Year Selector: Admin can switch between event years to view/manage data for different years
+- Coordinator Role: Coordinators can perform admin operations (except editing/deleting sports) for their assigned sports only
+- Batch Management: Players are organized by batches (year field removed from player registration)
+- Password Management: Change password (authenticated users) and reset password (public via email)
+- Profile Management: View and edit profile information with participation history, captain roles, coordinator roles
+- Bulk Operations: Bulk enroll and bulk delete players from sports
+- Player Search: Server-side search and pagination for efficient player management
+- Player Enrollments: Admin can view all enrollments (non-team events, teams, matches) for any player
+- Departments: Not year-dependent, no "active" concept
 - Cache Management: Both frontend and backend use caching with automatic cache invalidation after database operations
 
 ## Security Considerations

@@ -24,13 +24,25 @@ const router = express.Router()
  * IMPORTANT: This route must come before /:name to avoid conflicts
  */
 router.get('/sports', asyncHandler(async (req, res) => {
+  // For optional event_year/event_name: either both must be provided, or neither
+  // If one is provided, the other is also required for composite key filtering
+  const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+  const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+  
+  if (hasEventYear && !hasEventName) {
+    return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+  }
+  if (hasEventName && !hasEventYear) {
+    return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+  }
+  
   let eventYearData
   
   try {
     // Try to get event year with document - if it doesn't exist, return empty array
     // Extract event_name from query if provided for composite key filtering
-    const eventName = req.query.event_name ? req.query.event_name.trim() : null
-    eventYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName })
+    const eventName = hasEventName ? req.query.event_name.trim() : null
+    eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName })
   } catch (error) {
     // If event year not found, return empty array instead of error
     if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -91,12 +103,17 @@ router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPerio
     return sendErrorResponse(res, 400, 'Valid category is required')
     }
     
-  // event_year is now REQUIRED
+  // event_year and event_name are now REQUIRED for composite key filtering
   if (!event_year) {
     return sendErrorResponse(res, 400, 'event_year is required')
   }
   
-  const eventYearData = await getEventYear(parseInt(event_year), { requireYear: true, returnDoc: true })
+  const { event_name } = bodyData
+  if (!event_name || !event_name.trim()) {
+    return sendErrorResponse(res, 400, 'event_name is required')
+  }
+  
+  const eventYearData = await getEventYear(parseInt(event_year), { requireYear: true, returnDoc: true, eventName: event_name.trim() })
   const eventYear = eventYearData.event_year
   const eventName = eventYearData.doc.event_name
     
@@ -162,11 +179,23 @@ router.put('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPe
     }
     
     // Get event year parameter (defaults to active event year if not provided)
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    }
+    
     let requestedYearData
     try {
       // Extract event_name from query if provided for composite key filtering
-      const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
-      requestedYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
+      requestedYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
     } catch (error) {
       // Provide more user-friendly error messages
       if (error.message === 'Event year not found') {
@@ -255,11 +284,23 @@ router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistratio
     }
     
     // Get event year parameter (defaults to active event year if not provided)
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    }
+    
     let requestedYearData
     try {
       // Extract event_name from query if provided for composite key filtering
-      const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
-      requestedYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
+      requestedYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
     } catch (error) {
       // Provide more user-friendly error messages
       if (error.message === 'Event year not found') {
@@ -314,13 +355,25 @@ router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistratio
  * IMPORTANT: This route must come BEFORE /:name to avoid route conflicts
  */
 router.get('/sports-counts', authenticateToken, asyncHandler(async (req, res) => {
+  // For optional event_year/event_name: either both must be provided, or neither
+  // If one is provided, the other is also required for composite key filtering
+  const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+  const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+  
+  if (hasEventYear && !hasEventName) {
+    return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+  }
+  if (hasEventName && !hasEventYear) {
+    return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+  }
+  
   let eventYearData
   
   try {
     // Try to get event year with document - if it doesn't exist, return empty arrays
     // Extract event_name from query if provided for composite key filtering
-    const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
-    eventYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
+    eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
   } catch (error) {
     // If event year not found, return empty arrays instead of error
     if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -391,13 +444,25 @@ router.get('/sports/:name', asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 404, 'Route not found')
   }
   
+  // For optional event_year/event_name: either both must be provided, or neither
+  // If one is provided, the other is also required for composite key filtering
+  const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+  const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+  
+  if (hasEventYear && !hasEventName) {
+    return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+  }
+  if (hasEventName && !hasEventYear) {
+    return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+  }
+  
   let eventYearData
   
   try {
     // Try to get event year with document - if it doesn't exist, return 400 error
     // Extract event_name from query if provided for composite key filtering
-    const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
-    eventYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
+    eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
   } catch (error) {
     // If event year not found, return 400 error
     if (error.message === 'Event year not found' || error.message === 'No active event year found') {

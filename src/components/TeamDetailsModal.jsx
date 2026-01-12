@@ -103,7 +103,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
   const fetchPlayers = async (signal) => {
     try {
       // Don't pass page parameter to get all players (needed for team member replacement)
-      const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear), signal ? { signal } : {})
+      const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear, null, eventName), signal ? { signal } : {})
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -334,7 +334,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
               onStatusPopup(`✅ Player updated successfully!`, 'success', 2500)
             }
             // Clear cache before refreshing to ensure we get fresh data
-            clearSportCaches(sport, eventYear)
+            clearSportCaches(sport, eventYear, eventName)
             clearCache('/api/me') // Current user's data may have changed
             // Refresh team data (no signal needed for manual refresh)
             fetchTeamDetails(null)
@@ -375,7 +375,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
               onStatusPopup(`✅ Team "${teamName}" deleted successfully! ${data.deleted_count || 0} player(s) removed.`, 'success', 3000)
             }
             // Clear cache before refreshing to ensure we get fresh data
-            clearSportCaches(sport, eventYear)
+            clearSportCaches(sport, eventYear, eventName)
             clearCache('/api/me') // If any logged-in user was in this team
             // Remove deleted team from expanded teams if it was expanded
             setExpandedTeams(prev => {

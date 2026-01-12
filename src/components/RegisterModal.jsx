@@ -49,7 +49,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     
     const fetchBatches = async () => {
       try {
-        const res = await fetchWithAuth(buildApiUrlWithYear('/api/batches', eventYear), { signal: abortController.signal })
+        const res = await fetchWithAuth(buildApiUrlWithYear('/api/batches', eventYear, null, eventName), { signal: abortController.signal })
         if (!isMounted) return
         
         if (res.ok) {
@@ -189,7 +189,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       const fetchPlayers = async () => {
         try {
           // Don't pass page parameter to get all players (needed for participant selection)
-          const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear))
+          const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear, null, eventName))
           
           if (!isMountedRef.current) {
             logger.warn('Component unmounted, skipping players update')
@@ -469,7 +469,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           {
             onSuccess: async (data) => {
               // Clear caches to ensure UI reflects the new team enrollment
-              clearTeamParticipationCaches(selectedSport.name, eventYear)
+              clearTeamParticipationCaches(selectedSport.name, eventYear, eventName)
               
               // Update logged-in user data if they are one of the players
               // Use /api/me instead of /api/players for efficiency (only need current user's data)
@@ -541,7 +541,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         {
           onSuccess: async (data) => {
             // Clear caches to ensure UI reflects the new participant enrollment
-            clearIndividualParticipationCaches(selectedSport.name, eventYear)
+            clearIndividualParticipationCaches(selectedSport.name, eventYear, eventName)
 
             // Update logged-in user data with latest information
             if (data.player && onUserUpdate) {

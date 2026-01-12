@@ -3,33 +3,35 @@
  */
 
 import { clearCache } from './api'
+import { buildApiUrlWithYear } from './apiHelpers'
 
 /**
  * Clear all caches related to a specific sport and event year
  * @param {string} sportName - The sport name
  * @param {number|null} eventYear - The event year
+ * @param {string|null} eventName - The event name (for composite key filtering)
  */
-export const clearSportCaches = (sportName, eventYear) => {
+export const clearSportCaches = (sportName, eventYear, eventName = null) => {
   if (!sportName) return
   
   const encodedSport = encodeURIComponent(sportName)
-  const eventYearParam = eventYear ? `?event_year=${eventYear}` : ''
   
-  clearCache(`/api/teams/${encodedSport}${eventYearParam}`)
-  clearCache(`/api/participants/${encodedSport}${eventYearParam}`)
-  clearCache(`/api/participants-count/${encodedSport}${eventYearParam}`)
-  clearCache(`/api/event-schedule/${encodedSport}${eventYearParam}`)
-  clearCache(`/api/event-schedule/${encodedSport}/teams-players${eventYearParam}`)
-  clearCache(`/api/sports-counts${eventYearParam}`)
+  clearCache(buildApiUrlWithYear(`/api/teams/${encodedSport}`, eventYear, null, eventName))
+  clearCache(buildApiUrlWithYear(`/api/participants/${encodedSport}`, eventYear, null, eventName))
+  clearCache(buildApiUrlWithYear(`/api/participants-count/${encodedSport}`, eventYear, null, eventName))
+  clearCache(buildApiUrlWithYear(`/api/event-schedule/${encodedSport}`, eventYear, null, eventName))
+  clearCache(buildApiUrlWithYear(`/api/event-schedule/${encodedSport}/teams-players`, eventYear, null, eventName))
+  clearCache(buildApiUrlWithYear('/api/sports-counts', eventYear, null, eventName))
 }
 
 /**
  * Clear caches after team participation changes
  * @param {string} sportName - The sport name
  * @param {number|null} eventYear - The event year
+ * @param {string|null} eventName - The event name (for composite key filtering)
  */
-export const clearTeamParticipationCaches = (sportName, eventYear) => {
-  clearSportCaches(sportName, eventYear)
+export const clearTeamParticipationCaches = (sportName, eventYear, eventName = null) => {
+  clearSportCaches(sportName, eventYear, eventName)
   clearCache('/api/me') // Current user's participation data changes
 }
 
@@ -37,19 +39,20 @@ export const clearTeamParticipationCaches = (sportName, eventYear) => {
  * Clear caches after individual participation changes
  * @param {string} sportName - The sport name
  * @param {number|null} eventYear - The event year
+ * @param {string|null} eventName - The event name (for composite key filtering)
  */
-export const clearIndividualParticipationCaches = (sportName, eventYear) => {
-  clearSportCaches(sportName, eventYear)
+export const clearIndividualParticipationCaches = (sportName, eventYear, eventName = null) => {
+  clearSportCaches(sportName, eventYear, eventName)
   clearCache('/api/me') // Current user's participation data changes
 }
 
 /**
  * Clear caches after sport changes (create/update/delete)
  * @param {number|null} eventYear - The event year
+ * @param {string|null} eventName - The event name (for composite key filtering)
  */
-export const clearSportManagementCaches = (eventYear) => {
-  const eventYearParam = eventYear ? `?event_year=${eventYear}` : ''
-  clearCache(`/api/sports${eventYearParam}`)
-  clearCache(`/api/sports-counts${eventYearParam}`)
+export const clearSportManagementCaches = (eventYear, eventName = null) => {
+  clearCache(buildApiUrlWithYear('/api/sports', eventYear, null, eventName))
+  clearCache(buildApiUrlWithYear('/api/sports-counts', eventYear, null, eventName))
 }
 

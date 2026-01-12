@@ -134,8 +134,9 @@ This document lists all backend validations, security checks, authentication/aut
 **Returns:** `{ isValid: boolean, errors: string[] }`
 
 #### `validateCaptainAssignment(data)`
-- ✅ **Required Fields**: `reg_number`, `sport`
+- ✅ **Required Fields**: `reg_number`, `sport`, `event_year`, `event_name`
 - ✅ **String Trimming**: All string fields are trimmed
+- ✅ **Composite Key**: Both `event_year` and `event_name` are required together for composite key filtering
 
 **Returns:** `{ isValid: boolean, errors: string[] }`
 
@@ -183,6 +184,7 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Composite Key**: Uses both `event_year` and `event_name` for filtering
 - ✅ **Active Event Fallback**: Falls back to active event year if not provided
 - ✅ **Active Event Validation**: Validates active event year exists if required
+- ✅ **Parameter Validation**: When `event_year` is provided, `event_name` must also be provided (and vice versa) for optional scenarios
 
 **Throws:** Error if validation fails
 
@@ -237,7 +239,73 @@ This document lists all backend validations, security checks, authentication/aut
 
 ## Route-by-Route Validations
 
-### 1. Players Routes (`routes/players.js`)
+### 1. Authentication Routes (`routes/auth.js`)
+
+#### `POST /api/login`
+**Middleware:** None (public endpoint)
+
+**Validations:**
+- ✅ **Input Trimming**: `reg_number` and `password` trimmed using `trimObjectFields`
+- ✅ **Required Fields**: Validates `reg_number` and `password` are provided
+- ✅ **Player Existence**: Validates player exists in database
+- ✅ **Password Verification**: Validates password matches stored password
+- ✅ **Active Event Year**: Gets active event year for computed fields
+- ✅ **Computed Fields**: Computes `participated_in`, `captain_in`, `coordinator_in` for response
+
+**Error Responses:**
+- `400`: Registration number and password are required
+- `401`: Invalid registration number or password
+
+**Response:**
+- Returns JWT token, player data (without password), computed participation fields, and `change_password_required` flag
+
+#### `POST /api/change-password`
+**Middleware:** `authenticateToken`
+
+**Validations:**
+- ✅ **Authentication**: Validates user is authenticated (token valid, user exists)
+- ✅ **Required Fields**: Validates `current_password` and `new_password` are provided
+- ✅ **Input Trimming**: Passwords trimmed
+- ✅ **New Password Not Empty**: Validates new password is not empty after trimming
+- ✅ **Current Password Verification**: Validates current password matches stored password
+- ✅ **Password Difference**: Validates new password is different from current password
+- ✅ **Password Length**: Minimum 6 characters (enforced in frontend, recommended in backend)
+
+**Error Responses:**
+- `400`: Current password and new password are required, new password cannot be empty, new password must be different from current password
+- `401`: Authentication required, current password is incorrect
+- `404`: Player not found
+
+**Response:**
+- Success message, resets `change_password_required` flag
+
+#### `POST /api/reset-password`
+**Middleware:** None (public endpoint)
+
+**Validations:**
+- ✅ **Required Fields**: Validates `email_id` is provided
+- ✅ **Input Trimming**: Email trimmed
+- ✅ **Email Format**: Validates email format using regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
+- ✅ **Player Existence**: Validates player exists (but doesn't reveal if email exists for security)
+- ✅ **Password Generation**: Generates random 8-character alphanumeric password
+- ✅ **Email Sending**: Sends password reset email (logs error if email sending fails but doesn't fail request)
+
+**Error Responses:**
+- `400`: Email ID is required, invalid email format
+
+**Response:**
+- Always returns success message (doesn't reveal if email exists for security)
+- Sets `change_password_required` flag to true
+
+**Security Notes:**
+- Password reset is rate-limited by email service provider
+- New password is randomly generated (8 characters, alphanumeric)
+- Email sending failure is logged but doesn't fail the request
+- Response doesn't reveal if email exists in system
+
+---
+
+### 2. Players Routes (`routes/players.js`)
 
 #### `POST /api/save-player`
 **Middleware:** `requireRegistrationPeriod`
@@ -312,7 +380,7 @@ This document lists all backend validations, security checks, authentication/aut
 
 ---
 
-### 2. Teams Routes (`routes/teams.js`)
+### 3. Teams Routes (`routes/teams.js`)
 
 #### `POST /api/update-team-participation`
 **Middleware:** `authenticateToken`, `requireRegistrationPeriod`
@@ -321,8 +389,9 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Input Trimming**: All fields trimmed
 - ✅ **Required Fields**: Validates `team_name`, `sport`, `reg_numbers` are provided
 - ✅ **Array Validation**: Validates `reg_numbers` is a non-empty array
+- ✅ **Event Year/Name Validation**: Optional `event_year` and `event_name` in request body. If one is provided, the other is required. If neither is provided, defaults to active event year.
 - ✅ **Duplicate Check**: Validates no duplicate players in team
-- ✅ **Sport Existence**: Validates sport exists
+- ✅ **Sport Existence**: Validates sport exists (using composite key of `event_year` and `event_name`)
 - ✅ **Sport Type**: Validates sport is team sport (`dual_team` or `multi_team`)
 - ✅ **Team Name Uniqueness**: Validates team name doesn't already exist for sport
 - ✅ **Player Existence**: Validates all players exist
@@ -333,7 +402,7 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Captain Count**: Validates exactly one captain in team
 
 **Error Responses:**
-- `400`: Validation errors, duplicate players, sport not found, team name exists, players not found, gender mismatch, batch mismatch, no captain, multiple captains
+- `400`: Validation errors, duplicate players, sport not found, team name exists, players not found, gender mismatch, batch mismatch, no captain, multiple captains, event_name required when event_year provided (or vice versa)
 - `403`: Not captain, not in team
 
 #### `POST /api/validate-participations`
@@ -352,16 +421,17 @@ This document lists all backend validations, security checks, authentication/aut
 
 ---
 
-### 3. Event Schedule Routes (`routes/eventSchedule.js`)
+### 4. Event Schedule Routes (`routes/eventSchedule.js`)
 
 #### `POST /api/event-schedule`
 **Middleware:** `authenticateToken`, `requireEventPeriod`
 
 **Validations:**
 - ✅ **Required Fields**: Validates `match_type`, `sports_name`, `match_date` are provided
+- ✅ **Event Year/Name Validation**: Optional `event_year` and `event_name` in request body. If one is provided, the other is required. If neither is provided, defaults to active event year.
 - ✅ **Admin/Coordinator Check**: Validates user is admin or coordinator for sport
 - ✅ **Match Date Range**: Validates match date is within event date range
-- ✅ **Sport Existence**: Validates sport exists
+- ✅ **Sport Existence**: Validates sport exists (using composite key of `event_year` and `event_name`)
 - ✅ **Sport Type Validation**: Validates teams/players arrays based on sport type
 - ✅ **Team Count**: Validates exactly 2 teams for `dual_team`, more than 2 for `multi_team`
 - ✅ **Player Count**: Validates exactly 2 players for `dual_player`, more than 2 for `multi_player`
@@ -375,7 +445,7 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Match Date Future**: Validates match date is today or future
 
 **Error Responses:**
-- `400`: Validation errors, match date out of range, teams/players not found, gender mismatch, match type restrictions, league matches not completed
+- `400`: Validation errors, match date out of range, teams/players not found, gender mismatch, match type restrictions, league matches not completed, event_name required when event_year provided (or vice versa)
 - `403`: Not admin or coordinator
 
 #### `PUT /api/event-schedule/:id`
@@ -395,7 +465,7 @@ This document lists all backend validations, security checks, authentication/aut
 
 ---
 
-### 4. Sports Routes (`routes/sports.js`)
+### 5. Sports Routes (`routes/sports.js`)
 
 #### `POST /api/sports`
 **Middleware:** `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
@@ -405,12 +475,13 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Sport Type**: Validates type is one of: `dual_team`, `multi_team`, `dual_player`, `multi_player`
 - ✅ **Category**: Validates category is one of: `team events`, `individual events`, `literary and cultural activities`
 - ✅ **Event Year Required**: Validates `event_year` is provided
+- ✅ **Event Name Required**: Validates `event_name` is provided (both `event_year` and `event_name` are mandatory together)
 - ✅ **Event Year Existence**: Validates event year exists
 - ✅ **Team Size Validation**: Uses `validateTeamSize` for team sports
-- ✅ **Sport Uniqueness**: Validates sport name doesn't already exist for event year and event name
+- ✅ **Sport Uniqueness**: Validates sport name doesn't already exist for event year and event name (composite key)
 
 **Error Responses:**
-- `400`: Validation errors, event year not found, team size invalid
+- `400`: Validation errors, event year not found, event name required, team size invalid
 - `409`: Sport already exists
 
 #### `PUT /api/sports/:id`
@@ -418,11 +489,12 @@ This document lists all backend validations, security checks, authentication/aut
 
 **Validations:**
 - ✅ **Sport Existence**: Validates sport exists
-- ✅ **Event Year Match**: Validates sport belongs to requested event year and event name
+- ✅ **Event Year/Name Query Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- ✅ **Event Year Match**: Validates sport belongs to requested event year and event name (composite key)
 - ✅ **Team Size Validation**: Uses `validateTeamSize` if updated
 
 **Error Responses:**
-- `400`: Event year mismatch, team size invalid
+- `400`: Event year mismatch, event_name required when event_year provided (or vice versa), team size invalid
 - `404`: Sport not found
 
 #### `DELETE /api/sports/:id`
@@ -430,59 +502,90 @@ This document lists all backend validations, security checks, authentication/aut
 
 **Validations:**
 - ✅ **Sport Existence**: Validates sport exists
-- ✅ **Event Year Match**: Validates sport belongs to requested event year and event name
+- ✅ **Event Year/Name Query Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- ✅ **Event Year Match**: Validates sport belongs to requested event year and event name (composite key)
 
 **Error Responses:**
-- `400`: Event year mismatch
+- `400`: Event year mismatch, event_name required when event_year provided (or vice versa)
 - `404`: Sport not found
 
 ---
 
-### 5. Event Years Routes (`routes/eventYears.js`)
+### 6. Event Years Routes (`routes/eventYears.js`)
 
 #### `POST /api/event-years`
-**Middleware:** `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
+**Middleware:** `authenticateToken`, `requireAdmin`
 
 **Validations:**
-- ✅ **Required Fields**: Validates `event_year`, `event_name`, `event_dates`, `registration_dates` are provided
-- ✅ **Date Relationships**: Validates `regStart < regEnd < eventStart < eventEnd`
-- ✅ **Registration Start Date**: Validates registration start date is not in the past
-- ✅ **Event Start Date**: Validates event start date is not in the past
-- ✅ **Event Year Type**: Validates `event_year` is a valid number
+- ✅ **Input Trimming**: All fields trimmed using `trimObjectFields`
+- ✅ **Required Fields**: Validates `event_year`, `event_name`, `event_dates.start`, `event_dates.end`, `registration_dates.start`, `registration_dates.end` are provided
+- ✅ **Event Year/Name Required**: Both `event_year` and `event_name` are mandatory together
 - ✅ **Event Year Uniqueness**: Validates event year doesn't already exist
+- ✅ **Event Year Type**: Validates event year is a valid number
+- ✅ **Date Relationships**: Validates `registration_dates.start < registration_dates.end < event_dates.start < event_dates.end`
+- ✅ **Past Date Check**: Validates `registration_dates.start` and `event_dates.start` are not in the past
+- ✅ **Date Format**: Validates dates are valid Date objects
 
 **Error Responses:**
-- `400`: Validation errors, date relationships invalid, dates in past, event year invalid
+- `400`: Validation errors, event year already exists, date relationships invalid, dates in past
 - `409`: Event year already exists
 
+**Note**: Event year creation is allowed even when no active event year exists (enables initial setup). No registration period check.
+
 #### `PUT /api/event-years/:event_year`
-**Middleware:** `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
+**Middleware:** `authenticateToken`, `requireAdmin`
+
+**Validations:**
+- ✅ **Input Trimming**: All fields trimmed using `trimObjectFields`
+- ✅ **Event Year Existence**: Validates event year exists
+- ✅ **Update Date Restriction**: Validates current date is before registration end date (updates allowed until registration end date)
+- ✅ **Updatable Fields**: Uses `getUpdatableDateFields` to determine which fields can be updated based on current date
+- ✅ **Date Relationships**: Validates date relationships if dates are updated
+- ✅ **Past Date Check**: Validates updated dates are not in the past (where applicable)
+- ✅ **Field Restrictions**: 
+  - Cannot update `event_year` (immutable)
+  - Cannot update registration start date after registration has started
+  - Cannot update registration end date after registration has ended
+  - Cannot update event start date after event has started
+  - Cannot update event end date after event has ended
+  - Non-date fields cannot be updated after event ends
+
+**Error Responses:**
+- `400`: Validation errors, cannot update after registration end date, field restrictions, date relationships invalid
+- `404`: Event year not found
+
+**Note**: Updates are allowed until registration end date. No registration period check (custom validation).
+
+#### `DELETE /api/event-years/:event_year`
+**Middleware:** `authenticateToken`, `requireAdmin`
 
 **Validations:**
 - ✅ **Event Year Existence**: Validates event year exists
-- ✅ **Event End Check**: Validates non-date fields cannot be updated after event ends
-- ✅ **Date Relationships**: Validates date relationships if dates are updated
-- ✅ **Updatable Fields**: Uses `getUpdatableDateFields` to determine which fields can be updated
+- ✅ **Delete Date Restriction**: Validates current date is before registration start date (can only delete before registration starts)
+- ✅ **Active Check**: Validates event year is not active (based on dates)
+- ✅ **Data Existence Check**: Validates no data exists (sports, schedules, points entries) for this event year
 
 **Error Responses:**
-- `400`: Validation errors, event ended, date relationships invalid
+- `400`: Cannot delete after registration start date, cannot delete active event year, data exists
 - `404`: Event year not found
+
+**Note**: Can only delete before registration start date. No registration period check (custom validation).
 
 ---
 
-### 6. Batches Routes (`routes/batches.js`)
+### 7. Batches Routes (`routes/batches.js`)
 
 #### `POST /api/add-batch`
 **Middleware:** `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 
 **Validations:**
 - ✅ **Input Trimming**: All fields trimmed
-- ✅ **Required Fields**: Validates `name`, `event_year` are provided
+- ✅ **Required Fields**: Validates `name`, `event_year`, `event_name` are provided (both `event_year` and `event_name` are mandatory together)
 - ✅ **Event Year Existence**: Validates event year exists
-- ✅ **Batch Uniqueness**: Validates batch name doesn't already exist for event year and event name
+- ✅ **Batch Uniqueness**: Validates batch name doesn't already exist for event year and event name (composite key)
 
 **Error Responses:**
-- `400`: Validation errors, event year not found
+- `400`: Validation errors, event year not found, event name required
 - `409`: Batch already exists
 
 #### `DELETE /api/remove-batch`
@@ -490,30 +593,30 @@ This document lists all backend validations, security checks, authentication/aut
 
 **Validations:**
 - ✅ **Input Trimming**: All fields trimmed
-- ✅ **Required Fields**: Validates `name`, `event_year` are provided
+- ✅ **Required Fields**: Validates `name`, `event_year`, `event_name` are provided (both `event_year` and `event_name` are mandatory together)
 - ✅ **Event Year Existence**: Validates event year exists
-- ✅ **Batch Existence**: Validates batch exists
+- ✅ **Batch Existence**: Validates batch exists (using composite key of `event_year` and `event_name`)
 
 **Error Responses:**
-- `400`: Validation errors, event year not found
+- `400`: Validation errors, event year not found, event name required
 - `404`: Batch not found
 
 ---
 
-### 7. Captains Routes (`routes/captains.js`)
+### 8. Captains Routes (`routes/captains.js`)
 
 #### `POST /api/add-captain`
 **Middleware:** `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 
 **Validations:**
 - ✅ **Input Trimming**: All fields trimmed
-- ✅ **Field Validation**: Uses `validateCaptainAssignment`
+- ✅ **Field Validation**: Uses `validateCaptainAssignment` (requires `reg_number`, `sport`, `event_year`, `event_name`)
 - ✅ **Player Existence**: Validates player exists
-- ✅ **Sport Existence**: Validates sport exists
+- ✅ **Sport Existence**: Validates sport exists (using composite key of `event_year` and `event_name`)
 - ✅ **Duplicate Check**: Validates captain not already assigned
 
 **Error Responses:**
-- `400`: Validation errors, player not found, sport not found
+- `400`: Validation errors, player not found, sport not found, event_year and event_name required
 - `409`: Captain already assigned
 
 #### `DELETE /api/remove-captain`
@@ -521,33 +624,141 @@ This document lists all backend validations, security checks, authentication/aut
 
 **Validations:**
 - ✅ **Input Trimming**: All fields trimmed
-- ✅ **Field Validation**: Uses `validateCaptainAssignment`
+- ✅ **Field Validation**: Uses `validateCaptainAssignment` (requires `reg_number`, `sport`, `event_year`, `event_name`)
 - ✅ **Player Existence**: Validates player exists
-- ✅ **Sport Existence**: Validates sport exists
+- ✅ **Sport Existence**: Validates sport exists (using composite key of `event_year` and `event_name`)
 - ✅ **Captain Existence**: Validates captain is assigned
 
 **Error Responses:**
-- `400`: Validation errors, player not found, sport not found
+- `400`: Validation errors, player not found, sport not found, event_year and event_name required
 - `404`: Captain not found
 
 ---
 
-### 8. Participants Routes (`routes/participants.js`)
+### 9. Coordinators Routes (`routes/coordinators.js`)
 
-#### `POST /api/update-participant`
-**Middleware:** `authenticateToken`, `requireAdminOrCoordinator`, `requireRegistrationPeriod`
+#### `POST /api/add-coordinator`
+**Middleware:** `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
+
+**Validations:**
+- ✅ **Input Trimming**: All fields trimmed using `trimObjectFields`
+- ✅ **Required Fields**: Validates `reg_number`, `sport`, `event_year`, `event_name` are provided
+- ✅ **Event Year/Name Required**: Both `event_year` and `event_name` are mandatory together
+- ✅ **Player Existence**: Validates player exists
+- ✅ **Sport Existence**: Validates sport exists for event year and event name (composite key)
+- ✅ **Duplicate Check**: Validates player is not already coordinator for that sport
+- ✅ **Captain Assignment Validation**: Uses `validateCaptainAssignment` (same validation logic as captain assignment)
+
+**Error Responses:**
+- `400`: Validation errors, player not found, sport not found, already coordinator, event_name required when event_year provided (or vice versa)
+- `404`: Player or sport not found
+
+#### `DELETE /api/remove-coordinator`
+**Middleware:** `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
+
+**Validations:**
+- ✅ **Input Trimming**: All fields trimmed using `trimObjectFields`
+- ✅ **Required Fields**: Validates `reg_number`, `sport`, `event_year`, `event_name` are provided
+- ✅ **Event Year/Name Required**: Both `event_year` and `event_name` are mandatory together
+- ✅ **Player Existence**: Validates player exists
+- ✅ **Sport Existence**: Validates sport exists for event year and event name (composite key)
+- ✅ **Coordinator Check**: Validates player is coordinator for that sport
+
+**Error Responses:**
+- `400`: Validation errors, player not found, sport not found, not coordinator, event_name required when event_year provided (or vice versa)
+- `404`: Player or sport not found
+
+#### `GET /api/coordinators-by-sport`
+**Middleware:** `authenticateToken`, `requireAdmin`
+
+**Validations:**
+- ✅ **Event Year/Name Query Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- ✅ **Active Event Year**: Validates active event year exists (if not provided)
+
+**Error Responses:**
+- `400`: No active event year found, event_name required when event_year provided (or vice versa)
+
+---
+
+### 10. Participants Routes (`routes/participants.js`)
+
+#### `POST /api/update-participation`
+**Middleware:** `authenticateToken`, `requireRegistrationPeriod`
 
 **Validations:**
 - ✅ **Input Trimming**: All fields trimmed
 - ✅ **Required Fields**: Validates `reg_number`, `sport` are provided
+- ✅ **Event Year/Name Validation**: Optional `event_year` and `event_name` in request body. If one is provided, the other is required. If neither is provided, defaults to active event year.
 - ✅ **Player Existence**: Validates player exists
-- ✅ **Sport Existence**: Validates sport exists
+- ✅ **Sport Existence**: Validates sport exists (using composite key of `event_year` and `event_name`)
 - ✅ **Sport Type**: Validates sport is individual sport (`dual_player` or `multi_player`)
 - ✅ **Duplicate Check**: Validates player not already registered
+- ✅ **Admin/Coordinator Check**: Validates user is admin or coordinator for sport
 
 **Error Responses:**
-- `400`: Validation errors, player not found, sport not found, sport type invalid, already registered
+- `400`: Validation errors, player not found, sport not found, sport type invalid, already registered, event_name required when event_year provided (or vice versa)
 - `403`: Not admin or coordinator
+
+---
+
+### 11. Points Table Routes (`routes/pointsTable.js`)
+
+#### `GET /api/points-table/:sport`
+**Middleware:** `authenticateToken`
+
+**Validations:**
+- ✅ **Event Year/Name Query Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- ✅ **Gender Parameter Required**: Validates `gender` query parameter is provided and is either "Male" or "Female"
+- ✅ **Sport Existence**: Validates sport exists (using composite key of `event_year` and `event_name`)
+- ✅ **Sport Type**: Only available for `dual_team` and `dual_player` sports (returns empty array for others)
+- ✅ **Gender Derivation**: Derives gender for each points entry from match participants
+- ✅ **Sorting**: Automatically sorted by points (descending), then matches won (descending)
+
+**Error Responses:**
+- `400`: Gender parameter is required and must be "Male" or "Female", event_name required when event_year provided (or vice versa), no active event year found
+
+**Response:**
+- Returns points table array with participant name, points, matches played, won, lost, draw, cancelled
+- Includes `has_league_matches` flag to help frontend show appropriate message
+
+#### `POST /api/points-table/backfill/:sport`
+**Middleware:** `authenticateToken`, `requireAdmin`, `requireEventStatusUpdatePeriod`
+
+**Validations:**
+- ✅ **Event Year/Name Query Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- ✅ **Sport Existence**: Validates sport exists (using composite key of `event_year` and `event_name`)
+- ✅ **Sport Type**: Only processes `dual_team` and `dual_player` sports
+- ✅ **Match Type**: Only processes league matches (not knockout/final)
+- ✅ **Match Status**: Only processes completed, draw, or cancelled matches
+- ✅ **Points Calculation**: Recalculates points from all completed league matches
+
+**Error Responses:**
+- `400`: Sport not found, event_name required when event_year provided (or vice versa), no active event year found
+- `403`: Operation only allowed during event status update period
+- `500`: Error backfilling points table
+
+**Response:**
+- Returns result object with `processed` (number of entries processed), `errors` (number of errors), and `message`
+
+---
+
+### 12. Export Routes (`routes/exports.js`)
+
+#### `GET /api/export-excel`
+**Middleware:** `authenticateToken`, `requireAdmin`
+
+**Validations:**
+- ✅ **Event Year/Name Query Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- ✅ **Event Year Validation**: Validates event year is a positive number if provided
+- ✅ **Event Year Existence**: Validates event year exists (using composite key if provided)
+- ✅ **Player Filtering**: Only includes players who have participation or captain status for the event year
+- ✅ **Sport Columns**: Dynamically creates columns for all sports in the event year
+
+**Error Responses:**
+- `400`: Invalid event year parameter, event year not found, event_name required when event_year provided (or vice versa), no active event year found
+
+**Response:**
+- Returns Excel file (.xlsx) with player data and participation status for all sports
 
 ---
 
@@ -619,6 +830,37 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Uniqueness Constraints**: Database indexes enforce uniqueness
 - ✅ **Referential Integrity**: Foreign key relationships validated before operations
 - ✅ **Transaction Safety**: Critical operations use database transactions where needed
+
+---
+
+## Event Year and Event Name Parameter Validations
+
+### Mandatory Parameters
+When `event_year` is required in the request body, `event_name` is also required. Both must be provided together:
+- ✅ `POST /api/sports` - Both `event_year` and `event_name` required
+- ✅ `POST /api/add-captain` - Both `event_year` and `event_name` required
+- ✅ `DELETE /api/remove-captain` - Both `event_year` and `event_name` required
+- ✅ `POST /api/add-coordinator` - Both `event_year` and `event_name` required
+- ✅ `DELETE /api/remove-coordinator` - Both `event_year` and `event_name` required
+- ✅ `POST /api/add-batch` - Both `event_year` and `event_name` required
+- ✅ `DELETE /api/remove-batch` - Both `event_year` and `event_name` required
+
+### Optional Parameters (Both or Neither)
+When `event_year` is optional (defaults to active event year), either both `event_year` and `event_name` must be provided, or neither:
+- ✅ `POST /api/update-team-participation` - Optional in request body
+- ✅ `DELETE /api/delete-team` - Optional in request body
+- ✅ `POST /api/update-participation` - Optional in request body
+- ✅ `DELETE /api/remove-participation` - Optional in request body
+- ✅ `POST /api/event-schedule` - Optional in request body
+- ✅ `PUT /api/sports/:id` - Optional query parameters
+- ✅ `DELETE /api/sports/:id` - Optional query parameters
+- ✅ All GET endpoints that accept `event_year` as query parameter
+
+**Validation Logic:**
+- If `event_year` is provided but `event_name` is not → Error: "event_name is required when event_year is provided"
+- If `event_name` is provided but `event_year` is not → Error: "event_year is required when event_name is provided"
+- If both are provided → Use both for composite key filtering
+- If neither is provided → Default to active event year
 
 ---
 

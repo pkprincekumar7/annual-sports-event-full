@@ -45,8 +45,8 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
     const fetchData = async () => {
       try {
         const [playersRes, sportsRes] = await Promise.all([
-          fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear), { signal: abortController.signal }),
-          fetchWithAuth(buildApiUrlWithYear('/api/sports', eventYear), { signal: abortController.signal }),
+          fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear, null, eventName), { signal: abortController.signal }),
+          fetchWithAuth(buildApiUrlWithYear('/api/sports', eventYear, null, eventName), { signal: abortController.signal }),
         ])
 
         if (!isMounted) return
@@ -92,7 +92,7 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
   // Fetch coordinators by sport for Remove tab
   useEffect(() => {
     if (isOpen && activeTab === TABS.REMOVE && eventYear) {
-      fetchWithAuth(buildApiUrlWithYear('/api/coordinators-by-sport', eventYear))
+      fetchWithAuth(buildApiUrlWithYear('/api/coordinators-by-sport', eventYear, null, eventName))
         .then((res) => {
           if (!res.ok) {
             if (res.status >= 500) {
@@ -172,7 +172,7 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
             clearCache('/api/coordinators-by-sport')
             clearCache('/api/players')
             clearCache('/api/me')
-            clearCache(buildApiUrlWithYear('/api/sports', eventYear))
+            clearCache(buildApiUrlWithYear('/api/sports', eventYear, null, eventName))
             
             onStatusPopup(
               `✅ ${selectedPlayer.full_name} has been added as coordinator for ${selectedSport}!`,
@@ -234,12 +234,13 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
               3000
             )
             isRefreshingRef.current = true
-            clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', eventYear))
+            clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', eventYear, null, eventName))
             clearCache('/api/players')
             clearCache('/api/me')
-            clearCache(buildApiUrlWithYear('/api/sports', eventYear))
+            clearCache(buildApiUrlWithYear('/api/sports', eventYear, null, eventName))
             
-            fetchWithAuth(`/api/coordinators-by-sport${eventYear ? `?event_year=${eventYear}` : ''}`, { skipCache: true })
+            const coordinatorsUrl = buildApiUrlWithYear('/api/coordinators-by-sport', eventYear, null, eventName)
+            fetchWithAuth(coordinatorsUrl, { skipCache: true })
               .then((res) => {
                 if (!res.ok) {
                   throw new Error(`HTTP error! status: ${res.status}`)

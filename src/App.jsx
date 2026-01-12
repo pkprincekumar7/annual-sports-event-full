@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchWithAuth, fetchCurrentUser, decodeJWT, clearCache } from './utils/api'
+import { buildApiUrlWithYear } from './utils/apiHelpers'
 import logger from './utils/logger'
 import { useEventYear } from './hooks/useEventYear'
 import { formatDateRange } from './utils/dateFormatters'
@@ -365,8 +366,10 @@ function App() {
         return
       }
 
-      // Use eventYear (already validated to exist)
-      const response = await fetchWithAuth(`/api/export-excel?event_year=${eventYear}`)
+      // Use eventYear and eventName (already validated to exist)
+      const eventName = eventYearConfig?.event_name || null
+      const exportUrl = buildApiUrlWithYear('/api/export-excel', eventYear, null, eventName)
+      const response = await fetchWithAuth(exportUrl)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))

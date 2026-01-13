@@ -237,7 +237,8 @@ export const fetchWithAuth = async (url, options = {}) => {
 // Fetch current user data only (optimized - uses dedicated /api/me endpoint)
 // Returns { user: userData, authError: boolean } to distinguish auth failures from other errors
 // Uses singleton pattern to prevent race conditions on rapid page refreshes
-export const fetchCurrentUser = async () => {
+// Optional parameters: eventYear and eventName for composite key filtering
+export const fetchCurrentUser = async (eventYear = null, eventName = null) => {
   const token = localStorage.getItem('authToken')
   if (!token) {
     // If there's a pending request, wait for it to complete
@@ -282,7 +283,15 @@ export const fetchCurrentUser = async () => {
       // /api/me is never cached (see getCacheKey) to ensure fresh authentication data
       // Don't reload or clear token on auth error during initial fetch - let App.jsx handle it
       // This prevents false logouts on page refresh due to temporary network issues
-      let response = await fetchWithAuth('/api/me', { 
+      // Build URL with event_year and event_name if provided (composite key)
+      let meUrl = '/api/me'
+      if (eventYear && eventName) {
+        meUrl += `?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`
+      } else if (eventYear) {
+        // If only eventYear is provided, don't add it (backend will require event_name too)
+        // This prevents validation errors
+      }
+      let response = await fetchWithAuth(meUrl, { 
         reloadOnAuthError: false,
         clearTokenOnAuthError: false
       })
@@ -315,7 +324,7 @@ export const fetchCurrentUser = async () => {
       return { user: null, authError: true }
             }
 
-            response = await fetchWithAuth('/api/me', { 
+            response = await fetchWithAuth(meUrl, { 
               reloadOnAuthError: false,
               clearTokenOnAuthError: false
             })

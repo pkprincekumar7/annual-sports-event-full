@@ -27,7 +27,7 @@ const router = express.Router()
 /**
  * Helper function to add computed fields to player data
  */
-async function addComputedFields(player, eventYear = null) {
+async function addComputedFields(player, eventYear = null, eventName = null) {
   const playerObj = player.toObject ? player.toObject() : player
   
   // Compute participation data
@@ -36,14 +36,24 @@ async function addComputedFields(player, eventYear = null) {
   playerObj.captain_in = participation.captain_in
   playerObj.coordinator_in = participation.coordinator_in
   
-  // Get batch name from Batch collection
-  if (eventYear) {
+  // Get batch name from Batch collection using composite key (eventYear + eventName)
+  if (eventYear && eventName) {
     try {
-      const eventYearData = await getEventYear(eventYear, { returnDoc: true })
-      const eventName = eventYearData.doc.event_name
       const batchName = await getPlayerBatchName(playerObj.reg_number, eventYear, eventName)
       playerObj.batch_name = batchName // Use batch_name instead of year
     } catch (error) {
+      logger.warn(`Could not get batch_name for player ${playerObj.reg_number}:`, error)
+      playerObj.batch_name = null
+    }
+  } else if (eventYear) {
+    // Fallback: if eventYear is provided but eventName is not, try to get it from event year document
+    try {
+      const eventYearData = await getEventYear(eventYear, { returnDoc: true, eventName: null })
+      const resolvedEventName = eventYearData.doc.event_name
+      const batchName = await getPlayerBatchName(playerObj.reg_number, eventYear, resolvedEventName)
+      playerObj.batch_name = batchName
+    } catch (error) {
+      logger.warn(`Could not get batch_name for player ${playerObj.reg_number}:`, error)
       playerObj.batch_name = null
     }
   } else {
@@ -57,31 +67,44 @@ async function addComputedFields(player, eventYear = null) {
  * GET /api/me
  * Get current authenticated user data
  * Add computed participated_in, captain_in, coordinator_in, and batch_name fields (filtered by active event year or provided event year)
+ * Supports composite key: event_year + event_name (both optional, but if one is provided, the other should be too)
  */
 router.get(
   '/me',
   authenticateToken,
   asyncHandler(async (req, res) => {
-    let eventYear = req.query.event_year ? parseInt(req.query.event_year) : null
-
-    // Get event year (default to active event year if not provided)
-    if (!eventYear) {
-      const cachedActiveYear = getCache('/api/event-years/active')
-      if (cachedActiveYear) {
-        eventYear = cachedActiveYear.event_year
-      } else {
-        const activeYear = await findActiveEventYear()
-        if (activeYear) {
-          eventYear = activeYear.event_year
-          setCache('/api/event-years/active', activeYear)
-        } else {
-          eventYear = new Date().getFullYear()
-        }
-      }
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
     }
 
-    // Check cache
-    const cacheKey = `/api/me?event_year=${eventYear}`
+    // Get event year and event_name (default to active event year if not provided)
+    // Extract event_name from query if provided for composite key filtering
+    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
+    let eventYearData
+    try {
+      eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+    } catch (error) {
+      // If event year not found, return error
+      if (error.message === 'Event year not found' || error.message === 'No active event year found') {
+        return sendErrorResponse(res, 400, error.message)
+      }
+      // Re-throw other errors to be handled by asyncHandler
+      throw error
+    }
+    
+    const eventYear = eventYearData.event_year
+    const eventName = eventYearData.doc.event_name
+
+    // Check cache (include event_name in cache key for proper isolation)
+    const cacheKey = `/api/me?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`
     const cached = getCache(cacheKey)
     if (cached && cached.reg_number === req.user.reg_number) {
       // Always use sendSuccessResponse for consistency, even for cached data
@@ -100,8 +123,8 @@ router.get(
       return handleNotFoundError(res, 'User')
     }
 
-    // Add computed fields
-    const userWithComputed = await addComputedFields(user, eventYear)
+    // Add computed fields using composite key (eventYear + eventName)
+    const userWithComputed = await addComputedFields(user, eventYear, eventName)
 
     // Cache the result (store as player object to match response format)
     setCache(cacheKey, userWithComputed)

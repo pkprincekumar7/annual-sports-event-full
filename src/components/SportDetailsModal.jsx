@@ -42,7 +42,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
     }
 
     fetchSportDetails()
-  }, [isOpen, selectedSport?.name, eventYear])
+  }, [isOpen, selectedSport?.name, eventYear, eventName])
 
   // All hooks must be called before any early returns
   // Reset active tab when modal closes

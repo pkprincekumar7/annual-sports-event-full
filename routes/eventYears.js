@@ -34,10 +34,10 @@ function getOrdinal(day) {
 
 /**
  * GET /api/event-years
- * Get all event years (admin only)
+ * Get all event years (all authenticated users)
  * Includes computed is_active status based on dates
  */
-router.get('/', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+router.get('/', authenticateToken, asyncHandler(async (req, res) => {
   const eventYears = await EventYear.find()
     .sort({ event_year: -1 })
     .lean()
@@ -180,7 +180,7 @@ router.put('/:event_year', authenticateToken, requireAdmin, asyncHandler(async (
   if (!eventYear) {
     return handleNotFoundError(res, 'Event year')
   }
-
+  
   // Check if update is allowed: must be before or on registration end date
   const now = new Date()
   now.setHours(0, 0, 0, 0)
@@ -281,7 +281,7 @@ router.delete('/:event_year', authenticateToken, requireAdmin, asyncHandler(asyn
   if (!yearDoc) {
     return handleNotFoundError(res, 'Event year')
   }
-
+  
   // Check if deletion is allowed: must be before registration start date
   const now = new Date()
   now.setHours(0, 0, 0, 0)

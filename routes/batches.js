@@ -10,7 +10,7 @@ import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
-import { getCache, setCache, clearCache } from '../utils/cache.js'
+import { getCache, setCache, clearCache, clearCachePattern } from '../utils/cache.js'
 import { getEventYear } from '../utils/yearHelpers.js'
 import logger from '../utils/logger.js'
 
@@ -97,7 +97,7 @@ router.post(
     await batch.save()
 
     // Clear cache
-    clearCache(`/api/batches?event_year=${eventYear}`)
+    clearCache(`/api/batches?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
 
     return sendSuccessResponse(res, { batch }, `Batch "${name}" created successfully`)
   })
@@ -128,8 +128,8 @@ router.delete(
     const eventYear = eventYearData.event_year
     const eventName = eventYearData.doc.event_name
 
-    // Find and delete batch
-    const batch = await Batch.findOneAndDelete({
+    // Find batch first to check if it has players
+    const batch = await Batch.findOne({
       name: name.trim(),
       event_year: eventYear,
       event_name: eventName
@@ -139,9 +139,21 @@ router.delete(
       return handleNotFoundError(res, 'Batch')
     }
 
+    // Check if batch has any players
+    if (batch.players && batch.players.length > 0) {
+      return sendErrorResponse(res, 400, `Cannot delete batch "${name}" because it has ${batch.players.length} player(s) assigned. Please remove all players from the batch before deleting it.`)
+    }
+
+    // Delete batch if no players
+    await Batch.findOneAndDelete({
+      name: name.trim(),
+      event_year: eventYear,
+      event_name: eventName
+    })
+
     // Clear cache
-    clearCache(`/api/batches?event_year=${eventYear}`)
-    clearCache('/api/players') // Player year data changes
+    clearCache(`/api/batches?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
+    clearCachePattern('/api/players') // Player data changes (use pattern to clear all variations)
 
     return sendSuccessResponse(res, {}, `Batch "${name}" deleted successfully`)
   })
@@ -149,13 +161,12 @@ router.delete(
 
 /**
  * GET /api/batches
- * Get all batches for an event year (admin only)
+ * Get all batches for an event year (public during registration period)
  * Event Year Filter: Accepts ?event_year=2026 parameter (defaults to active event year)
+ * Note: This endpoint is public (no authentication required) to allow batch selection during registration
  */
 router.get(
   '/batches',
-  authenticateToken,
-  requireAdmin,
   asyncHandler(async (req, res) => {
     // For optional event_year/event_name: either both must be provided, or neither
     // If one is provided, the other is also required for composite key filtering
@@ -196,21 +207,17 @@ router.get(
       event_name: eventName
     }).sort({ name: 1 }).lean()
 
-    // Populate player details
-    const batchesWithPlayers = await Promise.all(
-      batches.map(async (batch) => {
-        const players = await Player.find({ reg_number: { $in: batch.players } })
-          .select('reg_number full_name gender department_branch mobile_number email_id')
-          .lean()
-        
-        return {
-          ...batch,
-          players: players
-        }
-      })
-    )
+    // For public access, don't include player details (privacy)
+    // Only return batch names
+    const batchesList = batches.map(batch => ({
+      _id: batch._id,
+      name: batch.name,
+      event_year: batch.event_year,
+      event_name: batch.event_name,
+      players: [] // Don't expose player details for public access
+    }))
 
-    const result = { batches: batchesWithPlayers }
+    const result = { batches: batchesList }
     setCache(cacheKey, result)
     return sendSuccessResponse(res, result)
   })

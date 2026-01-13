@@ -15,8 +15,12 @@ export const buildSportApiUrl = (endpoint, sportName, eventYear = null, eventNam
   if (!sportName) return ''
   const encodedSport = encodeURIComponent(sportName)
   const params = []
-  if (eventYear) params.push(`event_year=${eventYear}`)
-  if (eventName) params.push(`event_name=${encodeURIComponent(eventName)}`)
+  // Backend requires both event_year and event_name if one is provided
+  // Only add event_year if eventName is also available (to avoid backend validation error)
+  if (eventYear && eventName) {
+    params.push(`event_year=${eventYear}`)
+    params.push(`event_name=${encodeURIComponent(eventName)}`)
+  }
   const queryString = params.length > 0 ? `?${params.join('&')}` : ''
   return `/api/${endpoint}/${encodedSport}${queryString}`
 }
@@ -35,8 +39,12 @@ export const buildEventScheduleApiUrl = (sportName, subPath = '', eventYear = nu
   const encodedSport = encodeURIComponent(sportName)
   const path = subPath ? `${encodedSport}/${subPath}` : encodedSport
   const params = []
-  if (eventYear) params.push(`event_year=${eventYear}`)
-  if (eventName) params.push(`event_name=${encodeURIComponent(eventName)}`)
+  // Backend requires both event_year and event_name if one is provided
+  // Only add event_year if eventName is also available (to avoid backend validation error)
+  if (eventYear && eventName) {
+    params.push(`event_year=${eventYear}`)
+    params.push(`event_name=${encodeURIComponent(eventName)}`)
+  }
   if (gender && (gender === 'Male' || gender === 'Female')) params.push(`gender=${encodeURIComponent(gender)}`)
   const queryString = params.length > 0 ? `?${params.join('&')}` : ''
   return `/api/event-schedule/${path}${queryString}`
@@ -53,8 +61,12 @@ export const buildEventScheduleApiUrl = (sportName, subPath = '', eventYear = nu
 export const buildApiUrlWithYear = (baseUrl, eventYear = null, gender = null, eventName = null) => {
   if (!baseUrl) return ''
   const params = []
-  if (eventYear) params.push(`event_year=${eventYear}`)
-  if (eventName) params.push(`event_name=${encodeURIComponent(eventName)}`)
+  // Backend requires both event_year and event_name if one is provided
+  // Only add event_year if eventName is also available (to avoid backend validation error)
+  if (eventYear && eventName) {
+    params.push(`event_year=${eventYear}`)
+    params.push(`event_name=${encodeURIComponent(eventName)}`)
+  }
   if (gender && (gender === 'Male' || gender === 'Female')) params.push(`gender=${encodeURIComponent(gender)}`)
   const queryString = params.length > 0 ? `?${params.join('&')}` : ''
   return `${baseUrl}${queryString}`

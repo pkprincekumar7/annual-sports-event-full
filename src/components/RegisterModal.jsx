@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input } from './ui'
 import { useApi, useDepartments, useEventYear } from '../hooks'
-import { fetchWithAuth, API_URL, clearCache } from '../utils/api'
+import { fetchWithAuth, API_URL, clearCache, clearCachePattern } from '../utils/api'
 import { clearTeamParticipationCaches, clearIndividualParticipationCaches } from '../utils/cacheHelpers'
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
@@ -9,6 +9,7 @@ import { GENDER_OPTIONS } from '../constants/app'
 import { formatSportName } from '../utils/stringHelpers'
 import { isTeamSport, getSportType, getTeamSize, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual } from '../utils/sportHelpers'
 import { validateParticipantSelection, validateNoDuplicates, validateGenderMatch, validateBatchMatch } from '../utils/participantValidation'
+import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
 function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate, embedded = false, selectedEventYear }) {
   const [players, setPlayers] = useState([])
@@ -42,25 +43,32 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   
   // Fetch batches for batch_name dropdown
   useEffect(() => {
-    if (!isOpen || isGeneralRegistration) return
+    if (!isOpen || !eventYear) return
     
     let isMounted = true
     const abortController = new AbortController()
     
     const fetchBatches = async () => {
       try {
-        const res = await fetchWithAuth(buildApiUrlWithYear('/api/batches', eventYear, null, eventName), { signal: abortController.signal })
+        // Use regular fetch (not fetchWithAuth) since batches endpoint is now public
+        const url = buildApiUrlWithYear('/api/batches', eventYear, null, eventName)
+        const res = await fetch(`${API_URL}${url}`, { signal: abortController.signal })
         if (!isMounted) return
         
         if (res.ok) {
           const data = await res.json()
           if (data.success) {
             setBatches(data.batches || [])
+          } else {
+            setBatches([])
           }
+        } else {
+          setBatches([])
         }
       } catch (err) {
         if (!isMounted || err.name === 'AbortError') return
         setBatches([])
+        logger.error('Error fetching batches:', err)
       }
     }
     
@@ -70,7 +78,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       isMounted = false
       abortController.abort()
     }
-  }, [isOpen, eventYear, isGeneralRegistration])
+  }, [isOpen, eventYear, eventName])
   
   // Generate batch options from fetched batches
   const batchOptions = batches.map(batch => ({ value: batch.name, label: batch.name }))
@@ -146,7 +154,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         
         setLoadingParticipants(true)
         try {
-          const response = await fetchWithAuth(buildSportApiUrl('participants-count', currentSportName, eventYear))
+          const response = await fetchWithAuth(buildSportApiUrl('participants-count', currentSportName, eventYear, eventName))
           
           if (!isMountedRef.current) {
             return
@@ -223,7 +231,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         
         setLoadingTeams(true)
         try {
-          const response = await fetchWithAuth(buildSportApiUrl('teams', currentSportName, eventYear))
+          const response = await fetchWithAuth(buildSportApiUrl('teams', currentSportName, eventYear, eventName))
           
           if (!isMountedRef.current) return
 
@@ -326,8 +334,8 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         }),
         {
           onSuccess: (data) => {
-            // Clear cache to ensure new player appears in player lists
-            clearCache('/api/players')
+            // Clear cache to ensure new player appears in player lists (use pattern to clear all variations with event_year/event_name)
+            clearCachePattern('/api/players')
             onStatusPopup('✅ Your registration has been saved!', 'success', 2500)
             form.reset()
             setTimeout(() => {
@@ -652,13 +660,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           Are you sure you want to participate?
         </div>
 
-        <div className="flex gap-[0.6rem] mt-[0.8rem]">
+        <div className="flex gap-[0.6rem] mt-[0.8rem] mb-4 justify-center">
           <Button
             type="button"
             onClick={() => handleIndividualConfirm(true)}
             disabled={isSubmittingIndividual}
             loading={isSubmittingIndividual}
-            className="flex-1 rounded-full py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em]"
+            className="rounded-full py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em]"
           >
             {isSubmittingIndividual ? 'Submitting...' : 'Yes'}
           </Button>
@@ -667,7 +675,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             onClick={() => handleIndividualConfirm(false)}
             disabled={isSubmittingIndividual}
             variant="secondary"
-            className="flex-1 rounded-full py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em]"
+            className="rounded-full py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em]"
           >
             No
           </Button>
@@ -840,8 +848,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           <div className="flex gap-[0.6rem] mt-[0.8rem]">
             <Button
               type="submit"
-              disabled={isSubmittingTeam}
+              disabled={isSubmittingTeam || isOperationDisabled}
               loading={isSubmittingTeam}
+              title={isOperationDisabled ? operationStatus.reason : ''}
               className="flex-1 rounded-full py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em]"
             >
               {isSubmittingTeam ? 'Submitting...' : 'Submit'}
@@ -943,8 +952,9 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         <div className="flex gap-[0.6rem] mt-[0.8rem]">
           <Button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isOperationDisabled}
             loading={isSubmitting}
+            title={isOperationDisabled ? operationStatus.reason : ''}
             className="flex-1 rounded-full py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em]"
           >
             {isSubmitting ? 'Registering...' : 'Submit'}

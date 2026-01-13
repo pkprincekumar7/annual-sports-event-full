@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input, EmptyState, ConfirmationDialog } from './ui'
-import { useApi, useModal, useEventYearWithFallback } from '../hooks'
-import { fetchWithAuth, clearCache } from '../utils/api'
+import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
+import { fetchWithAuth, clearCache, clearCachePattern } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
+import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
 const TABS = {
   ADD_BATCH: 'add_batch',
@@ -25,7 +26,12 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
   const isRefreshingRef = useRef(false)
   const { loading, execute } = useApi()
   const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+  const { eventYearConfig } = useEventYear()
   const confirmModal = useModal(false)
+  
+  // Check if database operations should be disabled
+  const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
+  const isOperationDisabled = operationStatus.disabled
 
   // Fetch batches for Remove Batch tab
   useEffect(() => {
@@ -86,11 +92,14 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
           body: JSON.stringify({
             name: batchName.trim(),
             event_year: eventYear,
+            event_name: eventName,
           }),
         }),
         {
           onSuccess: (data) => {
             clearCache(buildApiUrlWithYear('/api/batches', eventYear, null, eventName))
+            // Clear players cache as batch creation affects player data structure
+            clearCachePattern('/api/players')
             
             onStatusPopup(
               `✅ Batch "${batchName}" created successfully!`,
@@ -112,6 +121,16 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
   }
 
   const handleRemoveBatchClick = (batch) => {
+    // Check if batch has players - if so, show error message instead of confirmation
+    const playerCount = batch.players?.length || 0
+    if (playerCount > 0) {
+      onStatusPopup(
+        `❌ Cannot remove batch "${batch.name}" because it has ${playerCount} player(s) assigned. Please remove all players from the batch before deleting it.`,
+        'error',
+        4000
+      )
+      return
+    }
     setBatchToRemove(batch)
     confirmModal.open()
   }
@@ -129,6 +148,7 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
           body: JSON.stringify({
             name: name,
             event_year: eventYear,
+            event_name: eventName,
           }),
         }),
         {
@@ -140,7 +160,8 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
             )
             isRefreshingRef.current = true
             clearCache(buildApiUrlWithYear('/api/batches', eventYear, null, eventName))
-            clearCache('/api/players')
+            // Clear players cache pattern to match backend behavior
+            clearCachePattern('/api/players')
             
             fetchWithAuth(buildApiUrlWithYear('/api/batches', eventYear, null, eventName), { skipCache: true })
               .then((res) => {
@@ -245,21 +266,20 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
               placeholder="Enter batch name (e.g., 2024-2028, 2025 Batch)"
             />
 
-            <div className="flex gap-[0.6rem] mt-[0.8rem]">
+            <div className="flex gap-[0.6rem] mt-[0.8rem] justify-center">
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isOperationDisabled}
                 loading={loading}
-                fullWidth
+                title={isOperationDisabled ? operationStatus.reason : ''}
               >
-                {loading ? 'Creating...' : 'Create Batch'}
+                {loading ? 'Creating...' : 'Create'}
               </Button>
               <Button
                 type="button"
                 onClick={onClose}
                 disabled={loading}
                 variant="secondary"
-                fullWidth
               >
                 Cancel
               </Button>
@@ -283,7 +303,7 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
                       key={batch._id || batch.name}
                       className="border border-[rgba(148,163,184,0.6)] rounded-[10px] bg-[rgba(15,23,42,0.9)] overflow-hidden"
                     >
-                      <div className="px-[10px] py-3 flex items-center justify-between">
+                      <div className="px-[10px] py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-0">
                         <div className="flex items-center gap-3">
                           <span className="text-[#ffe66d] text-lg">
                             {isExpanded ? '▼' : '▶'}
@@ -295,16 +315,24 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
                             ({playerCount} player{playerCount !== 1 ? 's' : ''})
                           </span>
                         </div>
-                        <Button
-                          type="button"
-                          onClick={() => handleRemoveBatchClick(batch)}
-                          disabled={loading}
-                          variant="danger"
-                          className="px-4 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em]"
-                          title="Remove Batch"
-                        >
-                          {loading ? 'Removing...' : 'Remove'}
-                        </Button>
+                        <div className="md:ml-auto">
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              if (isOperationDisabled) {
+                                onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+                                return
+                              }
+                              handleRemoveBatchClick(batch)
+                            }}
+                            disabled={isOperationDisabled || loading || playerCount > 0}
+                            variant="danger"
+                            className="px-4 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em]"
+                            title={isOperationDisabled ? operationStatus.reason : (playerCount > 0 ? `Cannot remove batch with ${playerCount} player(s). Remove all players first.` : "Remove Batch")}
+                          >
+                            {loading ? 'Removing...' : 'Remove'}
+                          </Button>
+                        </div>
                       </div>
 
                       {isExpanded && playerCount > 0 && (
@@ -344,7 +372,7 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
             <>
               Are you sure you want to remove batch <span className="font-semibold text-[#ffe66d]">{batchToRemove.name}</span>?
               <br />
-              <span className="text-[0.9rem] text-red-400 mt-2 block">This will remove all players from this batch. This action cannot be undone.</span>
+              <span className="text-[0.9rem] text-red-400 mt-2 block">This action cannot be undone.</span>
             </>
           ) : ''
         }

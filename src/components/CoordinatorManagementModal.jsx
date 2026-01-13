@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input, EmptyState, ConfirmationDialog } from './ui'
-import { useApi, useModal, useEventYearWithFallback } from '../hooks'
+import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { formatSportName } from '../utils/stringHelpers'
 import logger from '../utils/logger'
+import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
 const TABS = {
   ADD: 'add',
@@ -29,7 +30,12 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
   
   const { loading, execute } = useApi()
   const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+  const { eventYearConfig } = useEventYear()
   const confirmModal = useModal(false)
+  
+  // Check if database operations should be disabled
+  const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
+  const isOperationDisabled = operationStatus.disabled
 
   // Fetch players list and sports for Add tab
   useEffect(() => {
@@ -147,6 +153,11 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
   const handleAddSubmit = async (e) => {
     e.preventDefault()
 
+    if (isOperationDisabled) {
+      onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+      return
+    }
+
     if (!selectedPlayer) {
       onStatusPopup('❌ Please select a player.', 'error', 2500)
       return
@@ -165,13 +176,14 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
             reg_number: selectedPlayer.reg_number,
             sport: selectedSport.trim(),
             event_year: eventYear,
+            event_name: eventName,
           }),
         }),
         {
           onSuccess: (data) => {
-            clearCache('/api/coordinators-by-sport')
-            clearCache('/api/players')
-            clearCache('/api/me')
+            clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/players', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/me', eventYear, null, eventName))
             clearCache(buildApiUrlWithYear('/api/sports', eventYear, null, eventName))
             
             onStatusPopup(
@@ -224,6 +236,7 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
             reg_number: regNumber,
             sport: sport,
             event_year: eventYear,
+            event_name: eventName,
           }),
         }),
         {
@@ -235,8 +248,8 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
             )
             isRefreshingRef.current = true
             clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', eventYear, null, eventName))
-            clearCache('/api/players')
-            clearCache('/api/me')
+            clearCache(buildApiUrlWithYear('/api/players', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/me', eventYear, null, eventName))
             clearCache(buildApiUrlWithYear('/api/sports', eventYear, null, eventName))
             
             const coordinatorsUrl = buildApiUrlWithYear('/api/coordinators-by-sport', eventYear, null, eventName)
@@ -386,12 +399,12 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
               options={sports.map((sport) => ({ value: sport.name, label: formatSportName(sport.name) }))}
             />
 
-            <div className="flex gap-[0.6rem] mt-[0.8rem]">
+            <div className="flex gap-[0.6rem] mt-[0.8rem] justify-center">
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isOperationDisabled}
                 loading={loading}
-                fullWidth
+                title={isOperationDisabled ? operationStatus.reason : ''}
               >
                 {loading ? 'Adding...' : 'Submit'}
               </Button>
@@ -400,7 +413,6 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
                 onClick={onClose}
                 disabled={loading}
                 variant="secondary"
-                fullWidth
               >
                 Cancel
               </Button>
@@ -464,10 +476,10 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
                                   <Button
                                     type="button"
                                     onClick={() => handleRemoveClick(coordinator.reg_number, sport, coordinator.full_name)}
-                                    disabled={loading}
+                                    disabled={isOperationDisabled || loading}
+                                    title={isOperationDisabled ? operationStatus.reason : "Remove Coordinator"}
                                     variant="danger"
                                     className="px-4 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em]"
-                                    title="Remove Coordinator"
                                   >
                                     {loading ? 'Removing...' : 'Remove'}
                                   </Button>

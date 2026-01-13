@@ -7,14 +7,11 @@ import express from 'express'
 import XLSX from 'xlsx'
 import Player from '../models/Player.js'
 import Sport from '../models/Sport.js'
-import EventYear from '../models/EventYear.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { asyncHandler, sendErrorResponse } from '../utils/errorHandler.js'
 import { computePlayerParticipation } from '../utils/playerHelpers.js'
-import { getCache, setCache } from '../utils/cache.js'
-import { findActiveEventYear } from '../utils/yearHelpers.js'
+import { getEventYear } from '../utils/yearHelpers.js'
 import { ADMIN_REG_NUMBER } from '../constants/index.js'
-import logger from '../utils/logger.js'
 
 const router = express.Router()
 
@@ -73,6 +70,11 @@ router.get(
     // Ensure eventYear is valid before proceeding
     if (!eventYear || isNaN(eventYear) || !eventYearDoc) {
       return sendErrorResponse(res, 400, 'Invalid event year. Unable to process export request.')
+    }
+
+    // Validate event year has event_name
+    if (!eventName || !eventName.trim()) {
+      return sendErrorResponse(res, 400, 'Event year is missing event name. Please configure the event name for the event year.')
     }
 
     // Get all sports for this event year and event name

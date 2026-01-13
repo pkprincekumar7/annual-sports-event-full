@@ -32,11 +32,6 @@ function ChangePasswordModal({ isOpen, onClose, onStatusPopup, onPasswordChanged
       return
     }
 
-    if (newPassword.length < 6) {
-      onStatusPopup('❌ New password must be at least 6 characters long.', 'error', 2500)
-      return
-    }
-
     if (currentPassword === newPassword) {
       onStatusPopup('❌ New password must be different from current password.', 'error', 2500)
       return

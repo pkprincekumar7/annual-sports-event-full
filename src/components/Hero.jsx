@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useEventYear } from '../hooks/useEventYear'
 import { formatDateRange } from '../utils/dateFormatters'
+import { isWithinRegistrationPeriod } from '../utils/yearHelpers'
 import EventYearSelector from './EventYearSelector'
 import ProfileModal from './ProfileModal'
 
@@ -20,21 +21,50 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
   const registrationDateDisplay = eventYearConfig?.registration_dates
     ? formatDateRange(eventYearConfig.registration_dates.start, eventYearConfig.registration_dates.end)
     : ''
+  
+  // Check if current date is within registration period
+  const isRegistrationPeriodActive = eventYearConfig?.registration_dates
+    ? isWithinRegistrationPeriod(eventYearConfig.registration_dates)
+    : false
 
   useEffect(() => {
-    // Use event start date from database for countdown
-    const eventStartDate = eventYearConfig?.event_dates?.start
-    if (!eventStartDate) {
+    // All date fields are required in EventYear model, so they will always be present
+    if (!eventYearConfig?.event_dates?.start) {
       setEventCountdown('')
       return
     }
 
-    const targetTime = new Date(eventStartDate).getTime()
+    // Calculate all timestamps once - all dates are required, so no null checks needed
+    // API returns ISO date strings with time already included (e.g., "2026-01-02T18:29:59.000Z")
+    const registrationStartTime = new Date(eventYearConfig.registration_dates.start).getTime()
+    const registrationEndTime = new Date(eventYearConfig.registration_dates.end).getTime()
+    const eventStartTime = new Date(eventYearConfig.event_dates.start).getTime()
+    const eventEndTime = new Date(eventYearConfig.event_dates.end).getTime()
 
     const update = () => {
-      const now = Date.now()
-      const diff = targetTime - now
+      const currentTime = Date.now()
 
+      // 1. Check if event has ended (MUST be checked first, before any other status)
+      if (currentTime > eventEndTime) {
+        setEventCountdown('Event has ended!')
+        return
+      }
+
+      // 2. Check if registration period has ended (but event hasn't ended)
+      if (currentTime > registrationEndTime) {
+        setEventCountdown('Registration closed!')
+        return
+      }
+
+      // 3. Check if event has started (but not ended - we already checked event hasn't ended above)
+      if (currentTime >= eventStartTime) {
+        // Event is in progress (event has started and hasn't ended)
+        setEventCountdown('Event in progress!')
+        return
+      }
+
+      // 4. Before event starts - show countdown to event start
+      const diff = eventStartTime - currentTime
       if (diff > 0) {
         const days = Math.floor(diff / (1000 * 60 * 60 * 24))
         const hours = Math.floor((diff / (1000 * 60 * 60)) % 24)
@@ -45,7 +75,8 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
           `Event starts in: ${days}d ${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`
         )
       } else {
-        setEventCountdown('Registration closed!')
+        // Fallback - should not reach here if logic is correct
+        setEventCountdown('Event starting soon!')
       }
     }
 
@@ -53,7 +84,7 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
     const timer = setInterval(update, 1000)
 
     return () => clearInterval(timer)
-  }, [eventYearConfig?.event_dates?.start])
+  }, [eventYearConfig?.event_dates?.start, eventYearConfig?.event_dates?.end, eventYearConfig?.registration_dates?.start, eventYearConfig?.registration_dates?.end])
 
   // Close menu on Escape key
   useEffect(() => {
@@ -176,17 +207,6 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
                         >
                           <span className="text-[#ffe66d]">●</span> Profile
                         </button>
-                        {onChangePasswordClick && (
-                          <button
-                            onClick={() => {
-                              setIsMenuOpen(false)
-                              onChangePasswordClick()
-                            }}
-                            className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
-                          >
-                            <span className="text-[#8b5cf6]">●</span> Change Password
-                          </button>
-                        )}
                         {loggedInUser?.reg_number === 'admin' && onCaptainManagementClick && (
                           <button
                             onClick={() => {
@@ -253,17 +273,30 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
                             <span className="text-[#f59e0b]">●</span> Admin Dashboard
                           </button>
                         )}
-                        {onLogout && (
+                        {(onChangePasswordClick || onLogout) && (
                           <div className="border-t border-[rgba(148,163,184,0.3)] mt-2 pt-2">
-                            <button
-                              onClick={() => {
-                                setIsMenuOpen(false)
-                                onLogout()
-                              }}
-                              className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
-                            >
-                              <span className="text-red-400">●</span> Logout
-                            </button>
+                            {onChangePasswordClick && (
+                              <button
+                                onClick={() => {
+                                  setIsMenuOpen(false)
+                                  onChangePasswordClick()
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
+                              >
+                                <span className="text-[#8b5cf6]">●</span> Change Password
+                              </button>
+                            )}
+                            {onLogout && (
+                              <button
+                                onClick={() => {
+                                  setIsMenuOpen(false)
+                                  onLogout()
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
+                              >
+                                <span className="text-red-400">●</span> Logout
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -272,7 +305,7 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
                 )}
               </div>
             </div>
-            {loggedInUser?.reg_number === 'admin' && (
+            {loggedInUser && (
               <EventYearSelector
                 selectedEventYear={selectedEventYear}
                 onEventYearChange={onEventYearChange}
@@ -290,7 +323,7 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
                 Login
               </button>
             )}
-            {onRegisterClick && (
+            {onRegisterClick && isRegistrationPeriodActive && (
               <button
                 onClick={onRegisterClick}
                 className="px-4 py-2 sm:px-8 sm:py-3 rounded-full border-none text-sm sm:text-base font-bold uppercase tracking-[0.1em] cursor-pointer bg-gradient-to-r from-[#ffe66d] to-[#ff9f1c] text-[#111827] shadow-[0_10px_24px_rgba(250,204,21,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(250,204,21,0.75)]"

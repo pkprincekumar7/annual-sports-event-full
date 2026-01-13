@@ -3,6 +3,7 @@ import { fetchWithAuth, fetchCurrentUser, decodeJWT, clearCache } from './utils/
 import { buildApiUrlWithYear } from './utils/apiHelpers'
 import logger from './utils/logger'
 import { useEventYear } from './hooks/useEventYear'
+import { resetEventYearsCache } from './hooks/useEventYears'
 import { formatDateRange } from './utils/dateFormatters'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
@@ -227,6 +228,17 @@ function App() {
     }
   }, [])
 
+  // Reset event years cache when user logs in (authToken changes from null to a value)
+  const prevAuthTokenRef = useRef(authToken)
+  useEffect(() => {
+    // Only reset if authToken changed from null/undefined to a value (user logged in)
+    // Don't reset on every authToken change to avoid infinite loops
+    if (authToken && !prevAuthTokenRef.current) {
+      resetEventYearsCache()
+    }
+    prevAuthTokenRef.current = authToken
+  }, [authToken])
+
   const handleEventScheduleClick = (sport) => {
     // Determine sport_type: check if it's a cultural event
     const culturalSports = [
@@ -287,6 +299,10 @@ function App() {
     setIsLoginModalOpen(false)
     // Clear selected sport - let user choose what to do after login
     setSelectedSport(null)
+    
+    // Dispatch event to notify hooks that user has logged in
+    // This allows useEventYear hook to refetch and use latest event year if no active event year
+    window.dispatchEvent(new Event('userLoggedIn'))
     
     // If password change is required, show change password modal
     if (changePasswordRequired) {
@@ -368,6 +384,17 @@ function App() {
 
       // Use eventYear and eventName (already validated to exist)
       const eventName = eventYearConfig?.event_name || null
+      
+      // Validate eventName is available before making the request
+      if (!eventName) {
+        showStatusPopup(
+          '❌ Event name is required for export. Unable to determine event name for the active event year.',
+          'error',
+          4000
+        )
+        return
+      }
+      
       const exportUrl = buildApiUrlWithYear('/api/export-excel', eventYear, null, eventName)
       const response = await fetchWithAuth(exportUrl)
       

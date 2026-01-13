@@ -184,3 +184,173 @@ export function getUpdatableDateFields(existingEventYear) {
     nonDateFieldsTooltip: ''
   }
 }
+
+/**
+ * Check if current date is within registration period (frontend)
+ * @param {Object} registration_dates - Registration dates object with start and end (Date objects or ISO strings)
+ * @returns {boolean} True if current date is within registration period
+ */
+export function isWithinRegistrationPeriod(registration_dates) {
+  if (!registration_dates || !registration_dates.start || !registration_dates.end) {
+    return false
+  }
+
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  const regStart = new Date(registration_dates.start)
+  regStart.setHours(0, 0, 0, 0)
+
+  const regEnd = new Date(registration_dates.end)
+  regEnd.setHours(23, 59, 59, 999)
+
+  return now >= regStart && now <= regEnd
+}
+
+/**
+ * Check if event has ended (frontend)
+ * @param {Object} eventYearConfig - Event year configuration object with event_dates
+ * @returns {boolean} True if event has ended
+ */
+export function isEventEnded(eventYearConfig) {
+  if (!eventYearConfig || !eventYearConfig.event_dates || !eventYearConfig.event_dates.end) {
+    return false // If no event config, assume event hasn't ended (to avoid blocking operations)
+  }
+
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  const eventEnd = new Date(eventYearConfig.event_dates.end)
+  eventEnd.setHours(23, 59, 59, 999)
+
+  return now > eventEnd
+}
+
+/**
+ * Check if registration period has ended (frontend)
+ * @param {Object} eventYearConfig - Event year configuration object with registration_dates
+ * @returns {boolean} True if registration period has ended
+ */
+export function isRegistrationPeriodEnded(eventYearConfig) {
+  if (!eventYearConfig || !eventYearConfig.registration_dates || !eventYearConfig.registration_dates.end) {
+    return true // If no registration dates configured, consider it ended (to block operations)
+  }
+
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  const regEnd = new Date(eventYearConfig.registration_dates.end)
+  regEnd.setHours(23, 59, 59, 999)
+
+  return now > regEnd
+}
+
+/**
+ * Check if database operations should be disabled (frontend)
+ * Operations are disabled if:
+ * 1. Event year configuration is not available
+ * 2. Registration period has ended
+ * 3. Event has ended
+ * @param {Object} eventYearConfig - Event year configuration object
+ * @returns {Object} { disabled: boolean, reason: string } - Whether operations should be disabled and why
+ */
+export function shouldDisableDatabaseOperations(eventYearConfig) {
+  // Check if event year config is available
+  if (!eventYearConfig) {
+    return {
+      disabled: true,
+      reason: 'Event year is not configured. Please contact administrator to set up event year with registration dates.'
+    }
+  }
+
+  // Check if registration dates are configured
+  if (!eventYearConfig.registration_dates || !eventYearConfig.registration_dates.end) {
+    return {
+      disabled: true,
+      reason: 'Registration deadline is not configured. Please contact administrator to set up event year with registration dates.'
+    }
+  }
+
+  // Check if event has ended
+  if (isEventEnded(eventYearConfig)) {
+    return {
+      disabled: true,
+      reason: 'Event has ended. All operations are now view-only.'
+    }
+  }
+
+  // Check if registration period has ended
+  if (isRegistrationPeriodEnded(eventYearConfig)) {
+    return {
+      disabled: true,
+      reason: `Registration for events closed on ${formatDateForDisplay(eventYearConfig.registration_dates.end)}.`
+    }
+  }
+
+  return {
+    disabled: false,
+    reason: ''
+  }
+}
+
+/**
+ * Format date for display (frontend)
+ * @param {Date|string} date - Date to format
+ * @returns {string} Formatted date string (e.g., "1st Jan 2026")
+ */
+function formatDateForDisplay(date) {
+  const d = new Date(date)
+  const day = d.getDate()
+  const month = d.toLocaleString('en-US', { month: 'short' })
+  const year = d.getFullYear()
+  const ordinal = getOrdinal(day)
+  return `${ordinal} ${month} ${year}`
+}
+
+/**
+ * Get ordinal suffix for day
+ * @param {number} day - Day number
+ * @returns {string} Day with ordinal suffix
+ */
+function getOrdinal(day) {
+  const j = day % 10
+  const k = day % 100
+  if (j === 1 && k !== 11) return day + 'st'
+  if (j === 2 && k !== 12) return day + 'nd'
+  if (j === 3 && k !== 13) return day + 'rd'
+  return day + 'th'
+}
+
+/**
+ * Check if event year deletion is allowed (frontend)
+ * Deletion is only allowed before registration start date
+ * @param {Object} eventYear - Event year object with registration_dates
+ * @returns {Object} { canDelete: boolean, reason: string } - Whether deletion is allowed and why
+ */
+export function canDeleteEventYear(eventYear) {
+  if (!eventYear || !eventYear.registration_dates || !eventYear.registration_dates.start) {
+    return {
+      canDelete: false,
+      reason: 'Event year configuration is incomplete. Cannot determine if deletion is allowed.'
+    }
+  }
+
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  
+  const regStart = new Date(eventYear.registration_dates.start)
+  regStart.setHours(0, 0, 0, 0)
+
+  if (now >= regStart) {
+    const formattedDate = formatDateForDisplay(eventYear.registration_dates.start)
+    return {
+      canDelete: false,
+      reason: `Cannot delete event year. Deletion is only allowed before registration start date (${formattedDate}).`
+    }
+  }
+
+  return {
+    canDelete: true,
+    reason: ''
+  }
+}

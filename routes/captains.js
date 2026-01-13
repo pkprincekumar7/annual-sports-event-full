@@ -13,6 +13,7 @@ import { validateCaptainAssignment, trimObjectFields } from '../utils/validation
 import { clearCache } from '../utils/cache.js'
 import { getEventYear } from '../utils/yearHelpers.js'
 import { findSportByNameAndYear } from '../utils/sportHelpers.js'
+import { computePlayersParticipationBatch } from '../utils/playerHelpers.js'
 
 const router = express.Router()
 
@@ -78,8 +79,8 @@ router.post(
     await sportDoc.save()
 
     // Clear cache
-    clearCache(`/api/sports?event_year=${eventYear}`)
-    clearCache(`/api/sports/${sport}?event_year=${eventYear}`)
+    clearCache(`/api/sports?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
+    clearCache(`/api/sports/${sport}?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
 
     return sendSuccessResponse(res, { sport: sportDoc }, `Captain added successfully for ${sport}`)
   })
@@ -136,8 +137,8 @@ router.delete(
     await sportDoc.save()
 
     // Clear cache
-    clearCache(`/api/sports?event_year=${eventYear}`)
-    clearCache(`/api/sports/${sport}?event_year=${eventYear}`)
+    clearCache(`/api/sports?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
+    clearCache(`/api/sports/${sport}?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
 
     return sendSuccessResponse(res, { sport: sportDoc }, `Captain role removed successfully for ${sport}`)
   })
@@ -211,7 +212,20 @@ router.get(
         .select('-password')
         .lean()
 
-      const captainsMap = new Map(captains.map(p => [p.reg_number, p]))
+      // OPTIMIZATION: Batch compute participation for all captains in one query
+      const participationMap = await computePlayersParticipationBatch(Array.from(captainRegNumbers), eventYear)
+
+      // Add computed fields to each captain
+      const captainsWithComputed = captains.map(captain => {
+        const captainObj = { ...captain }
+        const participation = participationMap[captain.reg_number] || { participated_in: [], captain_in: [], coordinator_in: [] }
+        captainObj.participated_in = participation.participated_in
+        captainObj.captain_in = participation.captain_in
+        captainObj.coordinator_in = participation.coordinator_in
+        return captainObj
+      })
+
+      const captainsMap = new Map(captainsWithComputed.map(p => [p.reg_number, p]))
 
       // Group captains by sport
       sports.forEach(sport => {

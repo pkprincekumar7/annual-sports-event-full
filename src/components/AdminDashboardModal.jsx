@@ -17,7 +17,7 @@ import ErrorMessage from './ui/ErrorMessage'
 import { formatSportName } from '../utils/stringHelpers'
 import ConfirmationDialog from './ui/ConfirmationDialog'
 import EventYearSelector from './EventYearSelector'
-import { validateDateRelationships, getUpdatableDateFields } from '../utils/yearHelpers'
+import { validateDateRelationships, getUpdatableDateFields, shouldDisableDatabaseOperations, canDeleteEventYear } from '../utils/yearHelpers'
 
 const TABS = {
   EVENT_YEARS: 'event_years',
@@ -31,6 +31,10 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
   // Use selectedEventYear if admin selected one, otherwise use active event year
   const currentEventYear = selectedEventYear || activeEventYear
   const currentEventName = eventYearConfig?.event_name || null
+  
+  // Check if database operations should be disabled (for Sports and other tabs, not Event Years)
+  const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
+  const isOperationDisabled = operationStatus.disabled
 
   // Event Years State
   const [eventYears, setEventYears] = useState([])
@@ -481,8 +485,11 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
         const error = await response.json()
         throw new Error(error.error || 'Failed to create sport')
       }
-      clearCache(buildApiUrlWithYear('/api/sports', currentEventYear, null, currentEventName))
-      clearCache(buildApiUrlWithYear('/api/sports-counts', currentEventYear, null, currentEventName))
+      // Clear sport-related caches using utility function
+      clearSportManagementCaches(currentEventYear, currentEventName)
+      // Also clear captains and coordinators caches as they're sport-specific
+      clearCache(buildApiUrlWithYear('/api/captains-by-sport', currentEventYear, null, currentEventName))
+      clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', currentEventYear, null, currentEventName))
       onStatusPopup('✅ Sport created successfully', 'success', 2500)
       setSportForm({ name: '', type: '', category: '', team_size: '', imageUri: '' })
       fetchSportsData()
@@ -534,8 +541,11 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
         const error = await response.json()
         throw new Error(error.error || 'Failed to update sport')
       }
-      clearCache(buildApiUrlWithYear('/api/sports', currentEventYear, null, currentEventName))
-      clearCache(buildApiUrlWithYear('/api/sports-counts', currentEventYear, null, currentEventName))
+      // Clear sport-related caches using utility function
+      clearSportManagementCaches(currentEventYear, currentEventName)
+      // Also clear captains and coordinators caches as they're sport-specific
+      clearCache(buildApiUrlWithYear('/api/captains-by-sport', currentEventYear, null, currentEventName))
+      clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', currentEventYear, null, currentEventName))
       onStatusPopup('✅ Sport updated successfully', 'success', 2500)
       setEditingSport(null)
       setSportForm({ name: '', type: '', category: '', team_size: '', imageUri: '' })
@@ -573,13 +583,17 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
         const error = await response.json()
         throw new Error(error.error || 'Failed to delete sport')
       }
-      clearCache(buildApiUrlWithYear('/api/sports', currentEventYear, null, currentEventName))
-      clearCache(buildApiUrlWithYear('/api/sports-counts', currentEventYear, null, currentEventName))
+      // Clear sport-related caches using utility function
+      clearSportManagementCaches(currentEventYear, currentEventName)
+      // Also clear captains and coordinators caches as they're sport-specific
+      clearCache(buildApiUrlWithYear('/api/captains-by-sport', currentEventYear, null, currentEventName))
+      clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', currentEventYear, null, currentEventName))
       onStatusPopup('✅ Sport deleted successfully', 'success', 2500)
       setShowDeleteSportConfirm(null)
       fetchSportsData()
     } catch (error) {
-      onStatusPopup(`❌ ${error.message}`, 'error', 3000)
+      // Show error message from backend (includes participation details if applicable)
+      onStatusPopup(`❌ ${error.message}`, 'error', 4000)
       setShowDeleteSportConfirm(null)
     }
   }
@@ -646,20 +660,26 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
   }
 
   const handleDeleteDepartment = async (deptId) => {
+    // Find the department to get its name for better error messages
+    const deptToDelete = departments.find(d => d._id === deptId)
+    const deptName = deptToDelete?.name || 'this department'
+    
     try {
       const response = await fetchWithAuth(`/api/departments/${deptId}`, {
         method: 'DELETE'
       })
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || 'Failed to delete department')
+        // Backend returns: "Cannot delete department. X player(s) are registered with this department."
+        throw new Error(error.error || `Failed to delete department "${deptName}"`)
       }
       clearCache('/api/departments')
       onStatusPopup('✅ Department deleted successfully', 'success', 2500)
       setShowDeleteDeptConfirm(null)
       fetchDepartmentsData()
     } catch (error) {
-      onStatusPopup(`❌ ${error.message}`, 'error', 3000)
+      // Show error message from backend (includes player count if applicable)
+      onStatusPopup(`❌ ${error.message}`, 'error', 4000)
       setShowDeleteDeptConfirm(null)
     }
   }
@@ -956,15 +976,30 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
                       >
                         Edit
                       </Button>
-                      <Button
-                        variant="danger"
-                        onClick={() => setShowDeleteConfirm(eventYear.event_year)}
-                        className="px-3 py-1 text-xs"
-                        disabled={!!editingEventYear || eventYear.is_active}
-                        title={eventYear.is_active ? 'Cannot delete the active event year. The event is currently active based on its registration and event dates.' : ''}
-                      >
-                        Delete
-                      </Button>
+                      {(() => {
+                        const deleteStatus = canDeleteEventYear(eventYear)
+                        return (
+                          <Button
+                            variant="danger"
+                            onClick={() => {
+                              if (!deleteStatus.canDelete) {
+                                onStatusPopup(`❌ ${deleteStatus.reason}`, 'error', 4000)
+                                return
+                              }
+                              setShowDeleteConfirm(eventYear.event_year)
+                            }}
+                            className="px-3 py-1 text-xs"
+                            disabled={!!editingEventYear || eventYear.is_active || !deleteStatus.canDelete}
+                            title={
+                              eventYear.is_active 
+                                ? 'Cannot delete the active event year. The event is currently active based on its registration and event dates.' 
+                                : (!deleteStatus.canDelete ? deleteStatus.reason : '')
+                            }
+                          >
+                            Delete
+                          </Button>
+                        )
+                      })()}
                     </div>
                   </div>
                 ))}
@@ -1074,10 +1109,12 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
               <Button 
                 type="submit" 
                 disabled={
+                  isOperationDisabled ||
                   (!editingSport && !currentEventYear) ||
                   ((sportForm.type === 'dual_team' || sportForm.type === 'multi_team') && 
                    (!sportForm.team_size || String(sportForm.team_size || '').trim() === ''))
                 }
+                title={isOperationDisabled ? operationStatus.reason : ''}
               >
                 {editingSport ? 'Update' : 'Create'}
               </Button>
@@ -1105,35 +1142,76 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
               <p className="text-[#94a3b8]">No sports found for current event year</p>
             ) : (
               <div className="space-y-2">
-                {sports.map((sport) => (
-                  <div key={sport._id || sport.name} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div>
-                      <span className="font-bold text-[#ffe66d]">{formatSportName(sport.name)}</span>
-                      <span className="ml-2 text-[#94a3b8] text-sm">
-                        ({sport.type} - {sport.category})
-                      </span>
-                      {sport.team_size && (
-                        <span className="ml-2 text-[#cbd5ff] text-sm">Team Size: {sport.team_size}</span>
-                      )}
+                {sports.map((sport) => {
+                  const teamsCount = sport.teams_participated?.length || 0
+                  const playersCount = sport.players_participated?.length || 0
+                  
+                  // Determine if it's a team sport or individual sport
+                  const isTeamSport = sport.type === 'dual_team' || sport.type === 'multi_team'
+                  
+                  // For team sports: show teams count
+                  // For individual sports: show players count
+                  const displayCount = isTeamSport ? teamsCount : playersCount
+                  const displayLabel = isTeamSport ? 'team' : 'player'
+                  
+                  const hasParticipation = isTeamSport ? teamsCount > 0 : playersCount > 0
+                  
+                  return (
+                    <div key={sport._id || sport.name} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
+                        <div className="flex items-center flex-wrap gap-2">
+                          <span className="font-bold text-[#ffe66d]">{formatSportName(sport.name)}</span>
+                          <span className="text-[#94a3b8] text-sm">
+                            ({sport.type} - {sport.category})
+                          </span>
+                          {sport.team_size && (
+                            <span className="text-[#cbd5ff] text-sm">Team Size: {sport.team_size}</span>
+                          )}
+                        </div>
+                        <span className="text-[#cbd5ff] text-sm md:ml-2">
+                          ({displayCount} {displayLabel}{displayCount !== 1 ? 's' : ''} participated)
+                        </span>
+                      </div>
+                      <div className="flex gap-2 md:ml-0">
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleEditSport(sport)}
+                          disabled={isOperationDisabled}
+                          title={isOperationDisabled ? operationStatus.reason : ''}
+                          className="px-3 py-1 text-xs"
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          onClick={() => {
+                            if (isOperationDisabled) {
+                              onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+                              return
+                            }
+                            if (hasParticipation) {
+                              const participationInfo = []
+                              if (teamsCount > 0) participationInfo.push(`${teamsCount} team(s)`)
+                              if (playersCount > 0) participationInfo.push(`${playersCount} player(s)`)
+                              onStatusPopup(
+                                `❌ Cannot delete sport "${formatSportName(sport.name)}" because ${participationInfo.join(' and ')} ${participationInfo.length === 1 ? 'has' : 'have'} participated. Please remove all participation before deleting.`,
+                                'error',
+                                4000
+                              )
+                              return
+                            }
+                            setShowDeleteSportConfirm(sport._id)
+                          }}
+                          disabled={isOperationDisabled || hasParticipation}
+                          className="px-3 py-1 text-xs"
+                          title={isOperationDisabled ? operationStatus.reason : (hasParticipation ? `Cannot delete: ${displayCount} ${displayLabel}${displayCount !== 1 ? 's' : ''} registered` : "Delete Sport")}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex gap-2 md:ml-0">
-                      <Button
-                        variant="secondary"
-                        onClick={() => handleEditSport(sport)}
-                        className="px-3 py-1 text-xs"
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="danger"
-                        onClick={() => setShowDeleteSportConfirm(sport._id)}
-                        className="px-3 py-1 text-xs"
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1209,31 +1287,51 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
               <p className="text-[#94a3b8]">No departments found</p>
             ) : (
               <div className="space-y-2">
-                {departments.sort((a, b) => (a.display_order || 0) - (b.display_order || 0)).map((dept) => (
-                  <div key={dept._id || dept.name} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div>
-                      <span className="font-bold text-[#ffe66d]">{dept.name}</span>
-                      {dept.code && <span className="ml-2 text-[#94a3b8]">({dept.code})</span>}
-                      <span className="ml-2 text-[#94a3b8] text-sm">Order: {dept.display_order || 0}</span>
+                {departments.sort((a, b) => (a.display_order || 0) - (b.display_order || 0)).map((dept) => {
+                  const playerCount = dept.player_count || 0
+                  return (
+                    <div key={dept._id || dept.name} className="p-3 bg-[rgba(0,0,0,0.3)] rounded-lg flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
+                        <div className="flex items-center flex-wrap gap-2">
+                          <span className="font-bold text-[#ffe66d]">{dept.name}</span>
+                          {dept.code && <span className="text-[#94a3b8]">({dept.code})</span>}
+                          <span className="text-[#94a3b8] text-sm">Order: {dept.display_order || 0}</span>
+                        </div>
+                        <span className="text-[#cbd5ff] text-sm md:ml-2">
+                          ({playerCount} player{playerCount !== 1 ? 's' : ''})
+                        </span>
+                      </div>
+                      <div className="flex gap-2 md:ml-0">
+                        <Button
+                          variant="secondary"
+                          onClick={() => handleEditDepartment(dept)}
+                          className="px-3 py-1 text-xs"
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="danger"
+                          onClick={() => {
+                            if (playerCount > 0) {
+                              onStatusPopup(
+                                `❌ Cannot delete department "${dept.name}" because it has ${playerCount} player(s) registered. Please remove all players from this department before deleting it.`,
+                                'error',
+                                4000
+                              )
+                              return
+                            }
+                            setShowDeleteDeptConfirm(dept._id)
+                          }}
+                          disabled={playerCount > 0}
+                          className="px-3 py-1 text-xs"
+                          title={playerCount > 0 ? `Cannot delete department with ${playerCount} player(s). Remove all players first.` : "Delete Department"}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex gap-2 md:ml-0">
-                      <Button
-                        variant="secondary"
-                        onClick={() => handleEditDepartment(dept)}
-                        className="px-3 py-1 text-xs"
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="danger"
-                        onClick={() => setShowDeleteDeptConfirm(dept._id)}
-                        className="px-3 py-1 text-xs"
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -1251,25 +1349,55 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventYear
         />
       )}
 
-      {showDeleteSportConfirm && (
-        <ConfirmationDialog
-          isOpen={!!showDeleteSportConfirm}
-          onClose={() => setShowDeleteSportConfirm(null)}
-          onConfirm={() => handleDeleteSport(showDeleteSportConfirm)}
-          title="Delete Sport"
-          message="Are you sure you want to delete this sport? This action cannot be undone if there are matches or points associated with it."
-        />
-      )}
+      {showDeleteSportConfirm && (() => {
+        const sportToDelete = sports.find(s => s._id === showDeleteSportConfirm)
+        const sportName = sportToDelete?.name || 'this sport'
+        return (
+          <ConfirmationDialog
+            isOpen={!!showDeleteSportConfirm}
+            onClose={() => setShowDeleteSportConfirm(null)}
+            onConfirm={() => handleDeleteSport(showDeleteSportConfirm)}
+            title="Delete Sport"
+            message={
+              <>
+                Are you sure you want to delete sport <span className="font-semibold text-[#ffe66d]">{sportName}</span>?
+                <br />
+                <span className="text-[0.9rem] text-red-400 mt-2 block">
+                  This action cannot be undone. If there are teams, players, matches, or points associated with this sport, deletion will be prevented.
+                </span>
+              </>
+            }
+            confirmText="Delete"
+            cancelText="Cancel"
+            variant="danger"
+          />
+        )
+      })()}
 
-      {showDeleteDeptConfirm && (
-        <ConfirmationDialog
-          isOpen={!!showDeleteDeptConfirm}
-          onClose={() => setShowDeleteDeptConfirm(null)}
-          onConfirm={() => handleDeleteDepartment(showDeleteDeptConfirm)}
-          title="Delete Department"
-          message="Are you sure you want to delete this department? This action cannot be undone if there are players registered with this department."
-        />
-      )}
+      {showDeleteDeptConfirm && (() => {
+        const deptToDelete = departments.find(d => d._id === showDeleteDeptConfirm)
+        const deptName = deptToDelete?.name || 'this department'
+        return (
+          <ConfirmationDialog
+            isOpen={!!showDeleteDeptConfirm}
+            onClose={() => setShowDeleteDeptConfirm(null)}
+            onConfirm={() => handleDeleteDepartment(showDeleteDeptConfirm)}
+            title="Delete Department"
+            message={
+              <>
+                Are you sure you want to delete department <span className="font-semibold text-[#ffe66d]">{deptName}</span>?
+                <br />
+                <span className="text-[0.9rem] text-red-400 mt-2 block">
+                  This action cannot be undone. If there are players registered with this department, deletion will be prevented.
+                </span>
+              </>
+            }
+            confirmText="Delete"
+            cancelText="Cancel"
+            variant="danger"
+          />
+        )
+      })()}
     </Modal>
   )
 }

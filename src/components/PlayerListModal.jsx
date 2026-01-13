@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input, LoadingSpinner, EmptyState, ConfirmationDialog } from './ui'
-import { useApi, useDepartments, useEventYearWithFallback } from '../hooks'
-import { fetchWithAuth, clearCache } from '../utils/api'
+import { useApi, useDepartments, useEventYearWithFallback, useEventYear } from '../hooks'
+import { fetchWithAuth, clearCache, clearCachePattern } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { GENDER_OPTIONS, DEFAULT_PLAYERS_PAGE_SIZE } from '../constants/app'
 import logger from '../utils/logger'
+import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
 function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) {
   const [players, setPlayers] = useState([])
@@ -43,8 +44,13 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const { departments: departmentOptions, loading: loadingDepartments } = useDepartments()
   const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+  const { eventYearConfig } = useEventYear()
   const isRefreshingRef = useRef(false) // Use ref to track if we're refreshing after update
   const searchTimeoutRef = useRef(null) // Use ref for debouncing search
+  
+  // Check if database operations should be disabled
+  const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
+  const isOperationDisabled = operationStatus.disabled
   const clearButtonRef = useRef(null) // Ref for clear button
   const [clearButtonTop, setClearButtonTop] = useState(null) // Dynamic top position for clear button
 
@@ -321,7 +327,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
             }
             // Refresh players list
             isRefreshingRef.current = true
-            clearCache('/api/players')
+            // Clear players cache pattern to match backend behavior
+            clearCachePattern('/api/players')
             fetchPlayers(null, false, searchQuery, currentPage).finally(() => {
               isRefreshingRef.current = false
             })
@@ -563,7 +570,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
       }
       // Refresh players list
       isRefreshingRef.current = true
-      clearCache('/api/players')
+      // Clear players cache pattern to match backend behavior
+      clearCachePattern('/api/players')
       // If we're on a page that might be empty after deletion, go to previous page or page 1
       const newPage = currentPage > 1 ? currentPage - 1 : 1
       fetchPlayers(null, false, searchQuery, newPage).finally(() => {
@@ -646,10 +654,14 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
     }
 
     try {
+      // Exclude batch_name from update request (it cannot be modified)
+      // Include gender (required by backend validation, but backend prevents changes)
+      const { batch_name, ...updateData } = editedData
+      
       await execute(
         () => fetchWithAuth('/api/update-player', {
           method: 'PUT',
-          body: JSON.stringify(editedData),
+          body: JSON.stringify(updateData),
         }),
         {
           onSuccess: (data) => {
@@ -660,8 +672,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
             // Set flag to prevent error popups during refresh
             isRefreshingRef.current = true
             
-            // Clear cache first to ensure we get fresh data
-            clearCache('/api/players')
+            // Clear cache first to ensure we get fresh data (use pattern to match backend)
+            clearCachePattern('/api/players')
             
             // Use a separate function to avoid showing loading state and errors
             let refreshUrl = buildApiUrlWithYear('/api/players', eventYear, null, eventName)
@@ -736,7 +748,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
             id="searchPlayer"
             value={searchInput}
             onChange={handleSearchChange}
-            placeholder="Type registration number or name to search..."
+            placeholder="Type reg. number or name to search..."
             className={searchInput ? "pr-8" : ""}
           />
           {searchInput && (
@@ -801,10 +813,17 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
             {selectedPlayers.size > 0 && (
               <Button
                 type="button"
-                onClick={handleBulkDeleteClick}
+                onClick={() => {
+                  if (isOperationDisabled) {
+                    onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+                    return
+                  }
+                  handleBulkDeleteClick()
+                }}
+                disabled={isOperationDisabled || bulkDeleting}
+                title={isOperationDisabled ? operationStatus.reason : ''}
                 variant="danger"
                 className="px-2 py-1 sm:px-4 sm:py-2 text-[0.75rem] sm:text-[0.85rem]"
-                disabled={bulkDeleting}
               >
                 Delete Selected ({selectedPlayers.size})
               </Button>
@@ -1038,7 +1057,15 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
                       <div className="flex items-center gap-1.5 sm:gap-2">
                         <Button
                           type="button"
-                          onClick={(e) => handleEditClick(e, player)}
+                          onClick={(e) => {
+                            if (isOperationDisabled) {
+                              onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+                              return
+                            }
+                            handleEditClick(e, player)
+                          }}
+                          disabled={isOperationDisabled}
+                          title={isOperationDisabled ? operationStatus.reason : ''}
                           variant="secondary"
                           className="px-2 py-0.5 sm:px-3 sm:py-1 text-[0.7rem] sm:text-[0.8rem]"
                         >
@@ -1046,7 +1073,15 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
                         </Button>
                         <Button
                           type="button"
-                          onClick={(e) => handleDeleteClick(e, player)}
+                          onClick={(e) => {
+                            if (isOperationDisabled) {
+                              onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+                              return
+                            }
+                            handleDeleteClick(e, player)
+                          }}
+                          disabled={isOperationDisabled}
+                          title={isOperationDisabled ? operationStatus.reason : ''}
                           variant="danger"
                           className="px-2 py-0.5 sm:px-3 sm:py-1 text-[0.7rem] sm:text-[0.8rem]"
                         >
@@ -1091,8 +1126,9 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
                         <Input
                           label="Batch"
                           type="text"
-                          value={editedData.batch_name || ''}
+                          value={editedData.batch_name || 'N/A'}
                           disabled={true}
+                          placeholder="Batch name (cannot be modified)"
                           required
                         />
 
@@ -1113,13 +1149,20 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
                         />
                       </div>
 
-                      <div className="flex gap-2 mt-3 sm:mt-4">
+                      <div className="flex gap-2 mt-3 sm:mt-4 mb-4 justify-center">
                         <Button
                           type="button"
-                          onClick={handleSavePlayer}
-                          disabled={saving}
+                          onClick={() => {
+                            if (isOperationDisabled) {
+                              onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+                              return
+                            }
+                            handleSavePlayer()
+                          }}
+                          disabled={saving || isOperationDisabled}
                           loading={saving}
-                          className="flex-1 px-3 py-1.5 sm:px-4 sm:py-2 text-[0.75rem] sm:text-[0.85rem] font-semibold rounded-[8px]"
+                          title={isOperationDisabled ? operationStatus.reason : ''}
+                          className="px-3 py-1.5 sm:px-4 sm:py-2 text-[0.75rem] sm:text-[0.85rem] font-semibold rounded-[8px]"
                         >
                           {saving ? 'Saving...' : 'Save'}
                         </Button>
@@ -1128,7 +1171,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
                           onClick={handleCancelEdit}
                           disabled={saving}
                           variant="secondary"
-                          className="flex-1 px-3 py-1.5 sm:px-4 sm:py-2 text-[0.75rem] sm:text-[0.85rem] font-semibold rounded-[8px]"
+                          className="px-3 py-1.5 sm:px-4 sm:py-2 text-[0.75rem] sm:text-[0.85rem] font-semibold rounded-[8px]"
                         >
                           Cancel
                         </Button>

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input, EmptyState, ConfirmationDialog } from './ui'
-import { useApi, useModal, useEventYearWithFallback } from '../hooks'
+import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { formatSportName } from '../utils/stringHelpers'
 import logger from '../utils/logger'
+import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
 const TABS = {
   ADD: 'add',
@@ -29,7 +30,12 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
   
   const { loading, execute } = useApi()
   const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+  const { eventYearConfig } = useEventYear()
   const confirmModal = useModal(false)
+  
+  // Check if database operations should be disabled
+  const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
+  const isOperationDisabled = operationStatus.disabled
 
   // Fetch players list and sports for Add tab
   useEffect(() => {
@@ -167,13 +173,15 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
             reg_number: selectedPlayer.reg_number,
             sport: selectedSport.trim(),
             event_year: eventYear,
+            event_name: eventName,
           }),
         }),
         {
           onSuccess: (data) => {
-            clearCache('/api/captains-by-sport')
-            clearCache('/api/players')
-            clearCache('/api/me')
+            clearCache(buildApiUrlWithYear('/api/captains-by-sport', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/players', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/me', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/sports', eventYear, null, eventName))
             
             onStatusPopup(
               `✅ ${selectedPlayer.full_name} has been added as captain for ${selectedSport}!`,
@@ -207,12 +215,22 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
   }
 
   const handleRemoveClick = (regNumber, sport, captainName) => {
+    if (isOperationDisabled) {
+      onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+      return
+    }
     setCaptainToRemove({ regNumber, sport, captainName })
     confirmModal.open()
   }
 
   const handleConfirmRemove = async () => {
     if (!captainToRemove) return
+
+    if (isOperationDisabled) {
+      onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+      confirmModal.close()
+      return
+    }
 
     const { regNumber, sport, captainName } = captainToRemove
     confirmModal.close()
@@ -225,6 +243,7 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
             reg_number: regNumber,
             sport: sport,
             event_year: eventYear,
+            event_name: eventName,
           }),
         }),
         {
@@ -236,8 +255,9 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
             )
             isRefreshingRef.current = true
             clearCache(buildApiUrlWithYear('/api/captains-by-sport', eventYear, null, eventName))
-            clearCache('/api/players')
-            clearCache('/api/me')
+            clearCache(buildApiUrlWithYear('/api/players', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/me', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/sports', eventYear, null, eventName))
             
             const captainsUrl = buildApiUrlWithYear('/api/captains-by-sport', eventYear, null, eventName)
             fetchWithAuth(captainsUrl, { skipCache: true })
@@ -386,12 +406,12 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
               options={sports.map((sport) => ({ value: sport.name, label: formatSportName(sport.name) }))}
             />
 
-            <div className="flex gap-[0.6rem] mt-[0.8rem]">
+            <div className="flex gap-[0.6rem] mt-[0.8rem] justify-center">
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isOperationDisabled}
                 loading={loading}
-                fullWidth
+                title={isOperationDisabled ? operationStatus.reason : ''}
               >
                 {loading ? 'Adding...' : 'Submit'}
               </Button>
@@ -400,7 +420,6 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
                 onClick={onClose}
                 disabled={loading}
                 variant="secondary"
-                fullWidth
               >
                 Cancel
               </Button>
@@ -478,7 +497,8 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
                                   <Button
                                     type="button"
                                     onClick={() => handleRemoveClick(captain.reg_number, sport, captain.full_name)}
-                                    disabled={loading || hasTeam}
+                                    disabled={isOperationDisabled || loading || hasTeam}
+                                    title={isOperationDisabled ? operationStatus.reason : (hasTeam ? `Cannot remove: Has team ${teamName}` : "Remove Captain")}
                                     variant="danger"
                                     className="px-4 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em]"
                                     title={hasTeam ? 'Cannot remove: Team already created' : 'Remove Captain'}

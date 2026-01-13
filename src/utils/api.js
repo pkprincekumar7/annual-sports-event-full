@@ -82,6 +82,28 @@ export const clearCache = (url = null) => {
   }
 }
 
+// Clear cache for all URLs matching a pattern
+export const clearCachePattern = (pattern) => {
+  if (!pattern) {
+    requestCache.clear()
+    return
+  }
+  
+  // Remove leading slash if present for pattern matching
+  const normalizedPattern = pattern.startsWith('/') ? pattern : `/${pattern}`
+  
+  // Find all cache keys that start with the pattern
+  const keysToDelete = []
+  for (const key of requestCache.keys()) {
+    if (key.startsWith(normalizedPattern)) {
+      keysToDelete.push(key)
+    }
+  }
+  
+  // Delete all matching keys
+  keysToDelete.forEach(key => requestCache.delete(key))
+}
+
 // Utility function for authenticated API calls with caching and deduplication
 export const fetchWithAuth = async (url, options = {}) => {
   const token = localStorage.getItem('authToken')
@@ -131,8 +153,8 @@ export const fetchWithAuth = async (url, options = {}) => {
     headers,
     signal,
   }).then(async (response) => {
-    // Handle token expiration (401 Unauthorized or 403 Forbidden)
-    if (response.status === 401 || response.status === 403) {
+    // Handle token expiration (401 Unauthorized) - user is not authenticated
+    if (response.status === 401) {
       // Only clear token if explicitly requested (default true for backward compatibility)
       // During initial user fetch (reloadOnAuthError: false), don't clear token immediately
       // Let the calling code handle auth errors appropriately
@@ -152,6 +174,16 @@ export const fetchWithAuth = async (url, options = {}) => {
         }, 100)
       }
       // Return original - will be cloned for each caller
+      return response
+    }
+    
+    // Handle 403 Forbidden - user is authenticated but lacks permission
+    // This is different from 401 - user is still logged in, just doesn't have admin access
+    // Don't clear token or reload page for 403 errors
+    // The calling code should handle 403 appropriately (e.g., show empty data or hide admin features)
+    if (response.status === 403) {
+      // Don't clear token or reload - user is still authenticated
+      // Just return the response so calling code can handle it
       return response
     }
 

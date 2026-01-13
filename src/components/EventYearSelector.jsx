@@ -1,42 +1,19 @@
 /**
  * Event Year Selector Component
- * Allows admin to switch between event years for viewing/managing
+ * Allows authenticated users to switch between event years for viewing
  */
 
-import { useState, useEffect } from 'react'
-import { fetchWithAuth } from '../utils/api'
-import logger from '../utils/logger'
-import { useEventYear } from '../hooks'
+import { useEffect, useRef } from 'react'
+import { useEventYear, useEventYears } from '../hooks'
 
 function EventYearSelector({ selectedEventYear, onEventYearChange, loggedInUser }) {
-  const [eventYears, setEventYears] = useState([])
-  const [loading, setLoading] = useState(false)
+  const { eventYears, loading } = useEventYears()
   const { eventYear: activeEventYear } = useEventYear()
 
-  // Only show for admin users
-  if (!loggedInUser || loggedInUser.reg_number !== 'admin') {
+  // Only show for authenticated users
+  if (!loggedInUser) {
     return null
   }
-
-  useEffect(() => {
-    const fetchEventYears = async () => {
-      setLoading(true)
-      try {
-        const response = await fetchWithAuth('/api/event-years')
-        if (!response.ok) throw new Error('Failed to fetch event years')
-        const data = await response.json()
-        // Backend returns { success: true, eventYears: [...] }
-        const eventYearsData = data.eventYears || (Array.isArray(data) ? data : [])
-        setEventYears(Array.isArray(eventYearsData) ? eventYearsData.sort((a, b) => b.event_year - a.event_year) : [])
-      } catch (error) {
-        logger.error('Error fetching event years:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchEventYears()
-  }, [])
 
   const handleEventYearChange = (e) => {
     const selectedEventYearValue = e.target.value ? parseInt(e.target.value) : null
@@ -50,12 +27,15 @@ function EventYearSelector({ selectedEventYear, onEventYearChange, loggedInUser 
   const currentEventYear = selectedEventYear || activeEventYearData?.event_year || activeEventYear
 
   // Auto-select active event year on initial load if not already selected
+  // Use a ref to track if we've already auto-selected to prevent infinite loops
+  const hasAutoSelectedRef = useRef(false)
   useEffect(() => {
-    if (eventYears.length > 0 && !selectedEventYear && activeEventYearData && onEventYearChange) {
+    if (eventYears.length > 0 && !selectedEventYear && activeEventYearData && onEventYearChange && !hasAutoSelectedRef.current) {
+      hasAutoSelectedRef.current = true
       onEventYearChange(activeEventYearData.event_year)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventYears.length, activeEventYearData?.event_year])
+  }, [eventYears.length, activeEventYearData?.event_year, selectedEventYear])
 
   return (
     <div className="flex items-center gap-3 flex-wrap justify-center">

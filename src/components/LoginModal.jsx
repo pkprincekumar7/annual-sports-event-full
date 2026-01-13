@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Modal, Button, Input } from './ui'
 import { useApi } from '../hooks'
-import { API_URL, clearCache } from '../utils/api'
+import { API_URL, clearCachePattern } from '../utils/api'
 import logger from '../utils/logger'
 
 function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup, onResetPasswordClick }) {
@@ -41,13 +41,12 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup, onResetPas
           onSuccess: (data) => {
             // useApi already checked response.ok, parsed JSON, and verified data.success
             // Clear caches to ensure fresh data after login
-            // Note: /api/sports-counts is year-specific, but we don't know the year here
-            // The component will fetch it with the correct year when needed
-            clearCache('/api/me')
-            clearCache('/api/players')
-            clearCache('/api/captains-by-sport')
-            // Clear all sports-counts cache entries (pattern matching)
-            clearCache('/api/sports-counts')
+            // Use clearCachePattern to clear all variations with event_year/event_name parameters
+            clearCachePattern('/api/me')
+            clearCachePattern('/api/players')
+            clearCachePattern('/api/captains-by-sport')
+            clearCachePattern('/api/coordinators-by-sport')
+            clearCachePattern('/api/sports-counts')
             
             // Store JWT token in localStorage (user data is handled by App.jsx)
             if (data.token) {

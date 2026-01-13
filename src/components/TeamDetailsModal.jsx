@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Modal, Button, Input, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
 import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
-import { fetchWithAuth, clearCache } from '../utils/api'
+import { fetchWithAuth, clearCache, clearCachePattern } from '../utils/api'
 import { clearSportCaches } from '../utils/cacheHelpers'
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
 import { validateGenderMatch, validateBatchMatch, validateNoDuplicates } from '../utils/participantValidation'
+import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
 function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedEventYear }) {
   const { eventYearConfig } = useEventYear()
@@ -25,6 +26,10 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
   const { loading: deleting, execute: executeDelete } = useApi()
   const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
   const deleteConfirmModal = useModal(false)
+  
+  // Check if database operations should be disabled
+  const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
+  const isOperationDisabled = operationStatus.disabled
   
   const isAdmin = loggedInUser?.reg_number === 'admin'
   const isCaptain = !isAdmin && loggedInUser?.captain_in && 
@@ -137,7 +142,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
     
     try {
       // URL encode the sport name to handle special characters like ×
-      const url = buildSportApiUrl('teams', sport, eventYear)
+      const url = buildSportApiUrl('teams', sport, eventYear, eventName)
       // Fetching teams for sport
       
       const response = await fetchWithAuth(url, signal ? { signal } : {})
@@ -326,6 +331,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
             old_reg_number: editingPlayer.old_reg_number,
             new_reg_number: selectedReplacementPlayer,
             event_year: eventYear,
+            event_name: eventName,
           }),
         }),
         {
@@ -335,7 +341,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
             }
             // Clear cache before refreshing to ensure we get fresh data
             clearSportCaches(sport, eventYear, eventName)
-            clearCache('/api/me') // Current user's data may have changed
+            clearCachePattern('/api/me') // Current user's data may have changed (clear all variations with event_year)
             // Refresh team data (no signal needed for manual refresh)
             fetchTeamDetails(null)
             setEditingPlayer(null)
@@ -367,6 +373,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
             team_name: teamName,
             sport: sport,
             event_year: eventYear,
+            event_name: eventName,
           }),
         }),
         {
@@ -376,7 +383,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
             }
             // Clear cache before refreshing to ensure we get fresh data
             clearSportCaches(sport, eventYear, eventName)
-            clearCache('/api/me') // If any logged-in user was in this team
+            clearCachePattern('/api/me') // If any logged-in user was in this team (clear all variations with event_year)
             // Remove deleted team from expanded teams if it was expanded
             setExpandedTeams(prev => {
               const newSet = new Set(prev)
@@ -487,10 +494,15 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
+                          if (isOperationDisabled) {
+                            onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+                            return
+                          }
                           setDeletingTeam(team.team_name)
                           deleteConfirmModal.open()
                         }}
-                        disabled={(updating && deletingTeam === team.team_name) || (deleting && deletingTeam === team.team_name)}
+                        disabled={isOperationDisabled || (updating && deletingTeam === team.team_name) || (deleting && deletingTeam === team.team_name)}
+                        title={isOperationDisabled ? operationStatus.reason : ''}
                         variant="danger"
                         className="self-start mt-2 mb-2 ml-4 md:mt-0 md:mb-0 md:ml-2 md:mr-2 md:self-auto px-4 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em] rounded-[8px]"
                       >
@@ -587,9 +599,16 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
                                   <div className="flex gap-2">
                                     <Button
                                       type="button"
-                                      onClick={handleUpdatePlayer}
-                                      disabled={updating || !selectedReplacementPlayer}
+                                      onClick={() => {
+                                        if (isOperationDisabled) {
+                                          onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+                                          return
+                                        }
+                                        handleUpdatePlayer()
+                                      }}
+                                      disabled={isOperationDisabled || updating || !selectedReplacementPlayer}
                                       loading={updating}
+                                      title={isOperationDisabled ? operationStatus.reason : ''}
                                       className="flex-1 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-[0.85rem] font-semibold rounded-[8px]"
                                     >
                                       {updating ? 'Updating...' : 'Update'}

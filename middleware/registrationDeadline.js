@@ -78,12 +78,14 @@ async function getRegistrationDeadline() {
  * Fetches deadline from database - throws error if not available
  */
 export const checkRegistrationDeadline = async (req, res, next) => {
-  // Allow GET requests, login endpoint, event scheduling/updates, points table operations, and event year management to pass through without date check
+  // Allow GET requests, login endpoint, password management, event scheduling/updates, points table operations, event year management, and department management to pass through without date check
   // Event scheduling (POST) has its own date validation (requireEventPeriod: after registration end, before event end)
   // Event updates (PUT) have their own date validation (requireEventStatusUpdatePeriod: event start to event end)
   // Points table refresh (POST backfill) has its own date validation (requireEventStatusUpdatePeriod: event start to event end)
   // Event year management (POST/PUT/DELETE) should be allowed even when no active event year exists (chicken-and-egg problem)
-  if (req.method === 'GET' || req.path === '/login' || req.path.startsWith('/event-schedule') || req.path.startsWith('/points-table') || req.path.startsWith('/event-years')) {
+  // Department management (POST/PUT/DELETE) is not event-year dependent and should always be allowed
+  // Password management (change-password, reset-password) should be allowed anytime as it's not event-year dependent
+  if (req.method === 'GET' || req.path === '/login' || req.path === '/change-password' || req.path === '/reset-password' || req.path.startsWith('/event-schedule') || req.path.startsWith('/points-table') || req.path.startsWith('/event-years') || req.path.startsWith('/departments')) {
     return next()
   }
 

@@ -13,13 +13,25 @@ const router = express.Router()
  * Get all departments (public)
  * Sort by display_order ascending
  * Note: Departments are not year-dependent, so there's no "active" concept
+ * Includes player_count for each department (for UI to disable delete button)
  */
 router.get('/', asyncHandler(async (req, res) => {
   const departments = await Department.find({})
     .sort({ display_order: 1, name: 1 })
     .lean()
   
-  return sendSuccessResponse(res, { departments })
+  // Get player counts for each department
+  const departmentsWithCounts = await Promise.all(
+    departments.map(async (dept) => {
+      const playerCount = await Player.countDocuments({ department_branch: dept.name })
+      return {
+        ...dept,
+        player_count: playerCount
+      }
+    })
+  )
+  
+  return sendSuccessResponse(res, { departments: departmentsWithCounts })
 }))
 
 /**

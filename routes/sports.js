@@ -319,6 +319,12 @@ router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistratio
       return sendErrorResponse(res, 400, `Cannot delete sport. This sport belongs to event year ${sport.event_year} (${sport.event_name}), but you are trying to delete it for event year ${requestedYear} (${requestedEventName}). Please select the correct event year to delete this sport.`)
     }
     
+    // Check if any teams have participated
+    const teamsCount = sport.teams_participated?.length || 0
+    
+    // Check if any players have participated (individual events)
+    const playersCount = sport.players_participated?.length || 0
+    
     // Check if any matches exist for this sport
     const schedulesCount = await EventSchedule.countDocuments({ 
       sports_name: sport.name, 
@@ -333,10 +339,25 @@ router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistratio
       event_name: sport.event_name
     })
     
-    if (schedulesCount > 0 || pointsCount > 0) {
-    return sendErrorResponse(res, 400, 
-      `Cannot delete sport. Data exists: ${schedulesCount} matches, ${pointsCount} points entries.`
-    )
+    // Build error message with all participation data
+    const participationErrors = []
+    if (teamsCount > 0) {
+      participationErrors.push(`${teamsCount} team(s)`)
+    }
+    if (playersCount > 0) {
+      participationErrors.push(`${playersCount} player(s)`)
+    }
+    if (schedulesCount > 0) {
+      participationErrors.push(`${schedulesCount} match(es)`)
+    }
+    if (pointsCount > 0) {
+      participationErrors.push(`${pointsCount} points entry/entries`)
+    }
+    
+    if (participationErrors.length > 0) {
+      return sendErrorResponse(res, 400, 
+        `Cannot delete sport. ${participationErrors.join(', ')} ${participationErrors.length === 1 ? 'has' : 'have'} participated. Please remove all participation before deleting.`
+      )
     }
     
     await Sport.findByIdAndDelete(id)

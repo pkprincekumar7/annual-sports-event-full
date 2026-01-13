@@ -8,6 +8,7 @@ import Player from '../models/Player.js'
 import EventYear from '../models/EventYear.js'
 import Sport from '../models/Sport.js'
 import EventSchedule from '../models/EventSchedule.js'
+import Batch from '../models/Batch.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
@@ -129,7 +130,18 @@ router.get(
   '/players',
   authenticateToken,
   asyncHandler(async (req, res) => {
-    let eventYear = req.query.event_year ? parseInt(req.query.event_year) : null
+    // For optional event_year/event_name: either both must be provided, or neither
+    // If one is provided, the other is also required for composite key filtering
+    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
+    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+    
+    if (hasEventYear && !hasEventName) {
+      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
+    }
+    if (hasEventName && !hasEventYear) {
+      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    }
+    
     const searchQuery = req.query.search ? req.query.search.trim() : null
     const hasPageParam = req.query.page !== undefined && req.query.page !== null && req.query.page !== ''
     // Validate and parse page parameter if provided
@@ -150,21 +162,23 @@ router.get(
     }
     const skip = hasPageParam && limit ? (page - 1) * limit : 0
 
-    // Get event year (default to active event year if not provided)
-    if (!eventYear) {
-      const cachedActiveYear = getCache('/api/event-years/active')
-      if (cachedActiveYear) {
-        eventYear = cachedActiveYear.event_year
-      } else {
-        const activeYear = await findActiveEventYear()
-        if (activeYear) {
-          eventYear = activeYear.event_year
-          setCache('/api/event-years/active', activeYear)
-        } else {
-          eventYear = new Date().getFullYear()
-        }
+    // Get event year and event_name (default to active event year if not provided)
+    // Extract event_name from query if provided for composite key filtering
+    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
+    let eventYearData
+    try {
+      eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+    } catch (error) {
+      // If event year not found, return error
+      if (error.message === 'Event year not found' || error.message === 'No active event year found') {
+        return sendErrorResponse(res, 400, error.message)
       }
+      // Re-throw other errors to be handled by asyncHandler
+      throw error
     }
+    
+    const eventYear = eventYearData.event_year
+    const eventName = eventYearData.doc.event_name
 
     // Build query
     const query = { reg_number: { $ne: 'admin' } }
@@ -180,8 +194,9 @@ router.get(
     }
 
     // Check cache only if no search query, no pagination (all records), and page 1
+    // eventName is always available after getEventYear call (either from query or from active event year)
     if (!searchQuery && !hasPageParam) {
-      const cacheKey = `/api/players?event_year=${eventYear}`
+      const cacheKey = `/api/players?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`
       const cached = getCache(cacheKey)
       if (cached) {
         // Always use sendSuccessResponse for consistency, even for cached data
@@ -207,14 +222,29 @@ router.get(
     const participationMap = await computePlayersParticipationBatch(regNumbers, eventYear)
 
     // Add computed fields to all players using batch results
-    const playersWithComputed = players.map(player => {
+    // Also compute batch_name for each player
+    const playersWithComputed = await Promise.all(players.map(async (player) => {
       const playerObj = player
       const participation = participationMap[player.reg_number] || { participated_in: [], captain_in: [], coordinator_in: [] }
       playerObj.participated_in = participation.participated_in
       playerObj.captain_in = participation.captain_in
       playerObj.coordinator_in = participation.coordinator_in
+      
+      // Get batch name if eventYear and eventName are available
+      if (eventYear && eventName) {
+        try {
+          const batchName = await getPlayerBatchName(playerObj.reg_number, eventYear, eventName)
+          playerObj.batch_name = batchName
+        } catch (error) {
+          logger.warn(`Could not get batch_name for player ${playerObj.reg_number}:`, error)
+          playerObj.batch_name = null
+        }
+      } else {
+        playerObj.batch_name = null
+      }
+      
       return playerObj
-    })
+    }))
 
     // Build response - include pagination only if page parameter was provided
     const result = {
@@ -237,8 +267,9 @@ router.get(
     }
 
     // Cache the result only if no search query and no pagination (all records)
+    // eventName is always available after getEventYear call (either from query or from active event year)
     if (!searchQuery && !hasPageParam) {
-      const cacheKey = `/api/players?event_year=${eventYear}`
+      const cacheKey = `/api/players?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`
       setCache(cacheKey, result)
     }
 
@@ -292,6 +323,11 @@ router.post(
       return sendErrorResponse(res, 400, 'No active event year found. Please configure an active event year first.')
     }
 
+    // Validate active event year has event_name
+    if (!activeEventYear.event_name || !activeEventYear.event_name.trim()) {
+      return sendErrorResponse(res, 400, 'Active event year is missing event name. Please configure the event name for the active event year.')
+    }
+
     // Create new player object (without year field)
     const newPlayer = new Player(playerData)
     await newPlayer.save()
@@ -304,7 +340,7 @@ router.post(
     const batch = await Batch.findOne({
       name: batch_name.trim(),
       event_year: activeEventYear.event_year,
-      event_name: activeEventYear.event_name
+      event_name: activeEventYear.event_name.trim()
     })
 
     if (!batch) {
@@ -322,7 +358,7 @@ router.post(
 
     // Clear cache (use pattern to clear all variations with query params)
     clearCachePattern('/api/players')
-    clearCache(`/api/batches?event_year=${activeEventYear.event_year}`)
+    clearCache(`/api/batches?event_year=${activeEventYear.event_year}&event_name=${encodeURIComponent(activeEventYear.event_name.trim())}`)
 
     return sendSuccessResponse(res, { player: savedPlayer }, 'Player data saved successfully')
   })
@@ -341,11 +377,16 @@ router.put(
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
-    const { createdBy, updatedBy, ...updateData } = trimmed // Exclude createdBy/updatedBy (set from token only)
+    const { createdBy, updatedBy, batch_name, ...updateData } = trimmed // Exclude createdBy/updatedBy and batch_name (set from token only, batch handled separately)
 
     // Explicitly reject if user tries to send createdBy or updatedBy
     if (createdBy !== undefined || updatedBy !== undefined) {
       return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
+    }
+
+    // Explicitly reject if user tries to send batch_name (batch assignment is handled separately)
+    if (batch_name !== undefined) {
+      return sendErrorResponse(res, 400, 'Batch cannot be modified through player update. Batch assignment is handled separately via batch management endpoints.')
     }
 
     const validation = await validateUpdatePlayerData(updateData)

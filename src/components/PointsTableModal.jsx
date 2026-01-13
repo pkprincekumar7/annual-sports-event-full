@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
 import { fetchWithAuth, clearCache } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
-import { useEventYearWithFallback, useApi } from '../hooks'
+import { useEventYearWithFallback, useApi, useEventYears } from '../hooks'
 import logger from '../utils/logger'
 
 function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = false, selectedEventYear, isActive = true, onStatusPopup }) {
@@ -12,6 +12,7 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
   const [selectedGender, setSelectedGender] = useState('Male') // Default to Male
   const [hasLeagueMatches, setHasLeagueMatches] = useState(true) // Assume true initially
   const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+  const { loading: eventYearsLoading } = useEventYears() // Ensure event years are loaded for eventName lookup
   const abortControllerRef = useRef(null)
   const currentSportRef = useRef(null)
   const previousIsActiveRef = useRef(false)
@@ -91,7 +92,7 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
 
     try {
       const encodedSport = encodeURIComponent(sport)
-      const url = buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, selectedGender)
+      const url = buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, selectedGender, eventName)
 
       const response = await fetchWithAuth(url, { signal })
 
@@ -156,6 +157,21 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
       return
     }
 
+    // Ensure eventName is available when eventYear is provided (backend requirement)
+    // Also wait for eventYears to finish loading if still loading
+    if (eventYear && !eventName) {
+      if (eventYearsLoading) {
+        if (onStatusPopup) {
+          onStatusPopup('❌ Please wait for event data to load before refreshing points table.', 'error', 3000)
+        }
+        return
+      }
+      if (onStatusPopup) {
+        onStatusPopup('❌ Event name is required for backfill. Unable to determine event name for the selected year.', 'error', 3000)
+      }
+      return
+    }
+
     try {
       await executeBackfill(
         () => fetchWithAuth(buildApiUrlWithYear(`/api/points-table/backfill/${encodeURIComponent(sport)}`, eventYear, null, eventName), {
@@ -178,7 +194,17 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
             fetchPointsTable(refreshAbortController.signal)
           },
           onError: (err) => {
+            // The useApi hook extracts the error message from the API response
+            // Backend returns { success: false, error: "message" } with status 400
+            // useApi checks !response.ok, clones response, parses JSON, extracts errorData.error
+            // and sets err.message from errorData.error || errorData.message
             const errorMessage = err?.message || err?.error || 'Error backfilling points table. Please try again.'
+            logger.error('Backfill error details:', { 
+              message: err?.message, 
+              error: err?.error, 
+              status: err?.status,
+              fullError: err 
+            })
             if (onStatusPopup) {
               onStatusPopup(`❌ ${errorMessage}`, 'error', 3000)
             }
@@ -186,10 +212,11 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
         }
       )
     } catch (err) {
+      // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
       logger.error('Error in handleBackfill:', err)
-      if (onStatusPopup) {
-        onStatusPopup('❌ Error backfilling points table. Please try again.', 'error', 3000)
-      }
+      // onError callback should have already displayed the error message
+      // Only log here, don't show duplicate error popup
     }
   }
 

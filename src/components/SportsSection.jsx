@@ -97,7 +97,8 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
 
   // Fetch sports from API
   useEffect(() => {
-    if (!eventYear) return
+    // Wait for both eventYear and eventName to be available before making API call
+    if (!eventYear || !eventName) return
 
     let isMounted = true
     const abortController = new AbortController()
@@ -160,14 +161,15 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
       isMounted = false
       abortController.abort()
     }
-  }, [eventYear])
+  }, [eventYear, eventName])
 
   // Fetch all sports counts once when user logs in
   useEffect(() => {
     const prevUser = prevLoggedInUserRef.current
     const justLoggedIn = prevUser === null && loggedInUser !== null
     
-    if (!loggedInUser || !eventYear) {
+    // Wait for both eventYear and eventName to be available before making API call
+    if (!loggedInUser || !eventYear || !eventName) {
       setSportsCounts({ teams_counts: {}, participants_counts: {} })
       hasFetchedRef.current = false
       prevLoggedInUserRef.current = null
@@ -231,7 +233,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
     return () => {
       isMounted = false
     }
-  }, [loggedInUser, eventYear])
+  }, [loggedInUser, eventYear, eventName])
 
   // Group sports by category
   const teamSports = sports.filter(s => s.category === 'team events')

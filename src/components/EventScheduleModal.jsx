@@ -11,6 +11,7 @@ import {
   validateGenderMatch, 
   validateDifferentParticipants 
 } from '../utils/participantValidation'
+import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
 function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, onStatusPopup, embedded = false, selectedEventYear }) {
   const { eventYearConfig } = useEventYear()
@@ -22,6 +23,10 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const [deletingMatchId, setDeletingMatchId] = useState(null)
   const [sportDetails, setSportDetails] = useState(null) // Store sport details to know exact type
   const [selectedGenderTab, setSelectedGenderTab] = useState('Male') // Gender tab for viewing matches (default to Male)
+  
+  // Check if database operations should be disabled
+  const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
+  const isOperationDisabled = operationStatus.disabled
   
   // Form state
   const [matchType, setMatchType] = useState('league')
@@ -335,6 +340,12 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   }
 
   const handleDeleteClick = (matchId) => {
+    if (isOperationDisabled) {
+      if (onStatusPopup) {
+        onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+      }
+      return
+    }
     setDeletingMatchId(matchId)
     deleteConfirmModal.open()
   }
@@ -451,7 +462,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             const match = matches.find(m => m._id === matchId)
             if (match) {
               clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender, eventName))
-              clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender))
+              clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender, eventName))
               // Clear points-table cache if this is a league match (affects points table)
               if (match.match_type === 'league') {
                 const encodedSport = encodeURIComponent(sport)
@@ -550,7 +561,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             const match = matches.find(m => m._id === matchId)
             if (match) {
               clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender, eventName))
-              clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender))
+              clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender, eventName))
               // Clear points-table cache if this is a league match (affects points table)
               if (match.match_type === 'league') {
                 const encodedSport = encodeURIComponent(sport)
@@ -605,7 +616,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             if (match) {
               clearCache(buildEventScheduleApiUrl(sport, '', eventYear, match.gender, eventName))
               if (match.match_type === 'knockout' || match.match_type === 'final') {
-                clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender))
+                clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, match.gender, eventName))
               }
             }
             // Clear points-table cache if this is a league match (affects points table)
@@ -667,6 +678,12 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   }
 
   const handleAddMatch = () => {
+    if (isOperationDisabled) {
+      if (onStatusPopup) {
+        onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+      }
+      return
+    }
     // Check if a final match already exists (scheduled or completed) for the selected gender tab
     if (hasActiveFinalMatch) {
       if (onStatusPopup) {
@@ -734,6 +751,13 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
 
   const handleSubmitMatch = async (e) => {
     e.preventDefault()
+    
+    if (isOperationDisabled) {
+      if (onStatusPopup) {
+        onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+      }
+      return
+    }
     
     // Validate gender is selected
     if (!selectedGender || (selectedGender !== 'Male' && selectedGender !== 'Female')) {
@@ -974,7 +998,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
         // Validate all teams have players of the same gender
         // Since team creation already enforces same gender within a team, we only need to check one player per team
         try {
-          const response = await fetchWithAuth(buildSportApiUrl('teams', sport, eventYear))
+          const response = await fetchWithAuth(buildSportApiUrl('teams', sport, eventYear, eventName))
           if (response.ok) {
             const data = await response.json()
             if (data.success && data.teams) {
@@ -1065,7 +1089,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       // Validate both teams have players of the same gender (for dual_team)
       // Since team creation already enforces same gender within a team, we only need to check one player per team
       try {
-        const response = await fetchWithAuth(buildSportApiUrl('teams', sport, eventYear))
+        const response = await fetchWithAuth(buildSportApiUrl('teams', sport, eventYear, eventName))
         if (response.ok) {
           const data = await response.json()
           if (data.success && data.teams) {
@@ -1165,10 +1189,10 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
             setShowAddForm(false)
             // Clear cache for event-schedule endpoint to ensure fresh data (with and without gender for backward compatibility)
             clearCache(buildEventScheduleApiUrl(sport, '', eventYear, null, eventName))
-            clearCache(buildEventScheduleApiUrl(sport, '', eventYear, selectedGender))
+            clearCache(buildEventScheduleApiUrl(sport, '', eventYear, selectedGender, eventName))
             // Clear teams-players cache if new match is knockout/final (participants are now in scheduled match)
             if (matchType === 'knockout' || matchType === 'final') {
-              clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, selectedGender))
+              clearCache(buildEventScheduleApiUrl(sport, 'teams-players', eventYear, selectedGender, eventName))
             }
             // Clear points-table cache if this is a league match (affects points table)
             if (matchType === 'league') {
@@ -1277,6 +1301,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
               <Button
                 type="button"
                 onClick={handleAddMatch}
+                disabled={isOperationDisabled}
+                title={isOperationDisabled ? operationStatus.reason : ''}
                 variant="success"
                 className="px-4 py-2 text-[0.85rem] font-bold rounded-lg"
               >
@@ -1635,8 +1661,9 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
               <div className="flex gap-3">
                 <Button
                   type="submit"
-                  disabled={submitting}
+                  disabled={isOperationDisabled || submitting}
                   loading={submitting}
+                  title={isOperationDisabled ? operationStatus.reason : ''}
                   variant="success"
                   className="flex-1 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-[0.85rem] font-bold rounded-lg"
                 >
@@ -1720,7 +1747,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                   e.stopPropagation()
                                   handleDeleteClick(match._id)
                                 }}
-                                disabled={updatingStatus || updatingWinner}
+                                disabled={isOperationDisabled || updatingStatus || updatingWinner}
+                                title={isOperationDisabled ? operationStatus.reason : ''}
                                 variant="danger"
                                 className="px-2 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em] rounded-[8px]"
                               >

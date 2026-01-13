@@ -9,4 +9,5 @@ export { useModal } from './useModal'
 export { useDepartments } from './useDepartments'
 export { useEventYear } from './useEventYear'
 export { useEventYearWithFallback } from './useEventYearWithFallback'
+export { useEventYears } from './useEventYears'
 

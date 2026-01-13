@@ -2,7 +2,7 @@
  * Cache clearing utilities for consistent cache management
  */
 
-import { clearCache } from './api'
+import { clearCache, clearCachePattern } from './api'
 import { buildApiUrlWithYear } from './apiHelpers'
 
 /**
@@ -32,7 +32,7 @@ export const clearSportCaches = (sportName, eventYear, eventName = null) => {
  */
 export const clearTeamParticipationCaches = (sportName, eventYear, eventName = null) => {
   clearSportCaches(sportName, eventYear, eventName)
-  clearCache('/api/me') // Current user's participation data changes
+  clearCachePattern('/api/me') // Current user's participation data changes (clear all variations with event_year)
 }
 
 /**
@@ -43,7 +43,7 @@ export const clearTeamParticipationCaches = (sportName, eventYear, eventName = n
  */
 export const clearIndividualParticipationCaches = (sportName, eventYear, eventName = null) => {
   clearSportCaches(sportName, eventYear, eventName)
-  clearCache('/api/me') // Current user's participation data changes
+  clearCachePattern('/api/me') // Current user's participation data changes (clear all variations with event_year)
 }
 
 /**

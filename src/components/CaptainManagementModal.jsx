@@ -501,7 +501,6 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
                                     title={isOperationDisabled ? operationStatus.reason : (hasTeam ? `Cannot remove: Has team ${teamName}` : "Remove Captain")}
                                     variant="danger"
                                     className="px-4 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em]"
-                                    title={hasTeam ? 'Cannot remove: Team already created' : 'Remove Captain'}
                                   >
                                     {loading ? 'Removing...' : 'Remove'}
                                   </Button>

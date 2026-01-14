@@ -27,6 +27,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   // Use selectedEventYear if provided (for admin), otherwise use active event year
   const eventYear = selectedEventYear || activeEventYear
   
+  // Check if operations should be disabled based on event year configuration
+  const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
+  const isOperationDisabled = operationStatus.disabled
+  
   // Build event display name from database
   const eventDisplayName = eventYearConfig 
     ? `${eventYearConfig.event_organizer || 'Events Community'} • ${eventYearConfig.event_name} - ${eventYearConfig.event_year}`

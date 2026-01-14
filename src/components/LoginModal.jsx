@@ -85,7 +85,6 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup, onResetPas
       isOpen={isOpen}
       onClose={onClose}
       title="Player Login"
-      headerLabel="Login"
       maxWidth="max-w-[420px]"
     >
       <form onSubmit={handleSubmit}>

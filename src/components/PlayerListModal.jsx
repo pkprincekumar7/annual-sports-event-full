@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input, LoadingSpinner, EmptyState, ConfirmationDialog } from './ui'
-import { useApi, useDepartments, useEventYearWithFallback, useEventYear } from '../hooks'
-import { fetchWithAuth, clearCache, clearCachePattern } from '../utils/api'
+import { useApi, useEventYearWithFallback, useEventYear } from '../hooks'
+import { fetchWithAuth, API_URL, clearCache, clearCachePattern } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { GENDER_OPTIONS, DEFAULT_PLAYERS_PAGE_SIZE } from '../constants/app'
 import logger from '../utils/logger'
@@ -42,7 +42,8 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
   const { loading: saving, execute } = useApi()
   const { loading: deleting, execute: executeDelete } = useApi()
   const [bulkDeleting, setBulkDeleting] = useState(false)
-  const { departments: departmentOptions, loading: loadingDepartments } = useDepartments()
+  const [departments, setDepartments] = useState([])
+  const [loadingDepartments, setLoadingDepartments] = useState(false)
   const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
   const { eventYearConfig } = useEventYear()
   const isRefreshingRef = useRef(false) // Use ref to track if we're refreshing after update
@@ -53,6 +54,60 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
   const isOperationDisabled = operationStatus.disabled
   const clearButtonRef = useRef(null) // Ref for clear button
   const [clearButtonTop, setClearButtonTop] = useState(null) // Dynamic top position for clear button
+
+  // Fetch departments for department_branch dropdown
+  useEffect(() => {
+    if (!isOpen) {
+      setDepartments([])
+      setLoadingDepartments(false)
+      return
+    }
+    
+    let isMounted = true
+    const abortController = new AbortController()
+    
+    const fetchDepartments = async () => {
+      setLoadingDepartments(true)
+      try {
+        // Use regular fetch (not fetchWithAuth) since departments endpoint is public
+        const res = await fetch(`${API_URL}/api/departments`, { signal: abortController.signal })
+        if (!isMounted) return
+        
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success) {
+            const deptOptions = (data.departments || []).map(dept => ({
+              value: dept.name,
+              label: dept.name
+            }))
+            setDepartments(deptOptions)
+          } else {
+            setDepartments([])
+          }
+        } else {
+          setDepartments([])
+        }
+      } catch (err) {
+        if (!isMounted || err.name === 'AbortError') return
+        setDepartments([])
+        logger.error('Error fetching departments:', err)
+      } finally {
+        if (isMounted) {
+          setLoadingDepartments(false)
+        }
+      }
+    }
+    
+    fetchDepartments()
+    
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
+  }, [isOpen])
+
+  // Generate department options from fetched departments
+  const departmentOptions = departments
 
   // Function to fetch players (extracted for reuse)
   // showError: whether to show error popup (default: true for initial load, false for silent refresh)

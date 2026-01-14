@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input } from './ui'
-import { useApi, useDepartments, useEventYear } from '../hooks'
+import { useApi, useEventYear } from '../hooks'
 import { fetchWithAuth, API_URL, clearCache, clearCachePattern } from '../utils/api'
 import { clearTeamParticipationCaches, clearIndividualParticipationCaches } from '../utils/cacheHelpers'
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
@@ -22,7 +22,6 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   const { loading: isSubmitting, execute: executeGeneral } = useApi()
   const { loading: isSubmittingTeam, execute: executeTeam } = useApi()
   const { loading: isSubmittingIndividual, execute: executeIndividual } = useApi()
-  const { departments: departmentOptions, loading: loadingDepartments } = useDepartments()
   const { eventYear: activeEventYear, eventYearConfig } = useEventYear()
   // Use selectedEventYear if provided (for admin), otherwise use active event year
   const eventYear = selectedEventYear || activeEventYear
@@ -44,6 +43,62 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   const prevSportNameRef = useRef(null)
   const isMountedRef = useRef(true)
   const [batches, setBatches] = useState([])
+  const [departments, setDepartments] = useState([])
+  const [loadingDepartments, setLoadingDepartments] = useState(false)
+  
+  // Fetch departments for department_branch dropdown
+  useEffect(() => {
+    if (!isOpen) {
+      setDepartments([])
+      setLoadingDepartments(false)
+      return
+    }
+    
+    let isMounted = true
+    const abortController = new AbortController()
+    
+    const fetchDepartments = async () => {
+      setLoadingDepartments(true)
+      try {
+        // Use regular fetch (not fetchWithAuth) since departments endpoint is public
+        const res = await fetch(`${API_URL}/api/departments`, { signal: abortController.signal })
+        if (!isMounted) return
+        
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success) {
+            const deptOptions = (data.departments || []).map(dept => ({
+              value: dept.name,
+              label: dept.name
+            }))
+            setDepartments(deptOptions)
+          } else {
+            setDepartments([])
+          }
+        } else {
+          setDepartments([])
+        }
+      } catch (err) {
+        if (!isMounted || err.name === 'AbortError') return
+        setDepartments([])
+        logger.error('Error fetching departments:', err)
+      } finally {
+        if (isMounted) {
+          setLoadingDepartments(false)
+        }
+      }
+    }
+    
+    fetchDepartments()
+    
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
+  }, [isOpen])
+  
+  // Generate department options from fetched departments
+  const departmentOptions = departments
   
   // Fetch batches for batch_name dropdown
   useEffect(() => {
@@ -915,7 +970,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           name="department_branch"
           type="select"
           required
-          options={loadingDepartments ? [] : departmentOptions}
+          options={loadingDepartments ? [{ value: '', label: 'Loading departments...' }] : departmentOptions}
           disabled={loadingDepartments}
         />
 

@@ -64,7 +64,6 @@ function ResetPasswordModal({ isOpen, onClose, onStatusPopup }) {
       isOpen={isOpen}
       onClose={onClose}
       title="Reset Password"
-      headerLabel="Reset Password"
       maxWidth="max-w-[420px]"
     >
       <form onSubmit={handleSubmit}>

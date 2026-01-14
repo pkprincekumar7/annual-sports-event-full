@@ -196,7 +196,7 @@ router.get(
     const eventName = eventYearData.doc.event_name
 
     // Check cache
-    const cacheKey = `/api/batches?event_year=${eventYear}`
+    const cacheKey = `/api/batches?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`
     const cached = getCache(cacheKey)
     if (cached) {
       return sendSuccessResponse(res, cached)
@@ -207,14 +207,16 @@ router.get(
       event_name: eventName
     }).sort({ name: 1 }).lean()
 
-    // For public access, don't include player details (privacy)
-    // Only return batch names
+    // Return batches with their players array
+    // Players array contains registration numbers (strings) which are needed for:
+    // 1. BatchManagementModal to check if batch can be deleted
+    // 2. Displaying player count and list in the UI
     const batchesList = batches.map(batch => ({
       _id: batch._id,
       name: batch.name,
       event_year: batch.event_year,
       event_name: batch.event_name,
-      players: [] // Don't expose player details for public access
+      players: batch.players || [] // Return actual players array (array of registration numbers)
     }))
 
     const result = { batches: batchesList }

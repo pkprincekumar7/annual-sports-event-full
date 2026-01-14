@@ -76,7 +76,6 @@ function ChangePasswordModal({ isOpen, onClose, onStatusPopup, onPasswordChanged
       isOpen={isOpen}
       onClose={onClose}
       title="Change Password"
-      headerLabel="Change Password"
       maxWidth="max-w-[420px]"
     >
       <form onSubmit={handleSubmit}>

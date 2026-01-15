@@ -1,14 +1,11 @@
 import mongoose from 'mongoose'
 
 const pointsTableSchema = new mongoose.Schema({
-  event_year: {
-    type: Number,
-    required: true
-  },
-  event_name: {
+  event_id: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
+    lowercase: true
   },
   sports_name: {
     type: String,
@@ -72,14 +69,17 @@ const pointsTableSchema = new mongoose.Schema({
 })
 
 // Create indexes for faster lookups
-pointsTableSchema.index({ event_year: 1, event_name: 1, sports_name: 1, participant: 1 }, { unique: true }) // Compound unique - unique participant per sport per event year and name
-pointsTableSchema.index({ event_year: 1, event_name: 1, sports_name: 1, points: -1 }) // For efficient sorted points table queries by event year and name
-pointsTableSchema.index({ event_year: 1, event_name: 1, sports_name: 1 }) // For efficient event year + event name + sport queries
+pointsTableSchema.index({ event_id: 1, sports_name: 1, participant: 1 }, { unique: true }) // Unique participant per sport/event_id
+pointsTableSchema.index({ event_id: 1, sports_name: 1, points: -1 }) // For efficient sorted points table queries by event_id
+pointsTableSchema.index({ event_id: 1, sports_name: 1 }) // For efficient event_id + sport queries
 
-// Pre-save hook to lowercase sports_name
+// Pre-save hook to normalize sports_name and event_id
 pointsTableSchema.pre('save', function(next) {
   if (this.isModified('sports_name')) {
     this.sports_name = this.sports_name.toLowerCase().trim()
+  }
+  if (this.isModified('event_id') && this.event_id) {
+    this.event_id = this.event_id.toLowerCase().trim()
   }
   next()
 })

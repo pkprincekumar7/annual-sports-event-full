@@ -5,7 +5,6 @@
 
 import express from 'express'
 import Player from '../models/Player.js'
-import EventYear from '../models/EventYear.js'
 import Sport from '../models/Sport.js'
 import EventSchedule from '../models/EventSchedule.js'
 import Batch from '../models/Batch.js'
@@ -27,30 +26,19 @@ const router = express.Router()
 /**
  * Helper function to add computed fields to player data
  */
-async function addComputedFields(player, eventYear = null, eventName = null) {
+async function addComputedFields(player, eventId) {
   const playerObj = player.toObject ? player.toObject() : player
   
   // Compute participation data
-  const participation = await computePlayerParticipation(playerObj.reg_number, eventYear)
+  const participation = await computePlayerParticipation(playerObj.reg_number, eventId)
   playerObj.participated_in = participation.participated_in
   playerObj.captain_in = participation.captain_in
   playerObj.coordinator_in = participation.coordinator_in
   
-  // Get batch name from Batch collection using composite key (eventYear + eventName)
-  if (eventYear && eventName) {
+  // Get batch name from Batch collection using event_id
+  if (eventId) {
     try {
-      const batchName = await getPlayerBatchName(playerObj.reg_number, eventYear, eventName)
-      playerObj.batch_name = batchName // Use batch_name instead of year
-    } catch (error) {
-      logger.warn(`Could not get batch_name for player ${playerObj.reg_number}:`, error)
-      playerObj.batch_name = null
-    }
-  } else if (eventYear) {
-    // Fallback: if eventYear is provided but eventName is not, try to get it from event year document
-    try {
-      const eventYearData = await getEventYear(eventYear, { returnDoc: true, eventName: null })
-      const resolvedEventName = eventYearData.doc.event_name
-      const batchName = await getPlayerBatchName(playerObj.reg_number, eventYear, resolvedEventName)
+      const batchName = await getPlayerBatchName(playerObj.reg_number, eventId)
       playerObj.batch_name = batchName
     } catch (error) {
       logger.warn(`Could not get batch_name for player ${playerObj.reg_number}:`, error)
@@ -66,53 +54,43 @@ async function addComputedFields(player, eventYear = null, eventName = null) {
 /**
  * GET /api/me
  * Get current authenticated user data
- * Add computed participated_in, captain_in, coordinator_in, and batch_name fields (filtered by active event year or provided event year)
- * Supports composite key: event_year + event_name (both optional, but if one is provided, the other should be too)
+ * Add computed participated_in, captain_in, coordinator_in, and batch_name fields (filtered by active event)
+ * Supports event_id
  */
 router.get(
   '/me',
   authenticateToken,
   asyncHandler(async (req, res) => {
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-    }
-
-    // Get event year and event_name (default to active event year if not provided)
-    // Extract event_name from query if provided for composite key filtering
-    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-    let eventYearData
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
+    let eventId = null
     try {
-      eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      const eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
+      eventId = eventYearData.doc.event_id
     } catch (error) {
-      // If event year not found, return error
-      if (error.message === 'Event year not found' || error.message === 'No active event year found') {
-        return sendErrorResponse(res, 400, error.message)
-      }
-      // Re-throw other errors to be handled by asyncHandler
-      throw error
-    }
-    
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
-
-    // Check cache (include event_name in cache key for proper isolation)
-    const cacheKey = `/api/me?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`
-    const cached = getCache(cacheKey)
-    if (cached && cached.reg_number === req.user.reg_number) {
-      // Always use sendSuccessResponse for consistency, even for cached data
-      // Note: cached data might be the player object directly, so wrap it
-      if (cached.player) {
-        return sendSuccessResponse(res, cached)
+      // Allow /me to succeed even when event context cannot be resolved
+      if (
+        error.message === 'No active event year found' ||
+        error.message === 'Event year not found'
+      ) {
+        eventId = null
       } else {
-        return sendSuccessResponse(res, { player: cached })
+        // Re-throw other errors to be handled by asyncHandler
+        throw error
+      }
+    }
+
+    // Check cache (include event_id in cache key for proper isolation)
+    if (eventId) {
+      const cacheKey = `/api/me?event_id=${encodeURIComponent(eventId)}`
+      const cached = getCache(cacheKey)
+      if (cached && cached.reg_number === req.user.reg_number) {
+        // Always use sendSuccessResponse for consistency, even for cached data
+        // Note: cached data might be the player object directly, so wrap it
+        if (cached.player) {
+          return sendSuccessResponse(res, cached)
+        } else {
+          return sendSuccessResponse(res, { player: cached })
+        }
       }
     }
 
@@ -123,11 +101,25 @@ router.get(
       return handleNotFoundError(res, 'User')
     }
 
-    // Add computed fields using composite key (eventYear + eventName)
-    const userWithComputed = await addComputedFields(user, eventYear, eventName)
+    let userWithComputed
+    if (eventId) {
+      userWithComputed = await addComputedFields(user, eventId)
+    } else {
+      const baseUser = user.toObject()
+      userWithComputed = {
+        ...baseUser,
+        participated_in: [],
+        captain_in: [],
+        coordinator_in: [],
+        batch_name: null
+      }
+    }
 
     // Cache the result (store as player object to match response format)
-    setCache(cacheKey, userWithComputed)
+    if (eventId) {
+      const cacheKey = `/api/me?event_id=${encodeURIComponent(eventId)}`
+      setCache(cacheKey, userWithComputed)
+    }
 
     return sendSuccessResponse(res, { player: userWithComputed })
   })
@@ -136,7 +128,7 @@ router.get(
 /**
  * GET /api/players
  * Get players (requires authentication)
- * Add computed participated_in, captain_in, coordinator_in, and batch_name fields (filtered by active event year or provided event year)
+ * Add computed participated_in, captain_in, coordinator_in, and batch_name fields (filtered by active event)
  * Supports search query parameter to search by registration number or name
  * 
  * Pagination behavior:
@@ -144,7 +136,7 @@ router.get(
  * - If 'page' parameter is NOT provided: Returns all matching records (no pagination)
  * 
  * Query parameters:
- * - event_year: Event year (optional, defaults to active event year)
+ * - event_id: Event ID (optional, defaults to active event)
  * - search: Search query for registration number or name (optional)
  * - page: Page number for pagination (optional, if not provided returns all records)
  * - limit: Items per page when pagination is used (optional, defaults to DEFAULT_PLAYERS_PAGE_SIZE, max 100)
@@ -153,17 +145,7 @@ router.get(
   '/players',
   authenticateToken,
   asyncHandler(async (req, res) => {
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-    }
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
     
     const searchQuery = req.query.search ? req.query.search.trim() : null
     const hasPageParam = req.query.page !== undefined && req.query.page !== null && req.query.page !== ''
@@ -185,23 +167,20 @@ router.get(
     }
     const skip = hasPageParam && limit ? (page - 1) * limit : 0
 
-    // Get event year and event_name (default to active event year if not provided)
-    // Extract event_name from query if provided for composite key filtering
-    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-    let eventYearData
+    let eventId = null
     try {
-      eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      const eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
+      eventId = eventYearData.doc.event_id
     } catch (error) {
-      // If event year not found, return error
-      if (error.message === 'Event year not found' || error.message === 'No active event year found') {
+      if (error.message === 'No active event year found' && !eventIdQuery) {
+        eventId = null
+      } else if (error.message === 'Event year not found') {
         return sendErrorResponse(res, 400, error.message)
+      } else {
+        // Re-throw other errors to be handled by asyncHandler
+        throw error
       }
-      // Re-throw other errors to be handled by asyncHandler
-      throw error
     }
-    
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
 
     // Build query
     const query = { reg_number: { $ne: 'admin' } }
@@ -217,9 +196,8 @@ router.get(
     }
 
     // Check cache only if no search query, no pagination (all records), and page 1
-    // eventName is always available after getEventYear call (either from query or from active event year)
-    if (!searchQuery && !hasPageParam) {
-      const cacheKey = `/api/players?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`
+    if (!searchQuery && !hasPageParam && eventId) {
+      const cacheKey = `/api/players?event_id=${encodeURIComponent(eventId)}`
       const cached = getCache(cacheKey)
       if (cached) {
         // Always use sendSuccessResponse for consistency, even for cached data
@@ -242,7 +220,9 @@ router.get(
 
     // OPTIMIZATION: Batch compute participation for all players in one query
     const regNumbers = players.map(p => p.reg_number)
-    const participationMap = await computePlayersParticipationBatch(regNumbers, eventYear)
+    const participationMap = eventId
+      ? await computePlayersParticipationBatch(regNumbers, eventId)
+      : {}
 
     // Add computed fields to all players using batch results
     // Also compute batch_name for each player
@@ -253,10 +233,10 @@ router.get(
       playerObj.captain_in = participation.captain_in
       playerObj.coordinator_in = participation.coordinator_in
       
-      // Get batch name if eventYear and eventName are available
-      if (eventYear && eventName) {
+      // Get batch name if eventId is available
+      if (eventId) {
         try {
-          const batchName = await getPlayerBatchName(playerObj.reg_number, eventYear, eventName)
+          const batchName = await getPlayerBatchName(playerObj.reg_number, eventId)
           playerObj.batch_name = batchName
         } catch (error) {
           logger.warn(`Could not get batch_name for player ${playerObj.reg_number}:`, error)
@@ -290,9 +270,8 @@ router.get(
     }
 
     // Cache the result only if no search query and no pagination (all records)
-    // eventName is always available after getEventYear call (either from query or from active event year)
-    if (!searchQuery && !hasPageParam) {
-      const cacheKey = `/api/players?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`
+    if (!searchQuery && !hasPageParam && eventId) {
+      const cacheKey = `/api/players?event_id=${encodeURIComponent(eventId)}`
       setCache(cacheKey, result)
     }
 
@@ -346,9 +325,9 @@ router.post(
       return sendErrorResponse(res, 400, 'No active event year found. Please configure an active event year first.')
     }
 
-    // Validate active event year has event_name
-    if (!activeEventYear.event_name || !activeEventYear.event_name.trim()) {
-      return sendErrorResponse(res, 400, 'Active event year is missing event name. Please configure the event name for the active event year.')
+    // Validate active event has event_id
+    if (!activeEventYear.event_id || !String(activeEventYear.event_id).trim()) {
+      return sendErrorResponse(res, 400, 'Active event is missing event_id. Please configure the event ID for the active event.')
     }
 
     // Create new player object (without year field)
@@ -362,8 +341,7 @@ router.post(
 
     const batch = await Batch.findOne({
       name: batch_name.trim(),
-      event_year: activeEventYear.event_year,
-      event_name: activeEventYear.event_name.trim()
+      event_id: activeEventYear.event_id
     })
 
     if (!batch) {
@@ -381,7 +359,7 @@ router.post(
 
     // Clear cache (use pattern to clear all variations with query params)
     clearCachePattern('/api/players')
-    clearCache(`/api/batches?event_year=${activeEventYear.event_year}&event_name=${encodeURIComponent(activeEventYear.event_name.trim())}`)
+    clearCache(`/api/batches?event_id=${encodeURIComponent(activeEventYear.event_id)}`)
 
     return sendSuccessResponse(res, { player: savedPlayer }, 'Player data saved successfully')
   })
@@ -454,7 +432,7 @@ router.put(
 
     // Clear cache (use pattern to clear all variations with query params)
     clearCachePattern('/api/players')
-    clearCache(`/api/me?event_year=${new Date().getFullYear()}`)
+    clearCachePattern('/api/me')
     // Clear gender cache for this player (in case gender derivation is affected)
     clearPlayerGenderCache(reg_number)
 
@@ -465,7 +443,7 @@ router.put(
 /**
  * POST /api/bulk-player-enrollments
  * Get enrollments for multiple players (optimized bulk endpoint)
- * Accepts: { reg_numbers: Array<string>, event_year?: number } or query parameter ?event_year=2026
+ * Accepts: { reg_numbers: Array<string>, event_id?: string } or query parameter ?event_id=2026-umang
  * Returns: { enrollments: { [reg_number]: { nonTeamEvents, teams, matches, hasMatches } } }
  */
 router.post(
@@ -474,40 +452,15 @@ router.post(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const { reg_numbers } = req.body
-    let eventYear = req.query.event_year ? parseInt(req.query.event_year) : (req.body.event_year ? parseInt(req.body.event_year) : null)
+    const eventIdQuery = req.query.event_id ?? req.body.event_id
 
     // Validate input
     if (!Array.isArray(reg_numbers) || reg_numbers.length === 0) {
       return sendErrorResponse(res, 400, 'reg_numbers must be a non-empty array')
     }
 
-    // Get event year with document (default to active event year if not provided)
-    let eventYearDoc = null
-    if (!eventYear) {
-      const cachedActiveYear = getCache('/api/event-years/active')
-      if (cachedActiveYear) {
-        eventYearDoc = cachedActiveYear
-        eventYear = cachedActiveYear.event_year
-      } else {
-        const activeYear = await findActiveEventYear()
-        if (activeYear) {
-          eventYearDoc = activeYear
-          eventYear = activeYear.event_year
-          setCache('/api/event-years/active', activeYear)
-        } else {
-          eventYear = new Date().getFullYear()
-          // Try to get event year document
-          const EventYear = (await import('../models/EventYear.js')).default
-          eventYearDoc = await EventYear.findOne({ event_year: eventYear }).lean()
-        }
-      }
-    } else {
-      // Get event year document
-      const EventYear = (await import('../models/EventYear.js')).default
-      eventYearDoc = await EventYear.findOne({ event_year: eventYear }).lean()
-    }
-
-    const eventName = eventYearDoc ? eventYearDoc.event_name : null
+    const eventYearData = await getEventYear(eventIdQuery ? String(eventIdQuery).trim() : null, { returnDoc: true })
+    const eventId = eventYearData.doc.event_id
 
     // Check if all players exist
     const players = await Player.find({ reg_number: { $in: reg_numbers } }).select('reg_number full_name').lean()
@@ -523,19 +476,14 @@ router.post(
       )
     }
 
-    // OPTIMIZATION: Fetch all sports for all players in one query - filter by both event_year and event_name
+    // OPTIMIZATION: Fetch all sports for all players in one query - filter by event_id
     const sportQuery = {
-      event_year: eventYear,
+      event_id: eventId,
       $or: [
         { 'teams_participated.captain': { $in: reg_numbers } },
         { 'teams_participated.players': { $in: reg_numbers } },
         { players_participated: { $in: reg_numbers } }
       ]
-    }
-    
-    // Add event_name to query if available
-    if (eventName) {
-      sportQuery.event_name = eventName
     }
     
     const allSports = await Sport.find(sportQuery).lean()
@@ -610,16 +558,11 @@ router.post(
       enrollmentsMap[reg_number].nonTeamEvents.forEach(e => allNonTeamEventNames.add(e.sport))
     }
 
-    // OPTIMIZATION: Fetch all matches for all players in one query - filter by both event_year and event_name
+    // OPTIMIZATION: Fetch all matches for all players in one query - filter by event_id
     const matchQuery = {
-      event_year: eventYear,
+      event_id: eventId,
       players: { $in: reg_numbers },
       sports_name: { $in: Array.from(allNonTeamEventNames) }
-    }
-    
-    // Add event_name to query if available
-    if (eventName) {
-      matchQuery.event_name = eventName
     }
     
     const allMatches = allNonTeamEventNames.size > 0
@@ -672,31 +615,10 @@ router.get(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const { reg_number } = req.params
-    let eventYear = req.query.event_year ? parseInt(req.query.event_year) : null
-
-    // Get event year with document (default to active event year if not provided)
-    let eventYearDoc = null
-    if (!eventYear) {
-      const cachedActiveYear = getCache('/api/event-years/active')
-      if (cachedActiveYear) {
-        eventYearDoc = cachedActiveYear
-        eventYear = cachedActiveYear.event_year
-      } else {
-        const activeYear = await findActiveEventYear()
-        if (activeYear) {
-          eventYearDoc = activeYear
-          eventYear = activeYear.event_year
-          setCache('/api/event-years/active', activeYear)
-        } else {
-          eventYear = new Date().getFullYear()
-          eventYearDoc = await EventYear.findOne({ event_year: eventYear }).lean()
-        }
-      }
-    } else {
-      eventYearDoc = await EventYear.findOne({ event_year: eventYear }).lean()
-    }
-
-    const eventName = eventYearDoc ? eventYearDoc.event_name : null
+    // event_id is optional; defaults to active event if not provided
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
+    const eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
+    const eventId = eventYearData.doc.event_id
 
     // Check if player exists
     const player = await Player.findOne({ reg_number }).lean()
@@ -704,19 +626,14 @@ router.get(
       return handleNotFoundError(res, 'Player')
     }
 
-    // Find all sports where player is enrolled - filter by both event_year and event_name
+    // Find all sports where player is enrolled - filter by event_id
     const sportQuery = {
-      event_year: eventYear,
+      event_id: eventId,
       $or: [
         { 'teams_participated.captain': reg_number },
         { 'teams_participated.players': reg_number },
         { players_participated: reg_number }
       ]
-    }
-    
-    // Add event_name to query if available
-    if (eventName) {
-      sportQuery.event_name = eventName
     }
     
     const sports = await Sport.find(sportQuery).lean()
@@ -750,14 +667,9 @@ router.get(
     // For team events, team membership is enough validation, no need to check matches
     const nonTeamEventNames = nonTeamEvents.map(e => e.sport)
     const matchQuery = {
-      event_year: eventYear,
+      event_id: eventId,
       players: reg_number,
       sports_name: { $in: nonTeamEventNames }
-    }
-    
-    // Add event_name to query if available
-    if (eventName) {
-      matchQuery.event_name = eventName
     }
     
     const individualMatches = nonTeamEventNames.length > 0
@@ -796,31 +708,9 @@ router.delete(
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const { reg_number } = req.params
-    let eventYear = req.query.event_year ? parseInt(req.query.event_year) : null
-
-    // Get event year with document (default to active event year if not provided)
-    let eventYearDoc = null
-    if (!eventYear) {
-      const cachedActiveYear = getCache('/api/event-years/active')
-      if (cachedActiveYear) {
-        eventYearDoc = cachedActiveYear
-        eventYear = cachedActiveYear.event_year
-      } else {
-        const activeYear = await findActiveEventYear()
-        if (activeYear) {
-          eventYearDoc = activeYear
-          eventYear = activeYear.event_year
-          setCache('/api/event-years/active', activeYear)
-        } else {
-          eventYear = new Date().getFullYear()
-          eventYearDoc = await EventYear.findOne({ event_year: eventYear }).lean()
-        }
-      }
-    } else {
-      eventYearDoc = await EventYear.findOne({ event_year: eventYear }).lean()
-    }
-
-    const eventName = eventYearDoc ? eventYearDoc.event_name : null
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
+    const eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
+    const eventId = eventYearData.doc.event_id
 
     // Check if player exists
     const player = await Player.findOne({ reg_number })
@@ -833,19 +723,14 @@ router.delete(
       return sendErrorResponse(res, 400, 'Cannot delete admin user')
     }
 
-    // Find all sports where player is enrolled - filter by both event_year and event_name
+    // Find all sports where player is enrolled - filter by event_id
     const sportQuery = {
-      event_year: eventYear,
+      event_id: eventId,
       $or: [
         { 'teams_participated.captain': reg_number },
         { 'teams_participated.players': reg_number },
         { players_participated: reg_number }
       ]
-    }
-    
-    // Add event_name to query if available
-    if (eventName) {
-      sportQuery.event_name = eventName
     }
     
     const sports = await Sport.find(sportQuery)
@@ -884,17 +769,12 @@ router.delete(
     }
 
     // For non-team events, check for matches (any status: scheduled, completed, draw, cancelled)
-    // Only check matches for non-team events - filter by both event_year and event_name
+    // Only check matches for non-team events - filter by event_id
     const nonTeamEventNames = nonTeamEvents.map(e => e.sport)
     const matchQuery = {
-      event_year: eventYear,
+      event_id: eventId,
       players: reg_number,
       sports_name: { $in: nonTeamEventNames }
-    }
-    
-    // Add event_name to query if available
-    if (eventName) {
-      matchQuery.event_name = eventName
     }
     
     const individualMatches = nonTeamEventNames.length > 0
@@ -922,12 +802,7 @@ router.delete(
     for (const event of nonTeamEvents) {
       const sportQuery = {
         name: event.sport,
-        event_year: eventYear
-      }
-      
-      // Add event_name to query if available
-      if (eventName) {
-        sportQuery.event_name = eventName
+        event_id: eventId
       }
       
       const sport = await Sport.findOne(sportQuery)
@@ -944,11 +819,11 @@ router.delete(
         await sport.save()
 
         // Clear cache for this sport
-        clearCache(`/api/sports?event_year=${eventYear}`)
-        clearCache(`/api/sports/${event.sport}?event_year=${eventYear}`)
-        clearCache(`/api/participants/${event.sport}?event_year=${eventYear}`)
-        clearCache(`/api/participants-count/${event.sport}?event_year=${eventYear}`)
-        clearCache(`/api/sports-counts?event_year=${eventYear}`)
+        clearCache(`/api/sports?event_id=${encodeURIComponent(eventId)}`)
+        clearCache(`/api/sports/${event.sport}?event_id=${encodeURIComponent(eventId)}`)
+        clearCache(`/api/participants/${event.sport}?event_id=${encodeURIComponent(eventId)}`)
+        clearCache(`/api/participants-count/${event.sport}?event_id=${encodeURIComponent(eventId)}`)
+        clearCache(`/api/sports-counts?event_id=${encodeURIComponent(eventId)}`)
       }
     }
 
@@ -957,7 +832,7 @@ router.delete(
 
     // Clear cache (use pattern to clear all variations with query params)
     clearCachePattern('/api/players')
-    clearCache(`/api/me?event_year=${eventYear}`)
+    clearCache(`/api/me?event_id=${encodeURIComponent(eventId)}`)
     clearPlayerGenderCache(reg_number)
 
     return sendSuccessResponse(
@@ -989,7 +864,7 @@ router.post(
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const { reg_numbers } = req.body
-    let eventYear = req.query.event_year ? parseInt(req.query.event_year) : null
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
 
     // Validate input
     if (!Array.isArray(reg_numbers) || reg_numbers.length === 0) {
@@ -1001,29 +876,8 @@ router.post(
       return sendErrorResponse(res, 400, `Maximum ${DEFAULT_PLAYERS_PAGE_SIZE} players can be deleted at a time`)
     }
 
-    // Get event year with document (default to active event year if not provided)
-    let eventYearDoc = null
-    if (!eventYear) {
-      const cachedActiveYear = getCache('/api/event-years/active')
-      if (cachedActiveYear) {
-        eventYearDoc = cachedActiveYear
-        eventYear = cachedActiveYear.event_year
-      } else {
-        const activeYear = await findActiveEventYear()
-        if (activeYear) {
-          eventYearDoc = activeYear
-          eventYear = activeYear.event_year
-          setCache('/api/event-years/active', activeYear)
-        } else {
-          eventYear = new Date().getFullYear()
-          eventYearDoc = await EventYear.findOne({ event_year: eventYear }).lean()
-        }
-      }
-    } else {
-      eventYearDoc = await EventYear.findOne({ event_year: eventYear }).lean()
-    }
-
-    const eventName = eventYearDoc ? eventYearDoc.event_name : null
+    const eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
+    const eventId = eventYearData.doc.event_id
 
     // Prevent deletion of admin user
     if (reg_numbers.includes('admin')) {
@@ -1044,19 +898,14 @@ router.post(
       )
     }
 
-    // OPTIMIZATION: Fetch all sports for all players in one query - filter by both event_year and event_name
+    // OPTIMIZATION: Fetch all sports for all players in one query - filter by event_id
     const sportQuery = {
-      event_year: eventYear,
+      event_id: eventId,
       $or: [
         { 'teams_participated.captain': { $in: reg_numbers } },
         { 'teams_participated.players': { $in: reg_numbers } },
         { players_participated: { $in: reg_numbers } }
       ]
-    }
-    
-    // Add event_name to query if available
-    if (eventName) {
-      sportQuery.event_name = eventName
     }
     
     const allSports = await Sport.find(sportQuery).lean()
@@ -1138,16 +987,11 @@ router.post(
       enrollments.nonTeamEvents.forEach(e => allNonTeamEventNames.add(e.sport))
     }
 
-    // OPTIMIZATION: Fetch all matches for all players in one query - filter by both event_year and event_name
+    // OPTIMIZATION: Fetch all matches for all players in one query - filter by event_id
     const matchQuery = {
-      event_year: eventYear,
+      event_id: eventId,
       players: { $in: reg_numbers },
       sports_name: { $in: Array.from(allNonTeamEventNames) }
-    }
-    
-    // Add event_name to query if available
-    if (eventName) {
-      matchQuery.event_name = eventName
     }
     
     const allMatches = allNonTeamEventNames.size > 0
@@ -1267,7 +1111,7 @@ router.post(
       await Sport.updateOne(
         {
           name: sportName,
-          event_year: eventYear
+          event_id: eventId
         },
         {
           $pull: { players_participated: { $in: regNumbersToRemove } }
@@ -1275,11 +1119,11 @@ router.post(
       )
 
       // Clear cache for this sport (only once per sport)
-      clearCache(`/api/sports?event_year=${eventYear}`)
-      clearCache(`/api/sports/${sportName}?event_year=${eventYear}`)
-      clearCache(`/api/participants/${sportName}?event_year=${eventYear}`)
-      clearCache(`/api/participants-count/${sportName}?event_year=${eventYear}`)
-      clearCache(`/api/sports-counts?event_year=${eventYear}`)
+      clearCache(`/api/sports?event_id=${encodeURIComponent(eventId)}`)
+      clearCache(`/api/sports/${sportName}?event_id=${encodeURIComponent(eventId)}`)
+      clearCache(`/api/participants/${sportName}?event_id=${encodeURIComponent(eventId)}`)
+      clearCache(`/api/participants-count/${sportName}?event_id=${encodeURIComponent(eventId)}`)
+      clearCache(`/api/sports-counts?event_id=${encodeURIComponent(eventId)}`)
     }
 
     // OPTIMIZATION: Delete all players in one query
@@ -1294,7 +1138,7 @@ router.post(
 
     // Clear cache (use pattern to clear all variations with query params)
     clearCachePattern('/api/players')
-    clearCache(`/api/me?event_year=${eventYear}`)
+    clearCache(`/api/me?event_id=${encodeURIComponent(eventId)}`)
 
     return sendSuccessResponse(
       res,

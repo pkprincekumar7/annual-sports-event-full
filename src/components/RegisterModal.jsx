@@ -1,17 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input } from './ui'
-import { useApi, useEventYear } from '../hooks'
+import { useApi, useEventYear, useEventYearWithFallback } from '../hooks'
 import { fetchWithAuth, API_URL, clearCache, clearCachePattern } from '../utils/api'
 import { clearTeamParticipationCaches, clearIndividualParticipationCaches } from '../utils/cacheHelpers'
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
 import { GENDER_OPTIONS } from '../constants/app'
 import { formatSportName } from '../utils/stringHelpers'
+import { trimFormData, validatePlayerForm } from '../utils/formValidation'
+import { isCoordinatorForSport } from '../utils/sportHelpers'
 import { isTeamSport, getSportType, getTeamSize, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual } from '../utils/sportHelpers'
 import { validateParticipantSelection, validateNoDuplicates, validateGenderMatch, validateBatchMatch } from '../utils/participantValidation'
 import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
-function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate, embedded = false, selectedEventYear }) {
+function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedInUser, onUserUpdate, embedded = false, selectedEventId }) {
   const [players, setPlayers] = useState([])
   const [selectedPlayers, setSelectedPlayers] = useState({})
   const [totalTeams, setTotalTeams] = useState(0)
@@ -22,9 +24,8 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   const { loading: isSubmitting, execute: executeGeneral } = useApi()
   const { loading: isSubmittingTeam, execute: executeTeam } = useApi()
   const { loading: isSubmittingIndividual, execute: executeIndividual } = useApi()
-  const { eventYear: activeEventYear, eventYearConfig } = useEventYear()
-  // Use selectedEventYear if provided (for admin), otherwise use active event year
-  const eventYear = selectedEventYear || activeEventYear
+  const { eventYearConfig } = useEventYear()
+  const { eventYear, eventName, eventId } = useEventYearWithFallback(selectedEventId)
   
   // Check if operations should be disabled based on event year configuration
   const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
@@ -32,9 +33,8 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   
   // Build event display name from database
   const eventDisplayName = eventYearConfig 
-    ? `${eventYearConfig.event_organizer || 'Events Community'} • ${eventYearConfig.event_name} - ${eventYearConfig.event_year}`
+    ? `${eventYearConfig.event_organizer || 'Events Community'} • ${eventName || eventYearConfig.event_name} - ${eventYear || eventYearConfig.event_year}`
     : 'Sports Event' // Fallback
-  const eventName = eventYearConfig?.event_name || 'Sports Event'
 
   const sportType = getSportType(selectedSport)
   const isTeam = isTeamSport(sportType)
@@ -110,7 +110,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     const fetchBatches = async () => {
       try {
         // Use regular fetch (not fetchWithAuth) since batches endpoint is now public
-        const url = buildApiUrlWithYear('/api/batches', eventYear, null, eventName)
+        const url = buildApiUrlWithYear('/api/batches', eventId)
         const res = await fetch(`${API_URL}${url}`, { signal: abortController.signal })
         if (!isMounted) return
         
@@ -213,7 +213,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         
         setLoadingParticipants(true)
         try {
-          const response = await fetchWithAuth(buildSportApiUrl('participants-count', currentSportName, eventYear, eventName))
+          const response = await fetchWithAuth(buildSportApiUrl('participants-count', currentSportName, eventId))
           
           if (!isMountedRef.current) {
             return
@@ -256,7 +256,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       const fetchPlayers = async () => {
         try {
           // Don't pass page parameter to get all players (needed for participant selection)
-          const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear, null, eventName))
+          const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventId))
           
           if (!isMountedRef.current) {
             logger.warn('Component unmounted, skipping players update')
@@ -271,7 +271,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           
           if (data.success && isMountedRef.current) {
             const playersList = data.players || []
-            setPlayers(playersList)
+            const filteredPlayers = selectedSport?.name
+              ? playersList.filter(player => !isCoordinatorForSport(player, selectedSport.name))
+              : playersList
+            setPlayers(filteredPlayers)
           } else if (isMountedRef.current) {
             logger.warn('Failed to fetch players:', data.error)
             setPlayers([])
@@ -290,7 +293,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         
         setLoadingTeams(true)
         try {
-          const response = await fetchWithAuth(buildSportApiUrl('teams', currentSportName, eventYear, eventName))
+          const response = await fetchWithAuth(buildSportApiUrl('teams', currentSportName, eventId))
           
           if (!isMountedRef.current) return
 
@@ -359,17 +362,20 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     if (isSubmitting) return
 
     const form = e.target
-    const regNumber = form.querySelector('[name="reg_number"]')?.value?.trim()
-    const fullName = form.querySelector('[name="full_name"]')?.value?.trim()
-    const gender = form.querySelector('[name="gender"]')?.value?.trim()
-    const dept = form.querySelector('[name="department_branch"]')?.value?.trim()
-    const batch_name = form.querySelector('[name="batch_name"]')?.value?.trim()
-    const phone = form.querySelector('[name="mobile_number"]')?.value?.trim()
-    const email = form.querySelector('[name="email_id"]')?.value?.trim()
-    const password = form.querySelector('[name="password"]')?.value?.trim()
+    const formData = trimFormData({
+      reg_number: form.querySelector('[name="reg_number"]')?.value,
+      full_name: form.querySelector('[name="full_name"]')?.value,
+      gender: form.querySelector('[name="gender"]')?.value,
+      department_branch: form.querySelector('[name="department_branch"]')?.value,
+      batch_name: form.querySelector('[name="batch_name"]')?.value,
+      mobile_number: form.querySelector('[name="mobile_number"]')?.value,
+      email_id: form.querySelector('[name="email_id"]')?.value,
+      password: form.querySelector('[name="password"]')?.value,
+    })
 
-    if (!regNumber || !fullName || !gender || !dept || !batch_name || !phone || !email || !password) {
-      onStatusPopup('❌ Please fill all required fields.', 'error', 2500)
+    const validation = validatePlayerForm(formData)
+    if (!validation.isValid) {
+      onStatusPopup(`❌ ${validation.errors.join(' ')}`, 'error', 2500)
       return
     }
 
@@ -381,19 +387,19 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            reg_number: regNumber,
-            full_name: fullName,
-            gender: gender,
-            department_branch: dept,
-            batch_name: batch_name,
-            mobile_number: phone,
-            email_id: email,
-            password: password,
+            reg_number: formData.reg_number,
+            full_name: formData.full_name,
+            gender: formData.gender,
+            department_branch: formData.department_branch,
+            batch_name: formData.batch_name,
+            mobile_number: formData.mobile_number,
+            email_id: formData.email_id,
+            password: formData.password,
           }),
         }),
         {
           onSuccess: (data) => {
-            // Clear cache to ensure new player appears in player lists (use pattern to clear all variations with event_year/event_name)
+            // Clear cache to ensure new player appears in player lists (use pattern to clear all variations)
             clearCachePattern('/api/players')
             onStatusPopup('✅ Your registration has been saved!', 'success', 2500)
             form.reset()
@@ -424,6 +430,11 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
     if (!loggedInUser) {
       onStatusPopup('❌ Please login to register a team.', 'error', 2500)
+      return
+    }
+
+    if (isCoordinatorForSport(loggedInUser, selectedSport?.name)) {
+      onStatusPopup(`❌ You are a coordinator for ${selectedSport?.name} and cannot participate in this sport.`, 'error', 3000)
       return
     }
 
@@ -504,7 +515,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         body: JSON.stringify({
           reg_numbers: playerRegNumbers,
           sport: selectedSport.name,
-          event_year: eventYear,
+          event_id: eventId,
         }),
       })
 
@@ -530,13 +541,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             reg_numbers: playerRegNumbers,
             sport: selectedSport.name,
             team_name: teamName,
-            event_year: eventYear,
+            event_id: eventId,
           }),
           }),
           {
             onSuccess: async (data) => {
               // Clear caches to ensure UI reflects the new team enrollment
-              clearTeamParticipationCaches(selectedSport.name, eventYear, eventName)
+              clearTeamParticipationCaches(selectedSport.name, eventId)
               
               // Update logged-in user data if they are one of the players
               // Use /api/me instead of /api/players for efficiency (only need current user's data)
@@ -595,6 +606,11 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       return
     }
 
+    if (isCoordinatorForSport(loggedInUser, selectedSport?.name)) {
+      onStatusPopup(`❌ You are a coordinator for ${selectedSport?.name} and cannot participate in this sport.`, 'error', 3000)
+      return
+    }
+
     try {
       await executeIndividual(
         () => fetchWithAuth('/api/update-participation', {
@@ -602,13 +618,13 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           body: JSON.stringify({
             reg_number: loggedInUser.reg_number,
             sport: selectedSport.name,
-            event_year: eventYear,
+            event_id: eventId,
           }),
         }),
         {
           onSuccess: async (data) => {
             // Clear caches to ensure UI reflects the new participant enrollment
-            clearIndividualParticipationCaches(selectedSport.name, eventYear, eventName)
+            clearIndividualParticipationCaches(selectedSport.name, eventId)
 
             // Update logged-in user data with latest information
             if (data.player && onUserUpdate) {
@@ -989,6 +1005,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           id="mobile_number"
           name="mobile_number"
           type="tel"
+          inputMode="numeric"
+          pattern="[0-9]{10}"
+          title="Mobile number must be exactly 10 digits."
+          maxLength={10}
           required
         />
 

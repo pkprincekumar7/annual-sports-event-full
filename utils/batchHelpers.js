@@ -12,15 +12,14 @@ import Batch from '../models/Batch.js'
  * @param {string} eventName - Event name
  * @returns {Promise<string|null>} Batch name or null if player is not in any batch
  */
-export async function getPlayerBatchName(regNumber, eventYear, eventName) {
-  if (!regNumber || !eventYear || !eventName) {
+export async function getPlayerBatchName(regNumber, eventId) {
+  if (!regNumber || !eventId) {
     return null
   }
 
   try {
     const batch = await Batch.findOne({
-      event_year: eventYear,
-      event_name: eventName,
+      event_id: String(eventId).trim().toLowerCase(),
       players: regNumber
     }).lean()
 
@@ -37,15 +36,14 @@ export async function getPlayerBatchName(regNumber, eventYear, eventName) {
  * @param {string} eventName - Event name
  * @returns {Promise<Object>} Map of reg_number -> batch_name (or null)
  */
-export async function getPlayersBatchNames(regNumbers, eventYear, eventName) {
-  if (!regNumbers || regNumbers.length === 0 || !eventYear || !eventName) {
+export async function getPlayersBatchNames(regNumbers, eventId) {
+  if (!regNumbers || regNumbers.length === 0 || !eventId) {
     return {}
   }
 
   try {
     const batches = await Batch.find({
-      event_year: eventYear,
-      event_name: eventName,
+      event_id: String(eventId).trim().toLowerCase(),
       players: { $in: regNumbers }
     }).lean()
 
@@ -72,16 +70,15 @@ export async function getPlayersBatchNames(regNumbers, eventYear, eventName) {
  * @param {string} eventName - Event name
  * @returns {Promise<Array<string>>} Array of player registration numbers
  */
-export async function getBatchPlayers(batchName, eventYear, eventName) {
-  if (!batchName || !eventYear || !eventName) {
+export async function getBatchPlayers(batchName, eventId) {
+  if (!batchName || !eventId) {
     return []
   }
 
   try {
     const batch = await Batch.findOne({
       name: batchName,
-      event_year: eventYear,
-      event_name: eventName
+      event_id: String(eventId).trim().toLowerCase()
     }).lean()
 
     return batch ? (batch.players || []) : []

@@ -10,7 +10,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 4. **Date-Based UI**: Enable/disable based on registration/event periods
 5. **Conditional Rendering**: Show/hide forms, buttons, tabs based on state
 6. **Button States**: Disabled states during loading, form submission, or based on conditions
-7. **Event Year/Name Parameters**: Validation that both `event_year` and `event_name` are provided together when required, or neither when optional
+7. **Event ID Parameter**: Validation that `event_id` is provided when required, or omitted when optional
 
 ---
 
@@ -20,8 +20,6 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 #### Field-Level Validations:
 - ✅ **Required Fields**: All fields validated (reg_number, full_name, gender, department_branch, batch_name, mobile_number, email_id, password)
-- ✅ **Email Format**: Validated using regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
-- ✅ **Phone Format**: Validated to be exactly 10 digits `/^[0-9]{10}$/`
 - ✅ **Team Name**: Required for team registration
 - ✅ **Player Selection**: All required players must be selected
 - ✅ **Self-Inclusion**: Logged-in user must be included in team
@@ -35,12 +33,14 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 #### Conditional Rendering:
 - ✅ **General vs Team Registration**: Shows different forms based on `isGeneralRegistration`
-- ✅ **Batch Dropdown**: Only shown for team/individual registration (not general)
+- ✅ **Batch Dropdown**: Shown in general registration form
 - ✅ **Player Selection**: Only shown for team events
 - ✅ **Team Name Field**: Only shown for team events
+- ✅ **Departments/Batches Fetch**: Departments and batches are fetched only when the modal opens
 
 #### Enable/Disable States:
 - ✅ **Submit Buttons**: Disabled during submission (`isSubmitting`, `isSubmittingTeam`, `isSubmittingIndividual`)
+- ✅ **Database Operations Disabled**: Submit buttons disabled when `shouldDisableDatabaseOperations` returns disabled (shows tooltip reason)
 
 ---
 
@@ -70,6 +70,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **Edit Form Fields**: Some fields disabled (e.g., reg_number, gender cannot be changed)
 - ✅ **Save Button**: Disabled during `saving`
 - ✅ **Department Dropdown**: Disabled during `loadingDepartments`
+- ✅ **Database Operations Disabled**: Edit/Delete/Bulk actions disabled when `shouldDisableDatabaseOperations` returns disabled (tooltip reason)
 
 ---
 
@@ -77,13 +78,13 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 #### Field-Level Validations:
 - ✅ **Event Year**: Required, must be a number
-- ✅ **Event Name**: Required (both `event_year` and `event_name` are mandatory together for event year creation)
+- ✅ **Event Name**: Required for event year creation (used to derive `event_id`)
 - ✅ **Date Relationships**: Validates `registration_dates.start < registration_dates.end < event_dates.start < event_dates.end`
 - ✅ **Date Restrictions**: Registration start and event start cannot be in the past
 - ✅ **Sport Name**: Required
 - ✅ **Sport Type**: Required, must be one of: dual_team, multi_team, dual_player, multi_player
 - ✅ **Sport Category**: Required, must be one of: team events, individual events, literary and cultural activities
-- ✅ **Event Year/Name for Sports**: When creating/updating sports, both `event_year` and `event_name` are required
+- ✅ **Event ID for Sports**: When creating/updating sports, `event_id` is required
 - ✅ **Team Size**: Validated based on sport type (only for team sports)
 - ✅ **Department Name**: Required
 - ✅ **Display Order**: Must be a number
@@ -105,6 +106,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **Date Fields**: Disabled based on `updatableFields` (canUpdateRegStart, canUpdateRegEnd, canUpdateEventStart, canUpdateEventEnd, canUpdateNonDateFields)
 - ✅ **Non-Date Fields**: Disabled after event ends (`canUpdateNonDateFields`)
 - ✅ **Tooltips**: Shown on disabled fields explaining why they're disabled
+- ✅ **Database Operations Disabled**: Actions disabled when `shouldDisableDatabaseOperations` returns disabled (tooltip reason)
 
 ---
 
@@ -130,6 +132,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **Delete Button**: Disabled during deletion (`deleting && deletingTeam === team.team_name`)
 - ✅ **Update Button**: Disabled during update or if no replacement player selected (`updating || !selectedReplacementPlayer`)
 - ✅ **Cancel Button**: Disabled during update (`updating`)
+- ✅ **Database Operations Disabled**: Update/Delete actions disabled when `shouldDisableDatabaseOperations` returns disabled (tooltip reason)
 
 ---
 
@@ -185,6 +188,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **Delete Button**: Disabled during deletion (`deleting`)
 - ✅ **Date Fields**: May be disabled based on match status
 - ✅ **Match Type**: May be disabled based on existing matches
+- ✅ **Database Operations Disabled**: Add/Update/Delete actions disabled when `shouldDisableDatabaseOperations` returns disabled (tooltip reason)
 
 ---
 
@@ -234,7 +238,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 #### Field-Level Validations:
 - ✅ **Player Selection**: Required
 - ✅ **Sport Selection**: Required
-- ✅ **Event Year/Name**: Both `event_year` and `event_name` are required in request body (mandatory together)
+- ✅ **Event ID**: `event_id` is required in request body
 
 #### Conditional Rendering:
 - ✅ **Tabs**: Shows "Add" and "Remove" tabs
@@ -244,6 +248,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 #### Enable/Disable States:
 - ✅ **Submit Buttons**: Disabled during loading (`loading`)
+- ✅ **Database Operations Disabled**: Add/Remove actions disabled when `shouldDisableDatabaseOperations` returns disabled (tooltip reason)
 
 ---
 
@@ -252,7 +257,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 #### Field-Level Validations:
 - ✅ **Player Selection**: Required
 - ✅ **Sport Selection**: Required
-- ✅ **Event Year/Name**: Both `event_year` and `event_name` are required in request body (mandatory together)
+- ✅ **Event ID**: `event_id` is required in request body
 
 #### Conditional Rendering:
 - ✅ **Tabs**: Shows "Add" and "Remove" tabs
@@ -262,6 +267,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 #### Enable/Disable States:
 - ✅ **Submit Buttons**: Disabled during loading (`loading`)
+- ✅ **Database Operations Disabled**: Add/Remove actions disabled when `shouldDisableDatabaseOperations` returns disabled (tooltip reason)
 
 ---
 
@@ -269,7 +275,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 #### Field-Level Validations:
 - ✅ **Batch Name**: Required (trimmed and validated)
-- ✅ **Event Year/Name**: Both `event_year` and `event_name` are required in request body (mandatory together)
+- ✅ **Event ID**: `event_id` is required in request body
 
 #### Conditional Rendering:
 - ✅ **Tabs**: Shows "Add Batch" and "Remove Batch" tabs
@@ -279,6 +285,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 #### Enable/Disable States:
 - ✅ **Submit Buttons**: Disabled during loading (`loading`)
+- ✅ **Database Operations Disabled**: Add/Remove actions disabled when `shouldDisableDatabaseOperations` returns disabled (tooltip reason)
 
 ---
 
@@ -317,13 +324,12 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 #### Field-Level Validations:
 - ✅ **Required Fields**: All fields validated (current_password, new_password, confirm_password)
-- ✅ **Password Length**: Validates new password is at least 6 characters long
 - ✅ **Password Match**: Validates new password and confirm password match
 - ✅ **Password Difference**: Validates new password is different from current password
 
 #### Business Logic Validations:
 - ✅ **Current Password Verification**: Validates current password is correct (via API)
-- ✅ **Password Strength**: Minimum 6 characters (enforced in frontend)
+- ✅ **Password Strength**: Not enforced on the frontend (handled by backend)
 
 #### Enable/Disable States:
 - ✅ **Submit Button**: Disabled during submission (`loading`)
@@ -342,7 +348,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **Email Format**: Validated using regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
 
 #### Business Logic Validations:
-- ✅ **Email Existence**: Validates email exists in system (but response doesn't reveal if email exists for security)
+- ✅ **Email Existence**: Not validated on frontend (backend handles, response is always success)
 
 #### Enable/Disable States:
 - ✅ **Submit Button**: Disabled during submission (`loading`)
@@ -409,37 +415,34 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 ---
 
-## Event Year and Event Name Parameter Validations
+## Event ID Parameter Validations
 
 ### Frontend API Calls
-The frontend now ensures that both `event_year` and `event_name` are passed together in API calls:
+The frontend now ensures that `event_id` is passed in API calls where required:
 
-**Mandatory Parameters** (both required):
-- ✅ Creating sports - Both `event_year` and `event_name` required
-- ✅ Adding/removing captains - Both `event_year` and `event_name` required
-- ✅ Adding/removing coordinators - Both `event_year` and `event_name` required
-- ✅ Creating/deleting batches - Both `event_year` and `event_name` required
+**Mandatory Parameters**:
+- ✅ Creating sports - `event_id` required
+- ✅ Adding/removing captains - `event_id` required
+- ✅ Adding/removing coordinators - `event_id` required
+- ✅ Creating/deleting batches - `event_id` required
 
-**Optional Parameters** (both or neither):
-- ✅ Team participation endpoints - If `event_year` is provided, `event_name` must also be provided
-- ✅ Individual participation endpoints - If `event_year` is provided, `event_name` must also be provided
-- ✅ Event schedule endpoints - If `event_year` is provided, `event_name` must also be provided
-- ✅ All GET endpoints - Query parameters follow the same rule
+**Optional Parameters**:
+- ✅ All GET endpoints - Optional `event_id` query parameter
+- ✅ Some PUT/DELETE endpoints - Optional `event_id` query parameter
 
 **Implementation:**
-- ✅ All API calls use `buildApiUrlWithYear` helper which includes both parameters
-- ✅ `useEventYearWithFallback` hook provides both `eventYear` and `eventName` to components
-- ✅ Cache clearing functions updated to use composite keys
+- ✅ All API calls use `buildApiUrlWithYear` helper which includes `event_id`
+- ✅ `useEventYearWithFallback` hook provides `eventId` to components
+- ✅ Cache clearing functions updated to use `event_id`
 
 ---
 
 ## Missing Validations / Recommendations
 
 ### 1. Date-Based UI Restrictions
-- ⚠️ **Missing**: Frontend doesn't disable buttons/forms based on registration period
-  - **Recommendation**: Add date checks to disable registration forms after registration deadline
-  - **Recommendation**: Disable team creation after registration period ends
-  - **Recommendation**: Show visual indicators when operations are outside allowed periods
+- ✅ **Present**: Many admin/captain/coordinator flows use `shouldDisableDatabaseOperations` to disable actions outside allowed periods
+- ⚠️ **Missing**: Some user-facing flows may still allow submissions without explicit UI disabling
+  - **Recommendation**: Extend date-based disable checks to all registration-related forms and buttons
 
 ### 2. Role-Based Field Restrictions
 - ✅ **Present**: Admin-only fields are conditionally rendered
@@ -478,7 +481,6 @@ The frontend now ensures that both `event_year` and `event_name` are passed toge
 ### 8. Confirmation Dialogs
 - ✅ **Present**: Delete operations have confirmation dialogs
 - ⚠️ **Missing**: Some destructive operations lack confirmation
-  - **Recommendation**: Add confirmation for bulk delete operations
   - **Recommendation**: Add confirmation for removing captain/coordinator roles
 
 ### 9. Loading States

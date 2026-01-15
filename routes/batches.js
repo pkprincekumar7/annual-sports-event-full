@@ -28,12 +28,8 @@ function validateBatchAssignment(data) {
     errors.push('Batch name is required')
   }
 
-  if (!data.event_year) {
-    errors.push('Event year is required')
-  }
-
-  if (!data.event_name || !data.event_name.trim()) {
-    errors.push('Event name is required')
+  if (!data.event_id || !String(data.event_id).trim()) {
+    errors.push('Event ID is required')
   }
 
   return {
@@ -45,7 +41,7 @@ function validateBatchAssignment(data) {
 /**
  * POST /api/add-batch
  * Create a new batch (admin only)
- * Event Year Required: event_year field required in request body (defaults to active event year)
+ * Event ID Required: event_id field required in request body (defaults to active event)
  */
 router.post(
   '/add-batch',
@@ -67,18 +63,18 @@ router.post(
       return sendErrorResponse(res, 400, validation.errors.join('; '))
     }
 
-    const { name, event_year, event_name } = batchData
+    const { name, event_id } = batchData
 
-    // Get event year with document (event_name is now required via validation)
-    const eventYearData = await getEventYear(parseInt(event_year), { requireYear: true, returnDoc: true, eventName: event_name.trim() })
-    const eventYear = eventYearData.event_year
+    // Get event year with document
+    const eventYearData = await getEventYear(String(event_id).trim(), { requireId: true, returnDoc: true })
+    const eventId = eventYearData.doc.event_id
+    const eventYear = eventYearData.doc.event_year
     const eventName = eventYearData.doc.event_name
 
     // Check if batch already exists
     const existingBatch = await Batch.findOne({
       name: name.trim(),
-      event_year: eventYear,
-      event_name: eventName
+      event_id: eventId
     })
 
     if (existingBatch) {
@@ -88,8 +84,7 @@ router.post(
     // Create new batch
     const batch = new Batch({
       name: name.trim(),
-      event_year: eventYear,
-      event_name: eventName,
+      event_id: eventId,
       players: [],
       createdBy: req.user.reg_number
     })
@@ -97,7 +92,7 @@ router.post(
     await batch.save()
 
     // Clear cache
-    clearCache(`/api/batches?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
+    clearCache(`/api/batches?event_id=${encodeURIComponent(eventId)}`)
 
     return sendSuccessResponse(res, { batch }, `Batch "${name}" created successfully`)
   })
@@ -106,7 +101,7 @@ router.post(
 /**
  * DELETE /api/remove-batch
  * Delete a batch (admin only)
- * Event Year Required: event_year field required in request body (defaults to active event year)
+ * Event ID Required: event_id field required in request body (defaults to active event)
  */
 router.delete(
   '/remove-batch',
@@ -121,18 +116,18 @@ router.delete(
       return sendErrorResponse(res, 400, validation.errors.join('; '))
     }
 
-    const { name, event_year, event_name } = trimmed
+    const { name, event_id } = trimmed
 
-    // Get event year with document (event_name is now required via validation)
-    const eventYearData = await getEventYear(parseInt(event_year), { requireYear: true, returnDoc: true, eventName: event_name.trim() })
-    const eventYear = eventYearData.event_year
+    // Get event year with document
+    const eventYearData = await getEventYear(String(event_id).trim(), { requireId: true, returnDoc: true })
+    const eventId = eventYearData.doc.event_id
+    const eventYear = eventYearData.doc.event_year
     const eventName = eventYearData.doc.event_name
 
     // Find batch first to check if it has players
     const batch = await Batch.findOne({
       name: name.trim(),
-      event_year: eventYear,
-      event_name: eventName
+      event_id: eventId
     })
 
     if (!batch) {
@@ -147,12 +142,11 @@ router.delete(
     // Delete batch if no players
     await Batch.findOneAndDelete({
       name: name.trim(),
-      event_year: eventYear,
-      event_name: eventName
+      event_id: eventId
     })
 
     // Clear cache
-    clearCache(`/api/batches?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
+    clearCache(`/api/batches?event_id=${encodeURIComponent(eventId)}`)
     clearCachePattern('/api/players') // Player data changes (use pattern to clear all variations)
 
     return sendSuccessResponse(res, {}, `Batch "${name}" deleted successfully`)
@@ -162,29 +156,17 @@ router.delete(
 /**
  * GET /api/batches
  * Get all batches for an event year (public during registration period)
- * Event Year Filter: Accepts ?event_year=2026 parameter (defaults to active event year)
+ * Event ID Filter: Accepts ?event_id=2026-umang parameter (defaults to active event)
  * Note: This endpoint is public (no authentication required) to allow batch selection during registration
  */
 router.get(
   '/batches',
   asyncHandler(async (req, res) => {
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-    }
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
     
     let eventYearData
     try {
-      // Extract event_name from query if provided for composite key filtering
-      const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-      eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
     } catch (error) {
       if (error.message === 'Event year not found' || error.message === 'No active event year found') {
         return sendSuccessResponse(res, { batches: [] })
@@ -192,19 +174,17 @@ router.get(
       throw error
     }
 
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    const eventId = eventYearData.doc.event_id
 
     // Check cache
-    const cacheKey = `/api/batches?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`
+    const cacheKey = `/api/batches?event_id=${encodeURIComponent(eventId)}`
     const cached = getCache(cacheKey)
     if (cached) {
       return sendSuccessResponse(res, cached)
     }
 
     const batches = await Batch.find({
-      event_year: eventYear,
-      event_name: eventName
+      event_id: eventId
     }).sort({ name: 1 }).lean()
 
     // Return batches with their players array
@@ -214,8 +194,7 @@ router.get(
     const batchesList = batches.map(batch => ({
       _id: batch._id,
       name: batch.name,
-      event_year: batch.event_year,
-      event_name: batch.event_name,
+      event_id: batch.event_id,
       players: batch.players || [] // Return actual players array (array of registration numbers)
     }))
 

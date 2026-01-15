@@ -35,6 +35,17 @@ const departmentSchema = new mongoose.Schema({
 departmentSchema.index({ name: 1 }, { unique: true })
 departmentSchema.index({ display_order: 1 }) // For efficient queries sorted by display_order
 
+// Pre-validate hook to normalize department fields
+departmentSchema.pre('validate', function(next) {
+  if (this.isModified('name') && this.name) {
+    this.name = this.name.trim().toUpperCase()
+  }
+  if (this.isModified('code') && this.code) {
+    this.code = this.code.trim().toUpperCase()
+  }
+  next()
+})
+
 const Department = mongoose.model('Department', departmentSchema)
 
 export default Department

@@ -5,7 +5,7 @@ import { isWithinRegistrationPeriod } from '../utils/yearHelpers'
 import EventYearSelector from './EventYearSelector'
 import ProfileModal from './ProfileModal'
 
-function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCaptainManagementClick, onCoordinatorManagementClick, onBatchManagementClick, onListPlayersClick, onExportExcel, onAdminDashboardClick, onEventYearChange, selectedEventYear, loggedInUser, onChangePasswordClick, onResetPasswordClick }) {
+function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCaptainManagementClick, onCoordinatorManagementClick, onBatchManagementClick, onListPlayersClick, onExportExcel, onAdminDashboardClick, onEventYearChange, selectedEventId, loggedInUser, onChangePasswordClick, onResetPasswordClick }) {
   const { eventYearConfig } = useEventYear()
   const eventOrganizer = eventYearConfig?.event_organizer || 'Events Community'
   const [eventCountdown, setEventCountdown] = useState('')
@@ -307,7 +307,7 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
             </div>
             {loggedInUser && (
               <EventYearSelector
-                selectedEventYear={selectedEventYear}
+                selectedEventId={selectedEventId}
                 onEventYearChange={onEventYearChange}
                 loggedInUser={loggedInUser}
               />
@@ -350,7 +350,7 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         loggedInUser={loggedInUser}
-        selectedEventYear={selectedEventYear}
+        selectedEventId={selectedEventId}
       />
     </div>
   )

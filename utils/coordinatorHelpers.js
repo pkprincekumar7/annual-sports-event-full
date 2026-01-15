@@ -15,7 +15,7 @@ import { ADMIN_REG_NUMBER } from '../constants/index.js'
  * @param {string} eventName - Event name
  * @returns {Promise<boolean>} True if user is admin or coordinator for this sport
  */
-export async function isAdminOrCoordinator(userRegNumber, sportName, eventYear, eventName) {
+export async function isAdminOrCoordinator(userRegNumber, sportName, eventId) {
   // Admin always has access
   if (userRegNumber === ADMIN_REG_NUMBER) {
     return true
@@ -24,8 +24,7 @@ export async function isAdminOrCoordinator(userRegNumber, sportName, eventYear, 
   // Check if user is coordinator for this sport
   const sport = await Sport.findOne({
     name: normalizeSportName(sportName),
-    event_year: eventYear,
-    event_name: eventName,
+    event_id: String(eventId).trim().toLowerCase(),
     eligible_coordinators: userRegNumber
   }).lean()
 
@@ -40,8 +39,8 @@ export async function isAdminOrCoordinator(userRegNumber, sportName, eventYear, 
  * @param {string} eventName - Event name
  * @throws {Error} If user is not admin or coordinator
  */
-export async function requireAdminOrCoordinator(userRegNumber, sportName, eventYear, eventName) {
-  const hasAccess = await isAdminOrCoordinator(userRegNumber, sportName, eventYear, eventName)
+export async function requireAdminOrCoordinator(userRegNumber, sportName, eventId) {
+  const hasAccess = await isAdminOrCoordinator(userRegNumber, sportName, eventId)
   if (!hasAccess) {
     throw new Error('Admin or coordinator access required for this sport')
   }

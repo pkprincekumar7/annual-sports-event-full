@@ -11,7 +11,7 @@ const TABS = {
   REMOVE_BATCH: 'remove_batch'
 }
 
-function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) {
+function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
   const [activeTab, setActiveTab] = useState(TABS.ADD_BATCH)
   
   // Add Batch State
@@ -25,7 +25,7 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
   
   const isRefreshingRef = useRef(false)
   const { loading, execute } = useApi()
-  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+  const { eventYear, eventId } = useEventYearWithFallback(selectedEventId)
   const { eventYearConfig } = useEventYear()
   const confirmModal = useModal(false)
   
@@ -35,8 +35,8 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
 
   // Fetch batches for Remove Batch tab
   useEffect(() => {
-    if (isOpen && activeTab === TABS.REMOVE_BATCH && eventYear) {
-      fetchWithAuth(buildApiUrlWithYear('/api/batches', eventYear, null, eventName))
+    if (isOpen && activeTab === TABS.REMOVE_BATCH && eventId) {
+      fetchWithAuth(buildApiUrlWithYear('/api/batches', eventId))
         .then((res) => {
           if (!res.ok) {
             if (res.status >= 500) {
@@ -91,13 +91,12 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
           method: 'POST',
           body: JSON.stringify({
             name: batchName.trim(),
-            event_year: eventYear,
-            event_name: eventName,
+            event_id: eventId,
           }),
         }),
         {
           onSuccess: (data) => {
-            clearCache(buildApiUrlWithYear('/api/batches', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/batches', eventId))
             // Clear players cache as batch creation affects player data structure
             clearCachePattern('/api/players')
             
@@ -147,8 +146,7 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
           method: 'DELETE',
           body: JSON.stringify({
             name: name,
-            event_year: eventYear,
-            event_name: eventName,
+            event_id: eventId,
           }),
         }),
         {
@@ -159,11 +157,11 @@ function BatchManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYea
               3000
             )
             isRefreshingRef.current = true
-            clearCache(buildApiUrlWithYear('/api/batches', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/batches', eventId))
             // Clear players cache pattern to match backend behavior
             clearCachePattern('/api/players')
             
-            fetchWithAuth(buildApiUrlWithYear('/api/batches', eventYear, null, eventName), { skipCache: true })
+            fetchWithAuth(buildApiUrlWithYear('/api/batches', eventId), { skipCache: true })
               .then((res) => {
                 if (!res.ok) {
                   throw new Error(`HTTP error! status: ${res.status}`)

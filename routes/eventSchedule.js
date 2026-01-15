@@ -14,7 +14,7 @@ import logger from '../utils/logger.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
 import { updatePointsTable } from '../utils/pointsTable.js'
 import { getEventYear } from '../utils/yearHelpers.js'
-import { findSportByNameAndYear, normalizeSportName } from '../utils/sportHelpers.js'
+import { findSportByNameAndId, normalizeSportName } from '../utils/sportHelpers.js'
 import { getMatchGender, getParticipantsGender } from '../utils/genderHelpers.js'
 import { clearMatchCaches, clearNewMatchCaches } from '../utils/cacheHelpers.js'
 import { 
@@ -31,7 +31,7 @@ const router = express.Router()
 /**
  * GET /api/event-schedule/:sport
  * Get all matches for a sport
- * Event Year Filter: Accepts ?event_year=2026 parameter (defaults to active event year)
+ * Event ID Filter: Accepts ?event_id=2026-umang parameter (defaults to active event)
  */
 router.get(
   '/event-schedule/:sport',
@@ -39,29 +39,15 @@ router.get(
   asyncHandler(async (req, res) => {
     const { sport } = req.params
     
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-    }
-    
-    // Extract event_name from query if provided for composite key filtering
-    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-    const eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
+    const eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
+    const eventId = eventYearData.doc.event_id
     const gender = req.query.gender // Optional: 'Male' or 'Female'
 
     // Build cache key with gender if provided
     const cacheKey = gender 
-      ? `/api/event-schedule/${sport}?event_year=${eventYear}&gender=${gender}`
-      : `/api/event-schedule/${sport}?event_year=${eventYear}`
+      ? `/api/event-schedule/${sport}?event_id=${encodeURIComponent(eventId)}&gender=${gender}`
+      : `/api/event-schedule/${sport}?event_id=${encodeURIComponent(eventId)}`
     
     const cached = getCache(cacheKey)
     if (cached) {
@@ -69,15 +55,14 @@ router.get(
       return sendSuccessResponse(res, cached)
     }
 
-    // Fetch all matches (gender will be derived from participants) - filter by both event_year and event_name
+    // Fetch all matches (gender will be derived from participants) - filter by event_id
     const allMatches = await EventSchedule.find({
       sports_name: normalizeSportName(sport),
-      event_year: eventYear,
-      event_name: eventName
+      event_id: eventId
     }).sort({ match_number: 1 }).lean()
 
     // Derive gender for each match and filter if gender parameter provided
-    const sportDoc = await findSportByNameAndYear(sport, eventYear, eventName).catch(() => null)
+    const sportDoc = await findSportByNameAndId(sport, eventId).catch(() => null)
     const matchesWithGender = []
     
     for (const match of allMatches) {
@@ -105,7 +90,7 @@ router.get(
 /**
  * GET /api/event-schedule/:sport/teams-players
  * Get teams/players list for a sport (for dropdown in form) (admin only)
- * Event Year Filter: Accepts ?event_year=2026 parameter (defaults to active event year)
+ * Event ID Filter: Accepts ?event_id=2026-umang parameter (defaults to active event)
  * Get teams from Sports collection's teams_participated (filtered by event year)
  * Get players from Sports collection's players_participated (filtered by event year)
  * Exclude teams/players that have been knocked out in previous matches
@@ -116,16 +101,14 @@ router.get(
   asyncHandler(async (req, res) => {
     const { sport } = req.params
     const decodedSport = decodeURIComponent(sport)
-    // Extract event_name from query if provided for composite key filtering
-    const eventNameQuery = req.query.event_name ? req.query.event_name.trim() : null
-    const eventYearData = await getEventYear(req.query.event_year ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
+    const eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
+    const eventId = eventYearData.doc.event_id
     const gender = req.query.gender // Required: 'Male' or 'Female'
 
     // Check if user is admin or coordinator for this sport
     try {
-      await requireAdminOrCoordinator(req.user.reg_number, decodedSport, eventYear, eventName)
+      await requireAdminOrCoordinator(req.user.reg_number, decodedSport, eventId)
     } catch (error) {
       return sendErrorResponse(res, 403, error.message)
     }
@@ -135,8 +118,8 @@ router.get(
       return sendErrorResponse(res, 400, 'Gender parameter is required and must be "Male" or "Female"')
     }
 
-    // Find sport by name, event_year, and event_name
-    const sportDoc = await findSportByNameAndYear(decodedSport, eventYear, eventName)
+    // Find sport by name and event_id
+    const sportDoc = await findSportByNameAndId(decodedSport, eventId)
     
     if (!sportDoc) {
       return sendErrorResponse(res, 404, `Sport "${decodedSport}" not found for event year ${eventYear}`)
@@ -147,8 +130,8 @@ router.get(
     let participantsInScheduledMatches = new Set()
     
     try {
-      knockedOutParticipants = await getKnockedOutParticipants(decodedSport, eventYear, gender, sportDoc, eventName)
-      participantsInScheduledMatches = await getParticipantsInScheduledMatches(decodedSport, eventYear, gender, sportDoc, eventName)
+      knockedOutParticipants = await getKnockedOutParticipants(decodedSport, eventId, gender, sportDoc)
+      participantsInScheduledMatches = await getParticipantsInScheduledMatches(decodedSport, eventId, gender, sportDoc)
     } catch (error) {
       logger.error('Error getting knocked out or scheduled participants:', error)
       return sendErrorResponse(res, 500, 'Error retrieving participant eligibility data')
@@ -227,7 +210,7 @@ router.get(
 /**
  * POST /api/event-schedule
  * Create a new match (admin only)
- * Event Year Required: event_year field required in request body (defaults to active event year)
+ * Event ID Required: event_id field required in request body (defaults to active event)
  */
 router.post(
   '/event-schedule',
@@ -241,23 +224,14 @@ router.post(
       return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
     }
     
-    const { match_type, sports_name, teams, players, match_date, event_year, event_name, number_of_participants } = bodyData
+    const { match_type, sports_name, teams, players, match_date, event_id, number_of_participants } = bodyData
 
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = event_year !== undefined && event_year !== null && event_year !== ''
-    const hasEventName = event_name !== undefined && event_name !== null && event_name !== '' && event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    if (!event_id || !String(event_id).trim()) {
+      return sendErrorResponse(res, 400, 'event_id is required')
     }
 
-    // Get event year (default to active event year if not provided)
-    const eventNameBody = hasEventName ? event_name.trim() : null
-    const eventYear = await getEventYear(hasEventYear ? parseInt(event_year) : null, { returnDoc: true, eventName: eventNameBody })
+    // Get event year (default to active event if not provided)
+    const eventYear = await getEventYear(String(event_id).trim(), { returnDoc: true })
     const eventYearDoc = eventYear.doc
 
     // Validate required fields (gender will be derived from participants)
@@ -267,7 +241,7 @@ router.post(
 
     // Check if user is admin or coordinator for this sport
     try {
-      await requireAdminOrCoordinator(req.user.reg_number, sports_name, eventYear.event_year, eventYearDoc.event_name)
+      await requireAdminOrCoordinator(req.user.reg_number, sports_name, eventYearDoc.event_id)
     } catch (error) {
       return sendErrorResponse(res, 403, error.message)
     }
@@ -291,8 +265,8 @@ router.post(
       )
     }
 
-    // Find sport by name, event_year, and event_name
-    const sportDoc = await findSportByNameAndYear(sports_name, eventYear.event_year, eventYear.doc.event_name, { lean: false })
+    // Find sport by name and event_id
+    const sportDoc = await findSportByNameAndId(sports_name, eventYear.doc.event_id, { lean: false })
 
     // Declare variables for trimmed/unique participants (used later for knockout validation)
     let uniqueTeams = null
@@ -434,11 +408,10 @@ router.post(
     // Validate that all league matches are completed before scheduling knockout (applies to all sport types with gender filter)
     const allLeagueMatchesCompletedError = await validateAllLeagueMatchesCompletedBeforeKnockout(
       sports_name,
-      eventYear.event_year,
+      eventYear.doc.event_id,
       match_type,
       derivedGender,
-      sportDoc,
-      eventYear.doc.event_name
+      sportDoc
     )
     if (allLeagueMatchesCompletedError) {
       return sendErrorResponse(res, allLeagueMatchesCompletedError.statusCode, allLeagueMatchesCompletedError.message)
@@ -447,11 +420,10 @@ router.post(
     // Validate that all other matches are completed before scheduling final (applies to all sport types with gender filter)
     const allMatchesCompletedError = await validateAllMatchesCompletedBeforeFinal(
       sports_name,
-      eventYear.event_year,
+      eventYear.doc.event_id,
       match_type,
       derivedGender,
-      sportDoc,
-      eventYear.doc.event_name
+      sportDoc
     )
     if (allMatchesCompletedError) {
       return sendErrorResponse(res, allMatchesCompletedError.statusCode, allMatchesCompletedError.message)
@@ -468,8 +440,8 @@ router.post(
         : (uniquePlayers || players.map(p => p.trim()).filter(p => p))
       
       // Get knocked out participants and participants in scheduled matches using utility functions
-      const knockedOutParticipants = await getKnockedOutParticipants(sports_name, eventYear.event_year, derivedGender, sportDoc, eventYear.doc.event_name)
-      const participantsInScheduledMatches = await getParticipantsInScheduledMatches(sports_name, eventYear.event_year, derivedGender, sportDoc, eventYear.doc.event_name)
+      const knockedOutParticipants = await getKnockedOutParticipants(sports_name, eventYear.doc.event_id, derivedGender, sportDoc)
+      const participantsInScheduledMatches = await getParticipantsInScheduledMatches(sports_name, eventYear.doc.event_id, derivedGender, sportDoc)
 
       // Check if any participant in the new match is already in a scheduled knockout match or is knocked out
       const conflictingParticipants = participantsToCheck.filter(p => {
@@ -506,8 +478,7 @@ router.post(
       // Check if any knockout match exists for this sport (gender will be derived)
       const allKnockoutMatches = await EventSchedule.find({
         sports_name: normalizeSportName(sports_name),
-        event_year: eventYear.event_year,
-        event_name: eventYear.doc.event_name,
+        event_id: eventYear.doc.event_id,
         match_type: { $in: ['knockout', 'final'] },
         status: { $in: ['scheduled', 'completed', 'draw', 'cancelled'] }
       }).lean()
@@ -523,8 +494,7 @@ router.post(
       // Check if any league match exists for this gender (gender will be derived)
       const allLeagueMatches = await EventSchedule.find({
         sports_name: normalizeSportName(sports_name),
-        event_year: eventYear.event_year,
-        event_name: eventYear.doc.event_name,
+        event_id: eventYear.doc.event_id,
         match_type: 'league'
       }).sort({ match_date: -1 }).lean()
 
@@ -558,8 +528,7 @@ router.post(
       if (match_type === 'final') {
         const allKnockoutMatches = await EventSchedule.find({
           sports_name: normalizeSportName(sports_name),
-          event_year: eventYear.event_year,
-          event_name: eventYear.doc.event_name,
+          event_id: eventYear.doc.event_id,
           match_type: 'knockout'
         }).sort({ match_date: -1 }).lean()
 
@@ -599,8 +568,7 @@ router.post(
       players,
       match_type,
       sports_name,
-      eventYear.event_year,
-      eventYear.doc.event_name
+      eventYear.doc.event_id
     )
     if (finalMatchError) {
       return sendErrorResponse(res, finalMatchError.statusCode, finalMatchError.message)
@@ -611,8 +579,7 @@ router.post(
     // Gender will be derived from matches
     const allFinalMatches = await EventSchedule.find({
       sports_name: normalizeSportName(sports_name),
-      event_year: eventYear.event_year,
-      event_name: eventYear.doc.event_name,
+      event_id: eventYear.doc.event_id,
       match_type: 'final',
       status: { $in: ['scheduled', 'completed'] }
     }).lean()
@@ -635,13 +602,12 @@ router.post(
       return sendErrorResponse(res, 400, 'Match date must be today or a future date')
     }
 
-    // Get next match number for this sport and event year
-    // Match numbers must be unique per sport/event_year (not per gender) due to database index
-    // So we find the highest match_number for this sport/event_year regardless of gender
+    // Get next match number for this sport and event
+    // Match numbers must be unique per sport/event_id (not per gender) due to database index
+    // So we find the highest match_number for this sport/event_id regardless of gender
     const lastMatch = await EventSchedule.findOne({
       sports_name: normalizeSportName(sports_name),
-      event_year: eventYear.event_year,
-      event_name: eventYear.doc.event_name
+      event_id: eventYear.doc.event_id
     })
       .sort({ match_number: -1 })
       .select('match_number')
@@ -651,8 +617,7 @@ router.post(
 
     // Create new match (gender is not stored, will be derived from participants)
     const matchData = {
-      event_year: eventYear.event_year,
-      event_name: eventYear.doc.event_name,
+      event_id: eventYear.doc.event_id,
       match_number,
       match_type,
       sports_name: normalizeSportName(sports_name),
@@ -678,12 +643,12 @@ router.post(
       // Clear caches using helper function
       // derivedGender should be set by this point, but add safety check
       if (!derivedGender) {
-        logger.error(`[EventSchedule] Error: derivedGender is not set for match creation. Sport: ${sports_name}, Year: ${eventYear.event_year}, Type: ${sportDoc.type}`)
+        logger.error(`[EventSchedule] Error: derivedGender is not set for match creation. Sport: ${sports_name}, Event ID: ${eventYear.doc.event_id}, Type: ${sportDoc.type}`)
         return sendErrorResponse(res, 500, 'Internal error: Could not determine match gender. Please contact administrator.')
       }
       
       try {
-        clearNewMatchCaches(sports_name, eventYear.event_year, derivedGender, match_type)
+        clearNewMatchCaches(sports_name, eventYear.doc.event_id, derivedGender, match_type)
       } catch (cacheError) {
         logger.error('[EventSchedule] Error clearing caches after match creation:', cacheError)
         // Don't fail the request if cache clearing fails, just log it
@@ -733,17 +698,17 @@ router.put(
 
     // Check if user is admin or coordinator for this sport
     try {
-      await requireAdminOrCoordinator(req.user.reg_number, match.sports_name, match.event_year, match.event_name)
+      await requireAdminOrCoordinator(req.user.reg_number, match.sports_name, match.event_id)
     } catch (error) {
       return sendErrorResponse(res, 403, error.message)
     }
 
     // Get event year document for date range validation
-    const eventYearData = await getEventYear(match.event_year, { returnDoc: true })
+    const eventYearData = await getEventYear(match.event_id, { returnDoc: true })
     const eventYearDoc = eventYearData.doc
 
-    // Get sport details - use event_name from match document
-    const sportDoc = await findSportByNameAndYear(match.sports_name, match.event_year, match.event_name)
+    // Get sport details - use event_id from match document
+    const sportDoc = await findSportByNameAndId(match.sports_name, match.event_id)
 
     // Initialize update data object
     const previousStatus = match.status
@@ -942,7 +907,7 @@ router.put(
 /**
  * DELETE /api/event-schedule/:id
  * Delete a match (admin only)
- * Year Context: Match is already associated with event_year (use for points table cleanup)
+ * Event Context: Match is already associated with event_id (use for points table cleanup)
  */
 router.delete(
   '/event-schedule/:id',
@@ -959,7 +924,7 @@ router.delete(
 
     // Check if user is admin or coordinator for this sport
     try {
-      await requireAdminOrCoordinator(req.user.reg_number, match.sports_name, match.event_year, match.event_name)
+      await requireAdminOrCoordinator(req.user.reg_number, match.sports_name, match.event_id)
     } catch (error) {
       return sendErrorResponse(res, 403, error.message)
     }
@@ -980,7 +945,7 @@ router.delete(
     }
 
     // Derive gender before deletion for cache clearing
-    const sportDoc = await findSportByNameAndYear(match.sports_name, match.event_year, match.event_name).catch(() => null)
+    const sportDoc = await findSportByNameAndId(match.sports_name, match.event_id).catch(() => null)
 
     // Delete the match
     await EventSchedule.findByIdAndDelete(id)

@@ -4,19 +4,18 @@ import { useEventYearWithFallback } from '../hooks'
 import { fetchCurrentUser } from '../utils/api'
 import logger from '../utils/logger'
 
-function ProfileModal({ isOpen, onClose, loggedInUser, selectedEventYear, onUserUpdate = null }) {
-  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+function ProfileModal({ isOpen, onClose, loggedInUser, selectedEventId, onUserUpdate = null }) {
+  const { eventId } = useEventYearWithFallback(selectedEventId)
   const [profileUser, setProfileUser] = useState(loggedInUser)
   
-  // Refetch user data when modal opens with correct event_year and event_name to get batch_name
+  // Refetch user data when modal opens with correct event_id to get batch_name
   useEffect(() => {
-    if (isOpen && eventYear && eventName && loggedInUser) {
+    if (isOpen && eventId && loggedInUser) {
       // Only refetch if batch_name is missing or if we need to update for the selected event
-      const shouldRefetch = !loggedInUser.batch_name || 
-                           (selectedEventYear && selectedEventYear !== loggedInUser.event_year)
+      const shouldRefetch = !loggedInUser.batch_name || !!selectedEventId
       
       if (shouldRefetch) {
-        fetchCurrentUser(eventYear, eventName)
+        fetchCurrentUser(eventId)
           .then(result => {
             if (result.user) {
               setProfileUser(result.user)
@@ -37,7 +36,7 @@ function ProfileModal({ isOpen, onClose, loggedInUser, selectedEventYear, onUser
     } else if (isOpen && loggedInUser) {
       setProfileUser(loggedInUser)
     }
-  }, [isOpen, eventYear, eventName, loggedInUser, selectedEventYear, onUserUpdate])
+  }, [isOpen, eventId, loggedInUser, selectedEventId, onUserUpdate])
   
   if (!profileUser) return null
 
@@ -99,6 +98,30 @@ function ProfileModal({ isOpen, onClose, loggedInUser, selectedEventYear, onUser
                         <span
                           key={index}
                           className="px-3 py-1 rounded-full bg-[rgba(255,230,109,0.2)] text-[#ffe66d] text-sm font-semibold border border-[rgba(255,230,109,0.4)] break-words"
+                        >
+                          {sport}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {profileUser.coordinator_in && profileUser.coordinator_in.length > 0 && (
+          <div className="p-4 bg-[rgba(15,23,42,0.6)] rounded-lg border border-[rgba(148,163,184,0.3)] overflow-x-auto">
+            <table className="w-full border-collapse text-left">
+              <tbody>
+                <tr>
+                  <td className="text-[#cbd5ff] text-sm font-semibold py-2 pr-4 align-top text-left">Coordinator For:</td>
+                  <td className="py-2 text-left">
+                    <div className="flex flex-wrap gap-2">
+                      {profileUser.coordinator_in.map((sport, index) => (
+                        <span
+                          key={index}
+                          className="px-3 py-1 rounded-full bg-[rgba(147,197,253,0.2)] text-[#93c5fd] text-sm font-semibold border border-[rgba(147,197,253,0.4)] break-words"
                         >
                           {sport}
                         </span>

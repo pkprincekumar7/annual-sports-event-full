@@ -1,6 +1,13 @@
 import mongoose from 'mongoose'
 
 const eventYearSchema = new mongoose.Schema({
+  event_id: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+    lowercase: true
+  },
   event_year: {
     type: Number,
     required: true
@@ -8,7 +15,8 @@ const eventYearSchema = new mongoose.Schema({
   event_name: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
+    lowercase: true
   },
   event_dates: {
     start: {
@@ -61,9 +69,21 @@ const eventYearSchema = new mongoose.Schema({
 })
 
 // Create indexes for faster lookups
-eventYearSchema.index({ event_year: 1, event_name: 1 }, { unique: true }) // Compound unique index - unique combination of event_year and event_name
+eventYearSchema.index({ event_id: 1 }, { unique: true }) // Unique event identifier
 eventYearSchema.index({ event_year: 1 }) // For efficient event year queries
 // Note: Active status is now determined automatically based on dates, not stored in database
+
+// Pre-validate hook to normalize event_name and build event_id before required checks
+eventYearSchema.pre('validate', function(next) {
+  if (this.isModified('event_name') && this.event_name) {
+    this.event_name = this.event_name.toLowerCase().trim()
+  }
+  if ((this.isModified('event_year') || this.isModified('event_name')) && this.event_year && this.event_name) {
+    const normalizedName = this.event_name.toLowerCase().trim().replace(/\s+/g, '-')
+    this.event_id = `${this.event_year}-${normalizedName}`.toLowerCase()
+  }
+  next()
+})
 
 const EventYear = mongoose.model('EventYear', eventYearSchema)
 

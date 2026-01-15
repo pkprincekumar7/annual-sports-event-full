@@ -12,37 +12,25 @@ import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { getCache, setCache, clearCache, clearCachePattern } from '../utils/cache.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse } from '../utils/errorHandler.js'
 import { getEventYear } from '../utils/yearHelpers.js'
-import { isTeamSportType, validateTeamSize, normalizeSportName, findSportByNameAndYear } from '../utils/sportHelpers.js'
+import { isTeamSportType, validateTeamSize, normalizeSportName, findSportByNameAndId } from '../utils/sportHelpers.js'
 
 const router = express.Router()
 
 /**
  * GET /api/sports
  * Get all sports (admin only, or public for display)
- * Accepts ?event_year=2026 parameter (defaults to active event year)
- * Filters by event_year
+ * Accepts ?event_id=2026-umang parameter (defaults to active event)
+ * Filters by event_id
  * IMPORTANT: This route must come before /:name to avoid conflicts
  */
 router.get('/sports', asyncHandler(async (req, res) => {
-  // For optional event_year/event_name: either both must be provided, or neither
-  // If one is provided, the other is also required for composite key filtering
-  const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-  const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-  
-  if (hasEventYear && !hasEventName) {
-    return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-  }
-  if (hasEventName && !hasEventYear) {
-    return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-  }
+  const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
   
   let eventYearData
   
   try {
     // Try to get event year with document - if it doesn't exist, return empty array
-    // Extract event_name from query if provided for composite key filtering
-    const eventName = hasEventName ? req.query.event_name.trim() : null
-    eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName })
+    eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
   } catch (error) {
     // If event year not found, return empty array instead of error
     if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -52,18 +40,17 @@ router.get('/sports', asyncHandler(async (req, res) => {
     throw error
   }
   
-  const eventYear = eventYearData.event_year
-  const eventName = eventYearData.doc.event_name
+  const eventId = eventYearData.doc.event_id
   
   // Check cache
-  const cacheKey = `/api/sports?event_year=${eventYear}`
+  const cacheKey = `/api/sports?event_id=${encodeURIComponent(eventId)}`
   const cached = getCache(cacheKey)
   if (cached) {
     return res.json(cached)
   }
   
-  // Query database - filter by both event_year and event_name
-  const sports = await Sport.find({ event_year: eventYear, event_name: eventName })
+  // Query database - filter by event_id
+  const sports = await Sport.find({ event_id: eventId })
     .sort({ category: 1, name: 1 })
     .lean()
   
@@ -76,8 +63,8 @@ router.get('/sports', asyncHandler(async (req, res) => {
 /**
  * POST /api/sports
  * Create new sport (admin only)
- * event_year is REQUIRED in request body
- * Validates event_year exists in EventYear collection
+ * event_id is REQUIRED in request body
+ * Validates event_id exists in EventYear collection
  * Admin sets type, category, team_size
  * Validates team_size only for team sports
  */
@@ -89,7 +76,7 @@ router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPerio
       return sendErrorResponse(res, 400, 'createdBy and updatedBy fields cannot be set by user. They are automatically set from authentication token.')
     }
     
-    const { name, event_year, type, category, team_size, imageUri } = bodyData
+    const { name, event_id, type, category, team_size, imageUri } = bodyData
     
     if (!name || !name.trim()) {
     return sendErrorResponse(res, 400, 'Sport name is required')
@@ -103,19 +90,12 @@ router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPerio
     return sendErrorResponse(res, 400, 'Valid category is required')
     }
     
-  // event_year and event_name are now REQUIRED for composite key filtering
-  if (!event_year) {
-    return sendErrorResponse(res, 400, 'event_year is required')
+  if (!event_id || !String(event_id).trim()) {
+    return sendErrorResponse(res, 400, 'event_id is required')
   }
   
-  const { event_name } = bodyData
-  if (!event_name || !event_name.trim()) {
-    return sendErrorResponse(res, 400, 'event_name is required')
-  }
-  
-  const eventYearData = await getEventYear(parseInt(event_year), { requireYear: true, returnDoc: true, eventName: event_name.trim() })
-  const eventYear = eventYearData.event_year
-  const eventName = eventYearData.doc.event_name
+  const eventYearData = await getEventYear(String(event_id).trim(), { requireId: true, returnDoc: true })
+  const eventId = eventYearData.doc.event_id
     
     // Validate team_size
   const teamSizeValidation = validateTeamSize(team_size, type)
@@ -124,11 +104,10 @@ router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPerio
       }
   const parsedTeamSize = teamSizeValidation.value
     
-    // Check if sport with same name already exists for this event year and name
+    // Check if sport with same name already exists for this event_id
     const existingSport = await Sport.findOne({ 
     name: normalizeSportName(name), 
-      event_year: eventYear,
-      event_name: eventName
+      event_id: eventId
     })
     if (existingSport) {
     return sendErrorResponse(res, 409, 'Sport with this name already exists for this event year')
@@ -136,8 +115,7 @@ router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPerio
     
     const sport = new Sport({
     name: normalizeSportName(name),
-      event_year: eventYear,
-      event_name: eventName,
+      event_id: eventId,
       type,
       category,
     team_size: isTeamSportType(type) ? parsedTeamSize : null,
@@ -157,9 +135,9 @@ router.post('/sports', authenticateToken, requireAdmin, requireRegistrationPerio
 /**
  * PUT /api/sports/:id
  * Update sport (admin only)
- * Accepts ?event_year=2026 parameter (defaults to active event year if not provided)
- * Validates sport belongs to that event year
- * Update within same event year (cannot change event_year)
+ * Accepts ?event_id=2026-umang parameter (defaults to active event if not provided)
+ * Validates sport belongs to that event
+ * Update within same event (cannot change event_id)
  * Validates team_size if updated
  */
 router.put('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
@@ -178,24 +156,12 @@ router.put('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPe
     return sendErrorResponse(res, 404, 'Sport not found')
     }
     
-    // Get event year parameter (defaults to active event year if not provided)
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-    }
+    // Get event_id parameter (defaults to active event if not provided)
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
     
     let requestedYearData
     try {
-      // Extract event_name from query if provided for composite key filtering
-      const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-      requestedYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      requestedYearData = await getEventYear(eventIdQuery, { returnDoc: true })
     } catch (error) {
       // Provide more user-friendly error messages
       if (error.message === 'Event year not found') {
@@ -206,17 +172,16 @@ router.put('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPe
       return sendErrorResponse(res, 400, error.message || 'Failed to get event year')
     }
     
-    const requestedYear = requestedYearData.event_year
-    const requestedEventName = requestedYearData.doc.event_name
+    const requestedEventId = requestedYearData.doc.event_id
     
-    // Validate sport belongs to the requested event year and event name
-    if (sport.event_year !== requestedYear || sport.event_name !== requestedEventName) {
-      return sendErrorResponse(res, 400, `Cannot update sport. This sport belongs to event year ${sport.event_year} (${sport.event_name}), but you are trying to update it for event year ${requestedYear} (${requestedEventName}). Please select the correct event year to update this sport.`)
+    // Validate sport belongs to the requested event
+    if (sport.event_id !== requestedEventId) {
+      return sendErrorResponse(res, 400, `Cannot update sport. This sport belongs to event ID ${sport.event_id}, but you are trying to update it for event ID ${requestedEventId}. Please select the correct event to update this sport.`)
     }
     
-    // Cannot change event_year
-    if (req.body.event_year !== undefined && req.body.event_year !== sport.event_year) {
-    return sendErrorResponse(res, 400, 'Cannot change event_year. Create a new sport for a different year.')
+    // Cannot change event_id
+    if (req.body.event_id !== undefined && req.body.event_id !== sport.event_id) {
+    return sendErrorResponse(res, 400, 'Cannot change event_id. Create a new sport for a different event.')
     }
     
     // Update allowed fields
@@ -271,9 +236,9 @@ router.put('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPe
 /**
  * DELETE /api/sports/:id
  * Delete sport (admin only)
- * Accepts ?event_year=2026 parameter (defaults to active event year if not provided)
- * Validates sport belongs to that event year
- * Validates no matches or points table entries exist for this sport in the same event year
+ * Accepts ?event_id=2026-umang parameter (defaults to active event if not provided)
+ * Validates sport belongs to that event
+ * Validates no matches or points table entries exist for this sport in the same event
  */
 router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistrationPeriod, asyncHandler(async (req, res) => {
     const { id } = req.params
@@ -283,24 +248,12 @@ router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistratio
     return sendErrorResponse(res, 404, 'Sport not found')
     }
     
-    // Get event year parameter (defaults to active event year if not provided)
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-    }
+    // Get event_id parameter (defaults to active event if not provided)
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
     
     let requestedYearData
     try {
-      // Extract event_name from query if provided for composite key filtering
-      const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-      requestedYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      requestedYearData = await getEventYear(eventIdQuery, { returnDoc: true })
     } catch (error) {
       // Provide more user-friendly error messages
       if (error.message === 'Event year not found') {
@@ -311,12 +264,11 @@ router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistratio
       return sendErrorResponse(res, 400, error.message || 'Failed to get event year')
     }
     
-    const requestedYear = requestedYearData.event_year
-    const requestedEventName = requestedYearData.doc.event_name
+    const requestedEventId = requestedYearData.doc.event_id
     
-    // Validate sport belongs to the requested event year and event name
-    if (sport.event_year !== requestedYear || sport.event_name !== requestedEventName) {
-      return sendErrorResponse(res, 400, `Cannot delete sport. This sport belongs to event year ${sport.event_year} (${sport.event_name}), but you are trying to delete it for event year ${requestedYear} (${requestedEventName}). Please select the correct event year to delete this sport.`)
+    // Validate sport belongs to the requested event
+    if (sport.event_id !== requestedEventId) {
+      return sendErrorResponse(res, 400, `Cannot delete sport. This sport belongs to event ID ${sport.event_id}, but you are trying to delete it for event ID ${requestedEventId}. Please select the correct event to delete this sport.`)
     }
     
     // Check if any teams have participated
@@ -328,15 +280,13 @@ router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistratio
     // Check if any matches exist for this sport
     const schedulesCount = await EventSchedule.countDocuments({ 
       sports_name: sport.name, 
-      event_year: sport.event_year,
-      event_name: sport.event_name
+      event_id: sport.event_id
     })
     
     // Check if any points table entries exist
     const pointsCount = await PointsTable.countDocuments({ 
       sports_name: sport.name, 
-      event_year: sport.event_year,
-      event_name: sport.event_name
+      event_id: sport.event_id
     })
     
     // Build error message with all participation data
@@ -372,29 +322,17 @@ router.delete('/sports/:id', authenticateToken, requireAdmin, requireRegistratio
 /**
  * GET /api/sports-counts
  * Get sports counts (teams and participants)
- * Query Sports collection, filter by event_year
+ * Query Sports collection, filter by event_id
  * IMPORTANT: This route must come BEFORE /:name to avoid route conflicts
  */
 router.get('/sports-counts', authenticateToken, asyncHandler(async (req, res) => {
-  // For optional event_year/event_name: either both must be provided, or neither
-  // If one is provided, the other is also required for composite key filtering
-  const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-  const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-  
-  if (hasEventYear && !hasEventName) {
-    return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-  }
-  if (hasEventName && !hasEventYear) {
-    return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-  }
+  const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
   
   let eventYearData
   
   try {
     // Try to get event year with document - if it doesn't exist, return empty arrays
-    // Extract event_name from query if provided for composite key filtering
-    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-    eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+    eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
   } catch (error) {
     // If event year not found, return empty arrays instead of error
     if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -408,18 +346,17 @@ router.get('/sports-counts', authenticateToken, asyncHandler(async (req, res) =>
     throw error
   }
   
-  const eventYear = eventYearData.event_year
-  const eventName = eventYearData.doc.event_name
+  const eventId = eventYearData.doc.event_id
   
   // Check cache
-  const cacheKey = `/api/sports-counts?event_year=${eventYear}`
+  const cacheKey = `/api/sports-counts?event_id=${encodeURIComponent(eventId)}`
   const cached = getCache(cacheKey)
   if (cached) {
     return res.json(cached)
   }
   
-  // Query database - filter by both event_year and event_name
-  const sports = await Sport.find({ event_year: eventYear, event_name: eventName }).lean()
+  // Query database - filter by event_id
+  const sports = await Sport.find({ event_id: eventId }).lean()
   
   const teamsCounts = {}
   const participantsCounts = {}
@@ -448,8 +385,8 @@ router.get('/sports-counts', authenticateToken, asyncHandler(async (req, res) =>
 /**
  * GET /api/sports/:name
  * Get sport by name
- * Accepts ?event_year=2026 parameter (defaults to active event year)
- * Queries by name and event_year
+ * Accepts ?event_id=2026-umang parameter (defaults to active event)
+ * Queries by name and event_id
  * IMPORTANT: This route must come AFTER /sports-counts to avoid route conflicts
  * Also exclude 'sports-counts' from matching this route
  */
@@ -465,25 +402,16 @@ router.get('/sports/:name', asyncHandler(async (req, res) => {
     return sendErrorResponse(res, 404, 'Route not found')
   }
   
-  // For optional event_year/event_name: either both must be provided, or neither
+  // event_id is optional; defaults to active event if not provided
   // If one is provided, the other is also required for composite key filtering
-  const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-  const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-  
-  if (hasEventYear && !hasEventName) {
-    return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-  }
-  if (hasEventName && !hasEventYear) {
-    return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-  }
+  // event_id is optional; defaults to active event if not provided
   
   let eventYearData
   
   try {
-    // Try to get event year with document - if it doesn't exist, return 400 error
-    // Extract event_name from query if provided for composite key filtering
-    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-    eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+  // Try to get event year with document - if it doesn't exist, return 400 error
+  const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
+  eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
   } catch (error) {
     // If event year not found, return 400 error
     if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -493,11 +421,10 @@ router.get('/sports/:name', asyncHandler(async (req, res) => {
     throw error
   }
   
-  const eventYear = eventYearData.event_year
-  const eventName = eventYearData.doc.event_name
+  const eventId = eventYearData.doc.event_id
   
   try {
-    const sport = await findSportByNameAndYear(name, eventYear, eventName)
+    const sport = await findSportByNameAndId(name, eventId)
     res.json(sport)
   } catch (error) {
     // If sport not found, return 404 error

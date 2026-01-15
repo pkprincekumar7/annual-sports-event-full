@@ -22,22 +22,18 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Registration Deadline Check**: Applied globally to all non-GET requests (except login, event-schedule, and points-table). Blocks requests after `registration_dates.end`
 - **Match Date Validation**: Match date must be within `event_dates.start` and `event_dates.end` (validated in route handler)
 
-## Event Year and Event Name Parameters
+## Event ID Parameter
 
-**Important**: The backend uses a composite key of `event_year` and `event_name` for filtering data. The following rules apply:
+**Important**: The backend uses `event_id` for filtering data across all event-scoped collections. The following rules apply:
 
-1. **Mandatory Parameters**: When `event_year` is required in the request body, `event_name` is also required. Both must be provided together.
+1. **Mandatory Parameters**: When `event_id` is required in the request body, it must be provided.
 
-2. **Optional Parameters**: When `event_year` is optional (defaults to active event year), the following rule applies:
-   - Either both `event_year` and `event_name` must be provided, OR
-   - Neither must be provided (both will default to active event year)
-   - If one is provided without the other, the request will return a 400 error
+2. **Optional Parameters**: When `event_id` is optional (defaults to active event), the request may omit it entirely.
 
-3. **Query Parameters**: For GET/PUT/DELETE routes that accept `event_year` as a query parameter, the same rules apply - either both `event_year` and `event_name` query parameters must be provided, or neither.
+3. **Query Parameters**: For GET/PUT/DELETE routes that accept `event_id` as a query parameter, it is optional unless explicitly stated otherwise.
 
 **Error Messages**:
-- "event_name is required when event_year is provided"
-- "event_year is required when event_name is provided"
+- "event_id is required"
 
 ---
 
@@ -93,7 +89,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Auth**: `authenticateToken`
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
 - **Parameters**: 
-  - Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+  - Optional `event_id` query parameter (defaults to active event).
   - Optional `page` query parameter (default: 1)
   - Optional `limit` query parameter (default: 20)
   - Optional `search` query parameter (searches by reg_number, full_name, email_id, department_branch)
@@ -144,42 +140,42 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Get all sports for a specific event year
 - **Auth**: None
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ### POST `/api/sports`
 - **Access**: Admin
 - **Description**: Create new sport
 - **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: `event_year` and `event_name` are both **required** in the request body.
+- **Parameters**: `event_id` is **required** in the request body.
 
 ### PUT `/api/sports/:id`
 - **Access**: Admin
 - **Description**: Update sport
 - **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ### DELETE `/api/sports/:id`
 - **Access**: Admin
 - **Description**: Delete sport
 - **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ### GET `/api/sports-counts`
 - **Access**: Authenticated (Admin, Coordinator, Captain, Player)
 - **Description**: Get sports counts (teams and participants)
 - **Auth**: `authenticateToken`
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ### GET `/api/sports/:name`
 - **Access**: Public
 - **Description**: Get sport by name
 - **Auth**: None
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ---
 
@@ -190,21 +186,21 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Add captain role to a player
 - **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: `event_year` and `event_name` are both **required** in the request body.
+- **Parameters**: `event_id` is **required** in the request body.
 
 ### DELETE `/api/remove-captain`
 - **Access**: Admin
 - **Description**: Remove captain role from a player
 - **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: `event_year` and `event_name` are both **required** in the request body.
+- **Parameters**: `event_id` is **required** in the request body.
 
 ### GET `/api/captains-by-sport`
 - **Access**: Admin
 - **Description**: Get all captains grouped by sport
 - **Auth**: `authenticateToken`, `requireAdmin`
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ---
 
@@ -215,21 +211,21 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Add coordinator role to a player
 - **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: `event_year` and `event_name` are both **required** in the request body.
+- **Parameters**: `event_id` is **required** in the request body.
 
 ### DELETE `/api/remove-coordinator`
 - **Access**: Admin
 - **Description**: Remove coordinator role from a player
 - **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: `event_year` and `event_name` are both **required** in the request body.
+- **Parameters**: `event_id` is **required** in the request body.
 
 ### GET `/api/coordinators-by-sport`
 - **Access**: Admin
 - **Description**: Get all coordinators grouped by sport
 - **Auth**: `authenticateToken`, `requireAdmin`
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ---
 
@@ -240,21 +236,21 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Create a new batch
 - **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: `event_year` and `event_name` are both **required** in the request body.
+- **Parameters**: `event_id` is **required** in the request body.
 
 ### DELETE `/api/remove-batch`
 - **Access**: Admin
 - **Description**: Delete a batch
 - **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: `event_year` and `event_name` are both **required** in the request body.
+- **Parameters**: `event_id` is **required** in the request body.
 
 ### GET `/api/batches`
-- **Access**: Admin
-- **Description**: Get all batches for an event year
-- **Auth**: `authenticateToken`, `requireAdmin`
+- **Access**: Public
+- **Description**: Get all batches for an event year (includes `players` array with reg numbers)
+- **Auth**: None
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ---
 
@@ -265,7 +261,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Captain creates a team
 - **Auth**: `authenticateToken`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: Optional `event_year` and `event_name` in request body. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: `event_id` is required in the request body unless stated otherwise.
 - **Note**: Captains can only create teams for sports where they are assigned as captain
 
 ### GET `/api/teams/:sport`
@@ -273,7 +269,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Get all teams for a specific sport
 - **Auth**: `authenticateToken`
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ### POST `/api/update-team-player`
 - **Access**: Admin, Coordinator (for assigned sports)
@@ -286,7 +282,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Delete a team
 - **Auth**: `authenticateToken`, `requireAdminOrCoordinator`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: Optional `event_year` and `event_name` in request body. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: `event_id` is required in the request body unless stated otherwise.
 
 ### POST `/api/validate-participations`
 - **Access**: Authenticated (Admin, Coordinator, Captain, Player)
@@ -303,7 +299,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Get all participants for a specific sport (non-team events)
 - **Auth**: `authenticateToken`, `requireAdminOrCoordinator` (checked in route handler)
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ### GET `/api/participants-count/:sport`
 - **Access**: Authenticated (Admin, Coordinator, Captain, Player)
@@ -316,14 +312,14 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Update individual/cultural event participation
 - **Auth**: `authenticateToken`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: Optional `event_year` and `event_name` in request body. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: `event_id` is required in the request body unless stated otherwise.
 
 ### DELETE `/api/remove-participation`
 - **Access**: Admin
 - **Description**: Remove participation (team or individual)
 - **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
-- **Parameters**: Optional `event_year` and `event_name` in request body. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: `event_id` is required in the request body unless stated otherwise.
 
 ---
 
@@ -334,7 +330,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Get all matches for a sport
 - **Auth**: `authenticateToken`
 - **Date Validation**: None (GET requests are exempt from registration deadline check, and event-schedule endpoints are exempt from global deadline check)
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ### GET `/api/event-schedule/:sport/teams-players`
 - **Access**: Admin, Coordinator (for assigned sports)
@@ -347,7 +343,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Create a new match
 - **Auth**: `authenticateToken`, `requireAdminOrCoordinator`, `requireEventPeriod`
 - **Date Validation**: **Event Period** - Current date must be after `registration_dates.end` and before `event_dates.end`. **Match Date Validation** - The `match_date` in the request body must be within `event_dates.start` and `event_dates.end`. Exempt from global registration deadline check.
-- **Parameters**: Optional `event_year` and `event_name` in request body. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: `event_id` is required in the request body unless stated otherwise.
 
 ### PUT `/api/event-schedule/:id`
 - **Access**: Admin, Coordinator (for assigned sports)
@@ -370,7 +366,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Export players data to Excel
 - **Auth**: `authenticateToken`, `requireAdmin`
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ---
 
@@ -423,23 +419,23 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Date Validation**: None (event year creation is allowed even when no active event year exists to enable initial setup). Validates that `registration_dates.start` and `event_dates.start` are not in the past.
 - **Request Body**: 
   - `event_year` (required): Year number
-  - `event_name` (required): Event name (both `event_year` and `event_name` are mandatory together)
+  - `event_name` (required): Event name (stored in lowercase; `event_id` is derived from `event_year` + `event_name`)
   - `event_dates.start` and `event_dates.end` (required)
   - `registration_dates.start` and `registration_dates.end` (required)
   - `event_organizer`, `event_title`, `event_highlight` (optional)
 - **Validations**: 
-  - Event year must be unique
+  - Event year and event name combination must be unique
   - Date relationships: `registration_dates.start < registration_dates.end < event_dates.start < event_dates.end`
   - Registration start and event start cannot be in the past
 
-### PUT `/api/event-years/:event_year`
+### PUT `/api/event-years/:event_id`
 - **Access**: Admin
 - **Description**: Update event year configuration
 - **Auth**: `authenticateToken`, `requireAdmin`
 - **Date Validation**: Updates are allowed until registration end date. Cannot update after registration period has ended. Has additional restrictions: cannot update certain fields after event ends, cannot update registration start date after registration has started, cannot update registration end date after registration has ended, cannot update event start date after event has started, cannot update event end date after event has ended.
-- **Request Body**: Can update `event_name`, `event_dates`, `registration_dates`, `event_organizer`, `event_title`, `event_highlight`. Cannot update `event_year` (year field is immutable).
+- **Request Body**: Can update `event_name`, `event_dates`, `registration_dates`, `event_organizer`, `event_title`, `event_highlight`. Cannot update `event_year` (year field is immutable). Updating `event_name` regenerates `event_id`.
 
-### DELETE `/api/event-years/:event_year`
+### DELETE `/api/event-years/:event_id`
 - **Access**: Admin
 - **Description**: Delete event year (only if no data exists and not active)
 - **Auth**: `authenticateToken`, `requireAdmin`
@@ -455,7 +451,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Auth**: `authenticateToken`
 - **Date Validation**: None (GET requests are exempt from registration deadline check, and points-table endpoints are exempt from global deadline check)
 - **Parameters**: 
-  - Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+  - Optional `event_id` query parameter (defaults to active event).
   - Required `gender` query parameter: Must be "Male" or "Female"
 - **Note**: Only available for dual_team and dual_player sports. Returns empty array for multi_team and multi_player sports.
 
@@ -464,7 +460,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Backfill points table for a specific sport
 - **Auth**: `authenticateToken`, `requireAdmin`, `requireEventStatusUpdatePeriod`
 - **Date Validation**: **Event Status Update Period** - Current date must be between `event_dates.start` and `event_dates.end`. Exempt from global registration deadline check.
-- **Parameters**: Optional `event_year` and `event_name` query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ---
 
@@ -475,6 +471,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - POST `/api/reset-password`
 - GET `/api/sports`
 - GET `/api/sports/:name`
+- GET `/api/batches`
 - GET `/api/departments`
 - GET `/api/event-years/active`
 - POST `/api/save-player` (during registration period)
@@ -490,7 +487,6 @@ This document lists all backend endpoints and the roles that can access them, al
 - POST `/api/update-participation`
 - GET `/api/event-schedule/:sport`
 - GET `/api/points-table/:sport`
-- GET `/api/departments`
 - POST `/api/update-team-participation` (captains can create teams for assigned sports)
 
 ### Admin Only
@@ -510,7 +506,6 @@ This document lists all backend endpoints and the roles that can access them, al
 - GET `/api/coordinators-by-sport`
 - POST `/api/add-batch`
 - DELETE `/api/remove-batch`
-- GET `/api/batches`
 - DELETE `/api/remove-participation`
 - GET `/api/export-excel`
 - POST `/api/departments`
@@ -518,8 +513,8 @@ This document lists all backend endpoints and the roles that can access them, al
 - DELETE `/api/departments/:id`
 - GET `/api/event-years`
 - POST `/api/event-years`
-- PUT `/api/event-years/:event_year`
-- DELETE `/api/event-years/:event_year`
+- PUT `/api/event-years/:event_id`
+- DELETE `/api/event-years/:event_id`
 - POST `/api/points-table/backfill/:sport`
 
 ### Admin or Coordinator (for assigned sports)
@@ -539,9 +534,9 @@ This document lists all backend endpoints and the roles that can access them, al
 ## Total Endpoints: 49
 
 ### By Access Level:
-- **Public**: 7 endpoints (login, reset-password, sports, departments, event-years/active, save-player)
-- **Authenticated**: 12 endpoints (change-password, me, players, sports-counts, teams, validate-participations, participants-count, update-participation, event-schedule, points-table, departments, update-team-participation)
-- **Admin Only**: 25 endpoints
+- **Public**: 8 endpoints (login, reset-password, sports, batches, departments, event-years/active, save-player)
+- **Authenticated**: 11 endpoints (change-password, me, players, sports-counts, teams, validate-participations, participants-count, update-participation, event-schedule, points-table, update-team-participation)
+- **Admin Only**: 24 endpoints
 - **Admin or Coordinator**: 6 endpoints
 - **Captain**: 1 endpoint (overlaps with Authenticated - update-team-participation)
 
@@ -578,7 +573,7 @@ This document lists all backend endpoints and the roles that can access them, al
    - **Change Password**: Requires authentication. Validates current password, new password must be different and at least 6 characters. Resets `change_password_required` flag.
    - **Reset Password**: Public endpoint. Generates random 8-character password and sends via email. Sets `change_password_required` flag. Response doesn't reveal if email exists for security.
 
-10. **Composite Key Filtering**: All operations use both `event_year` and `event_name` together for proper data isolation. When `event_year` is required, `event_name` is also required. When `event_year` is optional, either both must be provided or neither (defaults to active event year).
+10. **Event Filtering**: All event-scoped operations use `event_id` for data isolation. When `event_id` is required, it must be provided. When optional, it defaults to the active event.
 
 11. **Public Endpoints**: Some endpoints are public (no authentication) but may still be restricted by date-based middleware (e.g., registration period).
 
@@ -586,8 +581,7 @@ This document lists all backend endpoints and the roles that can access them, al
 
 13. **Coordinator Permissions**: Coordinators can perform admin operations (except editing/deleting sports) for their assigned sports only. They can manage teams, participants, matches, and points table for their assigned sports.
 
-14. **Batch Management**: Players are organized by batches (year field removed from player registration). Batches are created per event year and event name (composite key).
+14. **Batch Management**: Players are organized by batches (year field removed from player registration). Batches are created per event (`event_id`).
 
 15. **Player Search and Pagination**: GET `/api/players` supports server-side search (by reg_number, full_name, email_id, department_branch) and pagination (page, limit parameters).
 
-11. **Event Year and Event Name Parameters**: The backend uses a composite key of `event_year` and `event_name` for filtering. When `event_year` is mandatory, `event_name` is also mandatory. When `event_year` is optional, either both parameters must be provided or neither (both will default to active event year). Providing only one parameter will result in a 400 error.

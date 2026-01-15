@@ -30,14 +30,11 @@ const sportSchema = new mongoose.Schema({
     trim: true,
     lowercase: true
   },
-  event_year: {
-    type: Number,
-    required: true
-  },
-  event_name: {
+  event_id: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
+    lowercase: true
   },
   type: {
     type: String,
@@ -101,15 +98,18 @@ const sportSchema = new mongoose.Schema({
 })
 
 // Create indexes for faster lookups
-sportSchema.index({ name: 1, event_year: 1, event_name: 1 }, { unique: true }) // Compound unique - unique sport name per event year and name
-sportSchema.index({ event_year: 1, event_name: 1, type: 1 }) // For efficient event year + event name + type queries
-sportSchema.index({ event_year: 1, event_name: 1, category: 1 }) // For efficient event year + event name + category queries
-sportSchema.index({ event_year: 1, event_name: 1 }) // For efficient event year + event name queries
+sportSchema.index({ name: 1, event_id: 1 }, { unique: true }) // Unique sport name per event_id
+sportSchema.index({ event_id: 1, type: 1 }) // For efficient event_id + type queries
+sportSchema.index({ event_id: 1, category: 1 }) // For efficient event_id + category queries
+sportSchema.index({ event_id: 1 }) // For efficient event_id queries
 
 // Pre-save hook to lowercase name
 sportSchema.pre('save', function(next) {
   if (this.isModified('name')) {
     this.name = this.name.toLowerCase().trim()
+  }
+  if (this.isModified('event_id') && this.event_id) {
+    this.event_id = this.event_id.toLowerCase().trim()
   }
   next()
 })

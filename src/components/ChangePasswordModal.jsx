@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Modal, Button, Input } from './ui'
 import { useApi } from '../hooks'
 import { fetchWithAuth } from '../utils/api'
+import { validatePassword } from '../utils/formValidation'
 import logger from '../utils/logger'
 
 function ChangePasswordModal({ isOpen, onClose, onStatusPopup, onPasswordChanged }) {
@@ -22,7 +23,7 @@ function ChangePasswordModal({ isOpen, onClose, onStatusPopup, onPasswordChanged
   const handleSubmit = async (e) => {
     e.preventDefault()
 
-    if (!currentPassword.trim() || !newPassword.trim() || !confirmPassword.trim()) {
+    if (!validatePassword(currentPassword) || !validatePassword(newPassword) || !validatePassword(confirmPassword)) {
       onStatusPopup('❌ Please fill all fields.', 'error', 2500)
       return
     }

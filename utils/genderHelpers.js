@@ -8,7 +8,7 @@ import Player from '../models/Player.js'
 import Sport from '../models/Sport.js'
 
 // In-memory cache for gender lookups (cleared on server restart)
-// Key format: 'team:{sportName}:{eventYear}:{teamName}' or 'player:{regNumber}'
+// Key format: 'team:{sportName}:{eventYear}:{eventName}:{teamName}' or 'player:{regNumber}'
 const genderCache = new Map()
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
@@ -25,13 +25,18 @@ const isCacheValid = (entry) => {
  * Get gender from a team by looking up the first player's gender
  * @param {string} teamName - Team name
  * @param {string} sportName - Sport name
- * @param {number} eventYear - Event year
+ * @param {string} eventId - Event ID
  * @returns {Promise<string|null>} Gender ('Male' or 'Female') or null if not found
  */
-export async function getTeamGender(teamName, sportName, eventYear) {
+export async function getTeamGender(teamName, sportName, eventId) {
   try {
     // Check cache first
-    const cacheKey = getCacheKey('team', sportName.toLowerCase().trim(), eventYear, teamName.trim())
+    const cacheKey = getCacheKey(
+      'team',
+      sportName.toLowerCase().trim(),
+      String(eventId).trim().toLowerCase(),
+      teamName.trim()
+    )
     const cached = genderCache.get(cacheKey)
     if (isCacheValid(cached)) {
       return cached.value
@@ -40,7 +45,7 @@ export async function getTeamGender(teamName, sportName, eventYear) {
     // Find the sport to get team details
     const sportDoc = await Sport.findOne({
       name: sportName.toLowerCase().trim(),
-      event_year: eventYear
+      event_id: String(eventId).trim().toLowerCase()
     }).lean()
 
     if (!sportDoc || !sportDoc.teams_participated) {
@@ -120,7 +125,7 @@ export async function getMatchGender(match, sportDoc = null) {
     if (!sportDoc) {
       sportDoc = await Sport.findOne({
         name: match.sports_name,
-        event_year: match.event_year
+        event_id: match.event_id
       }).lean()
     }
 
@@ -133,7 +138,7 @@ export async function getMatchGender(match, sportDoc = null) {
       // For team sports, get gender from first team
       if (match.teams && match.teams.length > 0) {
         const firstTeamName = match.teams[0].trim()
-        return await getTeamGender(firstTeamName, match.sports_name, match.event_year)
+        return await getTeamGender(firstTeamName, match.sports_name, match.event_id)
       }
     } else {
       // For player sports, get gender from first player
@@ -162,7 +167,7 @@ export async function getPointsEntryGender(pointsEntry, sportDoc = null) {
     if (!sportDoc) {
       sportDoc = await Sport.findOne({
         name: pointsEntry.sports_name,
-        event_year: pointsEntry.event_year
+        event_id: pointsEntry.event_id
       }).lean()
     }
 
@@ -173,7 +178,11 @@ export async function getPointsEntryGender(pointsEntry, sportDoc = null) {
     // Determine participant type
     if (pointsEntry.participant_type === 'team') {
       // For teams, get gender from first player in team
-      return await getTeamGender(pointsEntry.participant, pointsEntry.sports_name, pointsEntry.event_year)
+      return await getTeamGender(
+        pointsEntry.participant,
+        pointsEntry.sports_name,
+        pointsEntry.event_id
+      )
     } else {
       // For players, get gender directly
       return await getPlayerGender(pointsEntry.participant)
@@ -192,20 +201,26 @@ export async function getPointsEntryGender(pointsEntry, sportDoc = null) {
  * @param {number} eventYear - Event year (required for teams)
  * @returns {Promise<Map<string, string>>} Map of participant -> gender
  */
-export async function getParticipantsGender(participants, participantType, sportName = null, eventYear = null) {
+export async function getParticipantsGender(participants, participantType, sportName = null, eventId = null) {
   const genderMap = new Map()
   const uncachedParticipants = []
 
   if (participantType === 'team') {
     // For teams, check cache first, then batch fetch uncached
-    if (!sportName || !eventYear) {
+    if (!sportName || !eventId) {
       return genderMap
     }
+    const normalizedEventId = String(eventId).trim().toLowerCase()
 
     try {
       // Check cache for each team
       participants.forEach(teamName => {
-        const cacheKey = getCacheKey('team', sportName.toLowerCase().trim(), eventYear, teamName.trim())
+        const cacheKey = getCacheKey(
+          'team',
+          sportName.toLowerCase().trim(),
+          normalizedEventId,
+          teamName.trim()
+        )
         const cached = genderCache.get(cacheKey)
         if (isCacheValid(cached)) {
           genderMap.set(teamName.trim(), cached.value)
@@ -221,7 +236,7 @@ export async function getParticipantsGender(participants, participantType, sport
       // Fetch sport document once for all uncached teams
       const sportDoc = await Sport.findOne({
         name: sportName.toLowerCase().trim(),
-        event_year: eventYear
+        event_id: normalizedEventId
       }).lean()
 
       if (!sportDoc || !sportDoc.teams_participated) {
@@ -258,7 +273,12 @@ export async function getParticipantsGender(participants, participantType, sport
               const trimmedTeamName = teamName.trim()
               genderMap.set(trimmedTeamName, player.gender)
               // Cache the result
-              const cacheKey = getCacheKey('team', sportName.toLowerCase().trim(), eventYear, trimmedTeamName)
+              const cacheKey = getCacheKey(
+                'team',
+                sportName.toLowerCase().trim(),
+                normalizedEventId,
+                trimmedTeamName
+              )
               genderCache.set(cacheKey, { value: player.gender, timestamp: Date.now() })
             }
           }
@@ -323,8 +343,9 @@ export function clearPlayerGenderCache(regNumber) {
  * @param {string} sportName - Sport name
  * @param {number} eventYear - Event year
  */
-export function clearTeamGenderCache(teamName, sportName, eventYear) {
-  const cacheKey = getCacheKey('team', sportName.toLowerCase().trim(), eventYear, teamName.trim())
+export function clearTeamGenderCache(teamName, sportName, eventId) {
+  const normalizedEventId = String(eventId).trim().toLowerCase()
+  const cacheKey = getCacheKey('team', sportName.toLowerCase().trim(), normalizedEventId, teamName.trim())
   genderCache.delete(cacheKey)
 }
 
@@ -333,8 +354,9 @@ export function clearTeamGenderCache(teamName, sportName, eventYear) {
  * @param {string} sportName - Sport name
  * @param {number} eventYear - Event year
  */
-export function clearSportGenderCache(sportName, eventYear) {
-  const prefix = `team:${sportName.toLowerCase().trim()}:${eventYear}:`
+export function clearSportGenderCache(sportName, eventId) {
+  const normalizedEventId = String(eventId).trim().toLowerCase()
+  const prefix = `team:${sportName.toLowerCase().trim()}:${normalizedEventId}:`
   for (const key of genderCache.keys()) {
     if (key.startsWith(prefix)) {
       genderCache.delete(key)

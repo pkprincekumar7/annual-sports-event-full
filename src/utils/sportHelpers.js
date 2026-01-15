@@ -82,6 +82,23 @@ export function hasParticipatedInIndividual(user, sportName) {
 }
 
 /**
+ * Check if a user is a coordinator for a specific sport
+ * @param {Object} user - User object with coordinator_in array
+ * @param {string} sportName - Sport name to check
+ * @returns {boolean} True if user is coordinator for the sport
+ */
+export function isCoordinatorForSport(user, sportName) {
+  if (!user || !sportName) return false
+
+  const normalizedSportName = normalizeSportName(sportName)
+  return user.coordinator_in &&
+    Array.isArray(user.coordinator_in) &&
+    user.coordinator_in.some(coordinatorSport =>
+      normalizeSportName(coordinatorSport) === normalizedSportName
+    )
+}
+
+/**
  * Get team size from sport object
  * Handles both 'players' field (from SportsSection) and 'team_size' field (from database)
  * @param {Object} sport - Sport object

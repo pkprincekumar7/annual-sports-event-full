@@ -9,6 +9,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { fetchWithAuth } from '../utils/api'
 import logger from '../utils/logger'
 
+let hasWarnedNoActiveEvent = false
+
 export function useEventYear() {
   const [eventYear, setEventYear] = useState(null)
   const [eventYearConfig, setEventYearConfig] = useState(null)
@@ -72,7 +74,10 @@ export function useEventYear() {
             setEventYear(data.eventYear.event_year)
           } else {
             // No active event year found
-            logger.warn('No active event year found')
+            if (!hasWarnedNoActiveEvent) {
+              logger.warn('No active event year found')
+              hasWarnedNoActiveEvent = true
+            }
             
             // Check if user is logged in - if yes, use latest event year as fallback
             const authToken = localStorage.getItem('authToken')

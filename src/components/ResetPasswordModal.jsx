@@ -2,15 +2,18 @@ import { useState, useEffect } from 'react'
 import { Modal, Button, Input } from './ui'
 import { useApi } from '../hooks'
 import { API_URL } from '../utils/api'
+import { validateEmail } from '../utils/formValidation'
 import logger from '../utils/logger'
 
 function ResetPasswordModal({ isOpen, onClose, onStatusPopup }) {
+  const [regNumber, setRegNumber] = useState('')
   const [emailId, setEmailId] = useState('')
   const { loading, execute } = useApi()
 
   // Reset form when modal closes
   useEffect(() => {
     if (!isOpen) {
+      setRegNumber('')
       setEmailId('')
     }
   }, [isOpen])
@@ -18,14 +21,18 @@ function ResetPasswordModal({ isOpen, onClose, onStatusPopup }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
 
+    if (!regNumber.trim()) {
+      onStatusPopup('❌ Please enter your registration number.', 'error', 2500)
+      return
+    }
+
     if (!emailId.trim()) {
       onStatusPopup('❌ Please enter your email ID.', 'error', 2500)
       return
     }
 
     // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(emailId.trim())) {
+    if (!validateEmail(emailId)) {
       onStatusPopup('❌ Please enter a valid email ID.', 'error', 2500)
       return
     }
@@ -38,13 +45,15 @@ function ResetPasswordModal({ isOpen, onClose, onStatusPopup }) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
+            reg_number: regNumber.trim(),
             email_id: emailId.trim(),
           }),
         }),
         {
           onSuccess: (data) => {
             // Always show success message (for security, don't reveal if email exists)
-            onStatusPopup('✅ If the email exists, a new password has been sent to your email.', 'success', 4000)
+            onStatusPopup('✅ If the registration number and email match, a new password has been sent.', 'success', 4000)
+            setRegNumber('')
             setEmailId('')
             onClose()
           },
@@ -68,8 +77,17 @@ function ResetPasswordModal({ isOpen, onClose, onStatusPopup }) {
     >
       <form onSubmit={handleSubmit}>
         <div className="mb-4 text-sm text-[#cbd5ff]">
-          Enter your email ID and we'll send you a new password. You'll be required to change it after login.
+          Enter your registration number and email ID. If they match, we'll send you a new password.
         </div>
+
+        <Input
+          label="Registration Number"
+          id="reset_reg_number"
+          name="reg_number"
+          value={regNumber}
+          onChange={(e) => setRegNumber(e.target.value)}
+          required
+        />
 
         <Input
           label="Email ID"

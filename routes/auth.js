@@ -52,22 +52,31 @@ router.post(
     }
 
     // Get active event year for computed fields
-    let eventYear = null
+    let eventId = null
     const cachedActiveYear = getCache('/api/event-years/active')
     if (cachedActiveYear) {
-      eventYear = cachedActiveYear.event_year
+      eventId = cachedActiveYear.event_id || null
     } else {
       const activeYear = await findActiveEventYear()
       if (activeYear) {
-        eventYear = activeYear.event_year
+        eventId = activeYear.event_id || null
         setCache('/api/event-years/active', activeYear)
       } else {
-        eventYear = new Date().getFullYear()
+        eventId = null
       }
     }
 
-    // Compute participation data
-    const participation = await computePlayerParticipation(player.reg_number, eventYear)
+    // Compute participation data (allow login even if no active event exists)
+    let participation = { participated_in: [], captain_in: [], coordinator_in: [] }
+    try {
+      participation = await computePlayerParticipation(player.reg_number, eventId)
+    } catch (error) {
+      if (String(error?.message || '').includes('No active event year found')) {
+        participation = { participated_in: [], captain_in: [], coordinator_in: [] }
+      } else {
+        throw error
+      }
+    }
 
     // Generate JWT token
     const tokenPayload = {
@@ -159,12 +168,17 @@ router.post(
 router.post(
   '/reset-password',
   asyncHandler(async (req, res) => {
-    const { email_id } = req.body
+    const { reg_number, email_id } = req.body
+
+    if (!reg_number || !reg_number.trim()) {
+      return sendErrorResponse(res, 400, 'Registration number is required')
+    }
 
     if (!email_id || !email_id.trim()) {
       return sendErrorResponse(res, 400, 'Email ID is required')
     }
 
+    const trimmedRegNumber = reg_number.trim()
     const trimmedEmail = email_id.trim()
 
     // Validate email format
@@ -173,11 +187,11 @@ router.post(
       return sendErrorResponse(res, 400, 'Invalid email format')
     }
 
-    // Find player by email
-    const player = await Player.findOne({ email_id: trimmedEmail })
+    // Find player by reg_number and email
+    const player = await Player.findOne({ reg_number: trimmedRegNumber, email_id: trimmedEmail })
     if (!player) {
-      // Don't reveal if email exists or not for security
-      return sendSuccessResponse(res, {}, 'If the email exists, a new password has been sent')
+      // Don't reveal if reg_number/email exists or not for security
+      return sendSuccessResponse(res, {}, 'If the registration number and email match, a new password has been sent')
     }
 
     // Generate new random password (8 characters, alphanumeric)
@@ -212,8 +226,8 @@ router.post(
       logger.warn(`Password reset for ${trimmedEmail}. New password: ${newPassword} (Email sending failed)`)
     }
 
-    // Return success (don't reveal if email exists)
-    return sendSuccessResponse(res, {}, 'If the email exists, a new password has been sent')
+    // Return success (don't reveal if reg_number/email exists)
+    return sendSuccessResponse(res, {}, 'If the registration number and email match, a new password has been sent')
   })
 )
 

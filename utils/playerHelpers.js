@@ -3,9 +3,8 @@
  * Utility functions for player-related operations
  */
 
-import EventYear from '../models/EventYear.js'
 import Sport from '../models/Sport.js'
-import { findActiveEventYear } from './yearHelpers.js'
+import { getEventYear } from './yearHelpers.js'
 
 /**
  * Compute player participation from Sports collection
@@ -13,12 +12,9 @@ import { findActiveEventYear } from './yearHelpers.js'
  * @param {number|null} eventYear - Event year (defaults to active event year if not provided)
  * @returns {Promise<{participated_in: Array, captain_in: Array, coordinator_in: Array}>} Participation data
  */
-export async function computePlayerParticipation(playerRegNumber, eventYear = null) {
-  // If eventYear not provided, get active event year
-  if (!eventYear) {
-    const activeYear = await findActiveEventYear()
-    eventYear = activeYear ? activeYear.event_year : new Date().getFullYear()
-  }
+export async function computePlayerParticipation(playerRegNumber, eventId) {
+  const eventYearData = await getEventYear(eventId, { returnDoc: true })
+  const resolvedEventId = eventYearData.doc.event_id
   
   // Find all sports where player is:
   // 1. An eligible captain (in eligible_captains array)
@@ -26,9 +22,9 @@ export async function computePlayerParticipation(playerRegNumber, eventYear = nu
   // 3. A team member (in teams_participated[].players)
   // 4. An individual participant (in players_participated)
   // 5. An eligible coordinator (in eligible_coordinators array)
-  // Filter by event_year
+  // Filter by event_id
   const sports = await Sport.find({
-    event_year: eventYear,
+    event_id: resolvedEventId,
     $or: [
       { eligible_captains: playerRegNumber },
       { 'teams_participated.captain': playerRegNumber },
@@ -99,16 +95,13 @@ export async function computePlayerParticipation(playerRegNumber, eventYear = nu
  * @param {number|null} eventYear - Event year (defaults to active event year if not provided)
  * @returns {Promise<Object>} Map of reg_number -> {participated_in: Array, captain_in: Array, coordinator_in: Array}
  */
-export async function computePlayersParticipationBatch(playerRegNumbers, eventYear = null) {
+export async function computePlayersParticipationBatch(playerRegNumbers, eventId) {
   if (!playerRegNumbers || playerRegNumbers.length === 0) {
     return {}
   }
 
-  // If eventYear not provided, get active event year
-  if (!eventYear) {
-    const activeYear = await findActiveEventYear()
-    eventYear = activeYear ? activeYear.event_year : new Date().getFullYear()
-  }
+  const eventYearData = await getEventYear(eventId, { returnDoc: true })
+  const resolvedEventId = eventYearData.doc.event_id
 
   // Initialize result map
   const result = {}
@@ -122,7 +115,7 @@ export async function computePlayersParticipationBatch(playerRegNumbers, eventYe
 
   // OPTIMIZATION: Single query to fetch all sports for all players
   const sports = await Sport.find({
-    event_year: eventYear,
+    event_id: resolvedEventId,
     $or: [
       { eligible_captains: { $in: playerRegNumbers } },
       { 'teams_participated.captain': { $in: playerRegNumbers } },

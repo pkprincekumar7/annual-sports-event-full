@@ -20,6 +20,13 @@ export const validatePhone = (phone) => {
 }
 
 /**
+ * Validate password (non-empty)
+ */
+export const validatePassword = (password) => {
+  return typeof password === 'string' && password.trim().length > 0
+}
+
+/**
  * Validate required fields
  */
 export const validateRequired = (fields) => {
@@ -69,6 +76,11 @@ export const validatePlayerForm = (data) => {
   // Phone validation
   if (data.mobile_number && !validatePhone(data.mobile_number)) {
     errors.push('Invalid mobile number. Must be 10 digits.')
+  }
+
+  // Password validation
+  if (data.password !== undefined && !validatePassword(data.password)) {
+    errors.push('Password is required')
   }
 
   return {

@@ -12,7 +12,7 @@ const TABS = {
   REMOVE: 'remove'
 }
 
-function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) {
+function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
   const [activeTab, setActiveTab] = useState(TABS.ADD)
   
   // Add Captain State
@@ -29,7 +29,7 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
   const isRefreshingRef = useRef(false)
   
   const { loading, execute } = useApi()
-  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+  const { eventYear, eventId } = useEventYearWithFallback(selectedEventId)
   const { eventYearConfig } = useEventYear()
   const confirmModal = useModal(false)
   
@@ -51,8 +51,8 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
     const fetchData = async () => {
       try {
         const [playersRes, sportsRes] = await Promise.all([
-          fetchWithAuth(buildApiUrlWithYear('/api/players', eventYear, null, eventName), { signal: abortController.signal }),
-          fetchWithAuth(buildApiUrlWithYear('/api/sports', eventYear, null, eventName), { signal: abortController.signal }),
+          fetchWithAuth(buildApiUrlWithYear('/api/players', eventId), { signal: abortController.signal }),
+          fetchWithAuth(buildApiUrlWithYear('/api/sports', eventId), { signal: abortController.signal }),
         ])
 
         if (!isMounted) return
@@ -100,7 +100,7 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
   // Fetch captains by sport for Remove tab
   useEffect(() => {
     if (isOpen && activeTab === TABS.REMOVE && eventYear) {
-      fetchWithAuth(buildApiUrlWithYear('/api/captains-by-sport', eventYear, null, eventName))
+      fetchWithAuth(buildApiUrlWithYear('/api/captains-by-sport', eventId))
         .then((res) => {
           if (!res.ok) {
             if (res.status >= 500) {
@@ -172,16 +172,15 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
           body: JSON.stringify({
             reg_number: selectedPlayer.reg_number,
             sport: selectedSport.trim(),
-            event_year: eventYear,
-            event_name: eventName,
+            event_id: eventId,
           }),
         }),
         {
           onSuccess: (data) => {
-            clearCache(buildApiUrlWithYear('/api/captains-by-sport', eventYear, null, eventName))
-            clearCache(buildApiUrlWithYear('/api/players', eventYear, null, eventName))
-            clearCache(buildApiUrlWithYear('/api/me', eventYear, null, eventName))
-            clearCache(buildApiUrlWithYear('/api/sports', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/captains-by-sport', eventId))
+            clearCache(buildApiUrlWithYear('/api/players', eventId))
+            clearCache(buildApiUrlWithYear('/api/me', eventId))
+            clearCache(buildApiUrlWithYear('/api/sports', eventId))
             
             onStatusPopup(
               `✅ ${selectedPlayer.full_name} has been added as captain for ${selectedSport}!`,
@@ -242,8 +241,7 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
           body: JSON.stringify({
             reg_number: regNumber,
             sport: sport,
-            event_year: eventYear,
-            event_name: eventName,
+            event_id: eventId,
           }),
         }),
         {
@@ -254,12 +252,12 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventY
               3000
             )
             isRefreshingRef.current = true
-            clearCache(buildApiUrlWithYear('/api/captains-by-sport', eventYear, null, eventName))
-            clearCache(buildApiUrlWithYear('/api/players', eventYear, null, eventName))
-            clearCache(buildApiUrlWithYear('/api/me', eventYear, null, eventName))
-            clearCache(buildApiUrlWithYear('/api/sports', eventYear, null, eventName))
+            clearCache(buildApiUrlWithYear('/api/captains-by-sport', eventId))
+            clearCache(buildApiUrlWithYear('/api/players', eventId))
+            clearCache(buildApiUrlWithYear('/api/me', eventId))
+            clearCache(buildApiUrlWithYear('/api/sports', eventId))
             
-            const captainsUrl = buildApiUrlWithYear('/api/captains-by-sport', eventYear, null, eventName)
+            const captainsUrl = buildApiUrlWithYear('/api/captains-by-sport', eventId)
             fetchWithAuth(captainsUrl, { skipCache: true })
               .then((res) => {
                 if (!res.ok) {

@@ -133,16 +133,18 @@ router.post('/', authenticateToken, requireAdmin, asyncHandler(async (req, res) 
   if (isNaN(eventYearNum)) {
     return sendErrorResponse(res, 400, 'event_year must be a valid number')
   }
+
+  const eventNameTrimmed = event_name.trim().toLowerCase()
   
-  // Check if event year already exists
-  const existingYear = await EventYear.findOne({ event_year: eventYearNum })
+  // Check if event year + event name combination already exists
+  const existingYear = await EventYear.findOne({ event_year: eventYearNum, event_name: eventNameTrimmed })
   if (existingYear) {
-    return sendErrorResponse(res, 409, 'Event year already exists')
+    return sendErrorResponse(res, 409, 'Event year and event name combination already exists')
   }
   
   const eventYear = new EventYear({
     event_year: eventYearNum,
-    event_name: event_name.trim(),
+    event_name: eventNameTrimmed,
     event_dates,
     registration_dates,
     event_organizer: event_organizer ? event_organizer.trim() : undefined, // Will use default if not provided
@@ -156,17 +158,29 @@ router.post('/', authenticateToken, requireAdmin, asyncHandler(async (req, res) 
   // Clear cache
   clearCache('/api/event-years/active')
   
-  return sendSuccessResponse(res, eventYear, 'Event year created successfully', 201)
+  const responseEventYear = {
+    _id: eventYear._id,
+    event_id: eventYear.event_id,
+    event_year: eventYear.event_year,
+    event_name: eventYear.event_name,
+    event_dates: eventYear.event_dates,
+    registration_dates: eventYear.registration_dates,
+    event_organizer: eventYear.event_organizer,
+    event_title: eventYear.event_title,
+    event_highlight: eventYear.event_highlight
+  }
+  
+  return sendSuccessResponse(res, responseEventYear, 'Event year created successfully', 201)
 }))
 
 /**
- * PUT /api/event-years/:event_year
+ * PUT /api/event-years/:event_id
  * Update event year configuration (admin only)
  * Validates date relationships and enforces update restrictions based on current date
  * Allows updates until registration end date (current date <= registration end date)
  */
-router.put('/:event_year', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
-  const { event_year } = req.params
+router.put('/:event_id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+  const { event_id } = req.params
   const { createdBy, updatedBy, ...bodyData } = req.body
   
   // Explicitly reject if user tries to send createdBy or updatedBy
@@ -175,8 +189,12 @@ router.put('/:event_year', authenticateToken, requireAdmin, asyncHandler(async (
   }
   
   const { event_name, event_dates, registration_dates, event_organizer, event_title, event_highlight } = bodyData
+  const eventId = String(event_id || '').trim().toLowerCase()
+  if (!eventId) {
+    return sendErrorResponse(res, 400, 'event_id parameter is required to update an event year')
+  }
   
-  const eventYear = await EventYear.findOne({ event_year: parseInt(event_year) })
+  const eventYear = await EventYear.findOne({ event_id: eventId })
   if (!eventYear) {
     return handleNotFoundError(res, 'Event year')
   }
@@ -204,7 +222,18 @@ router.put('/:event_year', authenticateToken, requireAdmin, asyncHandler(async (
   }
   
   if (event_name) {
-    eventYear.event_name = event_name.trim()
+    const nextEventName = String(event_name).trim().toLowerCase()
+    if (nextEventName && nextEventName !== eventYear.event_name) {
+      const existing = await EventYear.findOne({
+        event_year: eventYear.event_year,
+        event_name: nextEventName,
+        _id: { $ne: eventYear._id }
+      })
+      if (existing) {
+        return sendErrorResponse(res, 409, 'Event year and event name combination already exists')
+      }
+      eventYear.event_name = nextEventName
+    }
   }
   if (event_organizer !== undefined) {
     eventYear.event_organizer = event_organizer ? event_organizer.trim() : 'Events Community'
@@ -269,15 +298,18 @@ router.put('/:event_year', authenticateToken, requireAdmin, asyncHandler(async (
 
 
 /**
- * DELETE /api/event-years/:event_year
+ * DELETE /api/event-years/:event_id
  * Delete event year (admin only, only if no data exists and not active)
  * Allows deletion only before registration start date
  */
-router.delete('/:event_year', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
-  const { event_year } = req.params
-  const eventYear = parseInt(event_year)
+router.delete('/:event_id', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
+  const { event_id } = req.params
+  const eventId = String(event_id || '').trim().toLowerCase()
+  if (!eventId) {
+    return sendErrorResponse(res, 400, 'event_id parameter is required to delete an event year')
+  }
   
-  const yearDoc = await EventYear.findOne({ event_year: eventYear })
+  const yearDoc = await EventYear.findOne({ event_id: eventId })
   if (!yearDoc) {
     return handleNotFoundError(res, 'Event year')
   }
@@ -301,31 +333,31 @@ router.delete('/:event_year', authenticateToken, requireAdmin, asyncHandler(asyn
     )
   }
   
-  // Check if any data exists for this event year and event name
+  // Check if any data exists for this event
   // Note: Sport, EventSchedule, PointsTable models may not exist yet during initial implementation
   // We'll check dynamically
-  const eventName = yearDoc.event_name
+  const eventIdFromDoc = yearDoc.event_id
   let sportsCount = 0
   let schedulesCount = 0
   let pointsCount = 0
   
   try {
     const Sport = (await import('../models/Sport.js')).default
-    sportsCount = await Sport.countDocuments({ event_year: eventYear, event_name: eventName })
+    sportsCount = await Sport.countDocuments({ event_id: eventIdFromDoc })
   } catch (e) {
     // Model doesn't exist yet, skip
   }
   
   try {
     const EventSchedule = (await import('../models/EventSchedule.js')).default
-    schedulesCount = await EventSchedule.countDocuments({ event_year: eventYear, event_name: eventName })
+    schedulesCount = await EventSchedule.countDocuments({ event_id: eventIdFromDoc })
   } catch (e) {
     // Model doesn't exist yet, skip
   }
   
   try {
     const PointsTable = (await import('../models/PointsTable.js')).default
-    pointsCount = await PointsTable.countDocuments({ event_year: eventYear, event_name: eventName })
+    pointsCount = await PointsTable.countDocuments({ event_id: eventIdFromDoc })
   } catch (e) {
     // Model doesn't exist yet, skip
   }

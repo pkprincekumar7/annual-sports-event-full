@@ -82,7 +82,7 @@ function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUs
   )
 }
 
-function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selectedEventYear }) {
+function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selectedEventId }) {
   const [sports, setSports] = useState([])
   const [sportsCounts, setSportsCounts] = useState({
     teams_counts: {},
@@ -91,14 +91,14 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
   const [loadingSports, setLoadingSports] = useState(false)
   const [loadingCounts, setLoadingCounts] = useState(false)
   const [error, setError] = useState(null)
-  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+  const { eventYear, eventId } = useEventYearWithFallback(selectedEventId)
   const prevLoggedInUserRef = useRef(null)
   const hasFetchedRef = useRef(false)
 
   // Fetch sports from API
   useEffect(() => {
-    // Wait for both eventYear and eventName to be available before making API call
-    if (!eventYear || !eventName) return
+    // Wait for eventId before making API call
+    if (!eventId) return
 
     let isMounted = true
     const abortController = new AbortController()
@@ -107,7 +107,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
       setLoadingSports(true)
       setError(null)
       try {
-        const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports', eventYear, null, eventName), {
+        const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports', eventId), {
           signal: abortController.signal,
         })
 
@@ -161,15 +161,15 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
       isMounted = false
       abortController.abort()
     }
-  }, [eventYear, eventName])
+  }, [eventId])
 
   // Fetch all sports counts once when user logs in
   useEffect(() => {
     const prevUser = prevLoggedInUserRef.current
     const justLoggedIn = prevUser === null && loggedInUser !== null
     
-    // Wait for both eventYear and eventName to be available before making API call
-    if (!loggedInUser || !eventYear || !eventName) {
+    // Wait for eventId before making API call
+    if (!loggedInUser || !eventId) {
       setSportsCounts({ teams_counts: {}, participants_counts: {} })
       hasFetchedRef.current = false
       prevLoggedInUserRef.current = null
@@ -184,7 +184,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
       return
     }
 
-    clearSportManagementCaches(eventYear, eventName)
+    clearSportManagementCaches(eventId)
 
     let isMounted = true
     const abortController = new AbortController()
@@ -192,7 +192,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
     const fetchAllCounts = async () => {
       setLoadingCounts(true)
       try {
-        const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports-counts', eventYear, null, eventName), {
+        const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports-counts', eventId), {
           signal: abortController.signal,
         })
 
@@ -233,7 +233,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
     return () => {
       isMounted = false
     }
-  }, [loggedInUser, eventYear, eventName])
+  }, [loggedInUser, eventId])
 
   // Group sports by category
   const teamSports = sports.filter(s => s.category === 'team events')

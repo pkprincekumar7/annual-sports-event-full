@@ -6,7 +6,7 @@
 
 import EventSchedule from '../models/EventSchedule.js'
 import { recalculatePointsTableForGender } from './pointsTable.js'
-import { findSportByNameAndYear } from './sportHelpers.js'
+import { findSportByNameAndId } from './sportHelpers.js'
 
 /**
  * Backfill points table for a specific sport and year
@@ -15,10 +15,10 @@ import { findSportByNameAndYear } from './sportHelpers.js'
  * @param {number} eventYear - Event year
  * @returns {Promise<{processed: number, created: number, errors: number, message: string}>}
  */
-export async function backfillPointsTableForSport(sportName, eventYear) {
+export async function backfillPointsTableForSport(sportName, eventId) {
   try {
     // Find sport to verify it exists and is dual type
-    const sportDoc = await findSportByNameAndYear(sportName, eventYear)
+    const sportDoc = await findSportByNameAndId(sportName, eventId)
     
     if (!sportDoc || (sportDoc.type !== 'dual_team' && sportDoc.type !== 'dual_player')) {
       return {
@@ -36,7 +36,7 @@ export async function backfillPointsTableForSport(sportName, eventYear) {
 
     try {
       // Recalculate for Male
-      await recalculatePointsTableForGender(sportName, eventYear, 'Male')
+      await recalculatePointsTableForGender(sportName, eventId, 'Male', eventId)
       created++
     } catch (error) {
       console.error(`Error recalculating points table for Male:`, error)
@@ -45,7 +45,7 @@ export async function backfillPointsTableForSport(sportName, eventYear) {
 
     try {
       // Recalculate for Female
-      await recalculatePointsTableForGender(sportName, eventYear, 'Female')
+      await recalculatePointsTableForGender(sportName, eventId, 'Female', eventId)
       created++
     } catch (error) {
       console.error(`Error recalculating points table for Female:`, error)
@@ -55,7 +55,7 @@ export async function backfillPointsTableForSport(sportName, eventYear) {
     // Count how many matches were processed
     const completedMatches = await EventSchedule.find({
       sports_name: sportName.toLowerCase().trim(),
-      event_year: eventYear,
+      event_id: String(eventId).trim().toLowerCase(),
       match_type: 'league',
       status: { $in: ['completed', 'draw', 'cancelled'] }
     }).countDocuments()
@@ -82,13 +82,14 @@ export async function backfillPointsTableForSport(sportName, eventYear) {
  * @param {number} eventYear - Event year
  * @returns {Promise<Object>} Summary of backfill operations
  */
-export async function backfillPointsTableForYear(eventYear) {
+export async function backfillPointsTableForYear(eventId) {
   try {
     const Sport = (await import('../models/Sport.js')).default
+    const normalizedEventId = String(eventId).trim().toLowerCase()
     
     // Get all dual_team and dual_player sports for this year
     const sports = await Sport.find({
-      event_year: eventYear,
+      event_id: normalizedEventId,
       type: { $in: ['dual_team', 'dual_player'] }
     }).select('name type').lean()
 
@@ -98,7 +99,7 @@ export async function backfillPointsTableForYear(eventYear) {
     let totalErrors = 0
 
     for (const sport of sports) {
-      const result = await backfillPointsTableForSport(sport.name, eventYear)
+      const result = await backfillPointsTableForSport(sport.name, eventId)
       results[sport.name] = result
       totalProcessed += result.processed
       totalCreated += result.created

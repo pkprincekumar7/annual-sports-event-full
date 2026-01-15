@@ -96,39 +96,32 @@ export function normalizeSportName(name) {
 }
 
 /**
- * Find sport by name, event year, and event name
+ * Find sport by name and event_id
  * @param {string} sportName - Sport name (will be normalized)
- * @param {number} eventYear - Event year
- * @param {string} eventName - Event name (optional for backward compatibility, but recommended)
+ * @param {string} eventId - Event ID
  * @param {Object} options - Query options
  * @param {boolean} options.lean - Use lean() for read-only queries (default: true)
  * @param {string} options.select - Fields to select
  * @returns {Promise<Object|null>} Sport document or null if not found
  * @throws {Error} Throws error if sport not found (should be caught by asyncHandler)
  */
-export async function findSportByNameAndYear(sportName, eventYear, eventName = null, options = {}) {
+export async function findSportByNameAndId(sportName, eventId, options = {}) {
   const { lean = true, select = null } = options
 
-  if (!sportName || !eventYear) {
-    throw new Error('Sport name and event year are required')
+  if (!sportName || !eventId) {
+    throw new Error('Sport name and event ID are required')
   }
 
   const normalizedName = normalizeSportName(sportName)
-  const yearNum = parseInt(eventYear)
-  
-  if (isNaN(yearNum)) {
-    throw new Error('Event year must be a valid number')
+  const normalizedEventId = String(eventId).trim().toLowerCase()
+  if (!normalizedEventId) {
+    throw new Error('Event ID must be a valid string')
   }
 
-  // Build query with event_year and optionally event_name
+  // Build query with event_id
   const queryFilter = {
     name: normalizedName,
-    event_year: yearNum
-  }
-  
-  // If event_name is provided, include it in the filter
-  if (eventName) {
-    queryFilter.event_name = eventName
+    event_id: normalizedEventId
   }
 
   let query = Sport.findOne(queryFilter)
@@ -144,8 +137,7 @@ export async function findSportByNameAndYear(sportName, eventYear, eventName = n
   const sportDoc = await query
 
   if (!sportDoc) {
-    const eventInfo = eventName ? `event year ${yearNum} (${eventName})` : `event year ${yearNum}`
-    throw new Error(`Sport "${sportName}" not found for ${eventInfo}`)
+    throw new Error(`Sport "${sportName}" not found for event ID ${normalizedEventId}`)
   }
 
   return sportDoc

@@ -5,19 +5,19 @@ import ParticipantDetailsModal from './ParticipantDetailsModal'
 import EventScheduleModal from './EventScheduleModal'
 import PointsTableModal from './PointsTableModal'
 import { formatSportName } from '../utils/stringHelpers'
-import { isTeamSport, getSportType, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual } from '../utils/sportHelpers'
+import { isTeamSport, getSportType, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual, isCoordinatorForSport } from '../utils/sportHelpers'
 import { fetchWithAuth } from '../utils/api'
 import { buildSportApiUrl } from '../utils/apiHelpers'
 import { useEventYearWithFallback } from '../hooks'
 import logger from '../utils/logger'
 
-function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onStatusPopup, onUserUpdate, onEventScheduleClick, selectedEventYear }) {
+function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onStatusPopup, onUserUpdate, onEventScheduleClick, selectedEventId }) {
   const [activeTab, setActiveTab] = useState(null)
   const hasSetInitialTabRef = useRef(false)
   const lastSportRef = useRef(null)
   const initialTabSetRef = useRef(false)
   const [sportDetails, setSportDetails] = useState(null) // Store fetched sport details with type
-  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+  const { eventYear, eventId } = useEventYearWithFallback(selectedEventId)
   
   // Fetch sport details to get the type
   useEffect(() => {
@@ -28,7 +28,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
 
     const fetchSportDetails = async () => {
       try {
-        const response = await fetchWithAuth(buildSportApiUrl('sports', selectedSport.name, eventYear, eventName))
+        const response = await fetchWithAuth(buildSportApiUrl('sports', selectedSport.name, eventId))
         if (response.ok) {
           const data = await response.json()
           if (data && data.name) {
@@ -42,7 +42,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
     }
 
     fetchSportDetails()
-  }, [isOpen, selectedSport?.name, eventYear, eventName])
+  }, [isOpen, selectedSport?.name, eventYear, eventId])
 
   // All hooks must be called before any early returns
   // Reset active tab when modal closes
@@ -81,25 +81,27 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
     }
     
     const isAdmin = loggedInUser?.reg_number === 'admin'
+    const isCoordinator = !isAdmin && isCoordinatorForSport(loggedInUser, selectedSport?.name)
+    const canManageSport = isAdmin || isCoordinator
     // Get sport type from fetched sportDetails (most reliable) or from selectedSport
     const sportType = sportDetails?.type || getSportType(selectedSport)
     const isTeam = isTeamSport(sportType)
     
     // Check if user is a captain for this sport
-    const isCaptainForThisSport = !isAdmin && isCaptainForSport(loggedInUser, selectedSport.name)
+    const isCaptainForThisSport = !canManageSport && isCaptainForSport(loggedInUser, selectedSport.name)
     
     // Check if user is enrolled in this team event
-    const isEnrolledInTeam = !isAdmin && isEnrolledInTeamEvent(loggedInUser, selectedSport.name)
+    const isEnrolledInTeam = !canManageSport && isEnrolledInTeamEvent(loggedInUser, selectedSport.name)
     
     // Check if user has participated in individual event (recompute on every loggedInUser change)
-    const hasParticipatedInIndividualEvent = selectedSport?.name && hasParticipatedInIndividual(loggedInUser, selectedSport.name)
+    const hasParticipatedInIndividualEvent = !canManageSport && selectedSport?.name && hasParticipatedInIndividual(loggedInUser, selectedSport.name)
     
     // Check if sport is dual_team or dual_player (for Points Table tab)
     const isDualSport = sportType === 'dual_team' || sportType === 'dual_player'
     
     // Determine available tabs
     let availableTabs = []
-    if (isAdmin) {
+    if (canManageSport) {
       if (isTeam) {
         availableTabs = [
           { id: 'teams', label: 'View Teams' },
@@ -176,18 +178,20 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
 
   // Compute values needed for useMemo (must be before useMemo hook)
   const isAdmin = loggedInUser?.reg_number === 'admin'
+  const isCoordinator = !isAdmin && isCoordinatorForSport(loggedInUser, selectedSport?.name)
+  const canManageSport = isAdmin || isCoordinator
   // Get sport type from fetched sportDetails (most reliable) or from selectedSport
   const sportType = sportDetails?.type || getSportType(selectedSport)
   const isTeam = isTeamSport(sportType)
   
   // Check if user is a captain for this sport (only if selectedSport exists)
-  const isCaptainForThisSport = !isAdmin && selectedSport?.name && isCaptainForSport(loggedInUser, selectedSport.name)
+  const isCaptainForThisSport = !canManageSport && selectedSport?.name && isCaptainForSport(loggedInUser, selectedSport.name)
   
   // Check if user is enrolled in this team event (only if selectedSport exists)
-  const isEnrolledInTeam = !isAdmin && selectedSport?.name && isEnrolledInTeamEvent(loggedInUser, selectedSport.name)
+  const isEnrolledInTeam = !canManageSport && selectedSport?.name && isEnrolledInTeamEvent(loggedInUser, selectedSport.name)
   
   // Check if user has participated in individual event (only if selectedSport exists)
-  const hasParticipatedInIndividualEvent = !isAdmin && selectedSport?.name && hasParticipatedInIndividual(loggedInUser, selectedSport.name)
+  const hasParticipatedInIndividualEvent = !canManageSport && selectedSport?.name && hasParticipatedInIndividual(loggedInUser, selectedSport.name)
 
   // Determine sport type for EventScheduleModal (legacy format for compatibility)
   const isCultural = selectedSport && selectedSport.category === 'literary and cultural activities'
@@ -220,7 +224,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             loggedInUser={loggedInUser}
             onUserUpdate={onUserUpdate}
             embedded={true}
-            selectedEventYear={selectedEventYear}
+            selectedEventId={selectedEventId}
           />
         )
           }
@@ -239,7 +243,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
               loggedInUser={loggedInUser}
               onStatusPopup={onStatusPopup}
               embedded={true}
-              selectedEventYear={selectedEventYear}
+              selectedEventId={selectedEventId}
             />
           )
         } else {
@@ -254,7 +258,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
               loggedInUser={loggedInUser}
               onUserUpdate={onUserUpdate}
               embedded={true}
-              selectedEventYear={selectedEventYear}
+              selectedEventId={selectedEventId}
             />
           )
         }
@@ -269,7 +273,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
-            selectedEventYear={selectedEventYear}
+            selectedEventId={selectedEventId}
           />
         )
       
@@ -283,7 +287,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
-            selectedEventYear={selectedEventYear}
+            selectedEventId={selectedEventId}
           />
         )
       
@@ -298,7 +302,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
-            selectedEventYear={selectedEventYear}
+            selectedEventId={selectedEventId}
           />
         )
       
@@ -324,7 +328,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
               // The modal will close automatically via RegisterModal's onClose after success
             }}
             embedded={true}
-            selectedEventYear={selectedEventYear}
+            selectedEventId={selectedEventId}
           />
         )
       
@@ -337,7 +341,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             sport={selectedSport.name}
             loggedInUser={loggedInUser}
             embedded={true}
-            selectedEventYear={selectedEventYear}
+            selectedEventId={selectedEventId}
             isActive={activeTab === 'points'}
             onStatusPopup={onStatusPopup}
           />
@@ -346,7 +350,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       default:
         return null
     }
-  }, [activeTab, selectedSport?.name, isTeam, legacySportType, isOpen, onClose, loggedInUser, onStatusPopup, onUserUpdate, isCaptainForThisSport, isEnrolledInTeam, selectedEventYear])
+  }, [activeTab, selectedSport?.name, isTeam, legacySportType, isOpen, onClose, loggedInUser, onStatusPopup, onUserUpdate, isCaptainForThisSport, isEnrolledInTeam, selectedEventId])
 
   // Determine available tabs based on user type and sport type
   const getAvailableTabs = () => {
@@ -362,7 +366,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
     const currentIsTeam = isTeamSport(currentSportType)
     const isDualSport = currentSportType === 'dual_team' || currentSportType === 'dual_player'
     
-    if (isAdmin) {
+    if (canManageSport) {
       const tabs = []
       if (currentIsTeam) {
         tabs.push({ id: 'teams', label: 'View Teams' })
@@ -381,8 +385,8 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       const tabs = []
       // Can create team if captain and not enrolled
       // Recompute here to ensure we have the latest values
-      const isCaptain = !isAdmin && isCaptainForSport(loggedInUser, selectedSport?.name)
-      const isEnrolled = !isAdmin && isEnrolledInTeamEvent(loggedInUser, selectedSport?.name)
+      const isCaptain = !canManageSport && isCaptainForSport(loggedInUser, selectedSport?.name)
+      const isEnrolled = !canManageSport && isEnrolledInTeamEvent(loggedInUser, selectedSport?.name)
       
       // For team sports: 
       // - If captain and not enrolled: Show "Create Team" and "View Events" only
@@ -407,7 +411,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
       const tabs = []
       
       // Check participation status
-      const hasParticipated = !isAdmin && hasParticipatedInIndividual(loggedInUser, selectedSport?.name)
+      const hasParticipated = !canManageSport && hasParticipatedInIndividual(loggedInUser, selectedSport?.name)
       
       if (!hasParticipated) {
         // Not participated: "Enroll Now" should be first

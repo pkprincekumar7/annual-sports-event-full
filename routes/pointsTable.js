@@ -5,11 +5,12 @@
 
 import express from 'express'
 import PointsTable from '../models/PointsTable.js'
-import { authenticateToken, requireAdmin } from '../middleware/auth.js'
+import { authenticateToken } from '../middleware/auth.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { getEventYear } from '../utils/yearHelpers.js'
-import { normalizeSportName, findSportByNameAndYear } from '../utils/sportHelpers.js'
+import { normalizeSportName, findSportByNameAndId } from '../utils/sportHelpers.js'
+import { requireAdminOrCoordinator } from '../utils/coordinatorHelpers.js'
 import { getPointsEntryGender, getMatchGender } from '../utils/genderHelpers.js'
 import logger from '../utils/logger.js'
 
@@ -18,8 +19,8 @@ const router = express.Router()
 /**
  * GET /api/points-table/:sport
  * Get points table for a specific sport (sorted by points descending)
- * Event Year Filter: Accepts ?event_year=2026 parameter (defaults to active event year)
- * Filter by event_year and sports_name
+ * Event ID Filter: Accepts ?event_id=2026-umang parameter (defaults to active event)
+ * Filter by event_id and sports_name
  */
 router.get(
   '/points-table/:sport',
@@ -27,25 +28,13 @@ router.get(
   asyncHandler(async (req, res) => {
     const { sport } = req.params
     
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-    }
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
     
     let eventYearData
     
     try {
       // Try to get event year with document - if it doesn't exist, return empty points table
-      // Extract event_name from query if provided for composite key filtering
-      const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-      eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
     } catch (error) {
       // If event year not found, return empty points table instead of error
       if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -60,8 +49,7 @@ router.get(
       throw error
     }
 
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    const eventId = eventYearData.doc.event_id
     const gender = req.query.gender // Required: 'Male' or 'Female'
 
     // Validate gender is provided
@@ -70,7 +58,7 @@ router.get(
     }
 
     // Check cache
-    const cacheKey = `/api/points-table/${sport}?event_year=${eventYear}&gender=${gender}`
+    const cacheKey = `/api/points-table/${sport}?event_id=${encodeURIComponent(eventId)}&gender=${gender}`
     const cached = getCache(cacheKey)
     if (cached) {
       // Always use sendSuccessResponse for consistency, even for cached data
@@ -78,38 +66,35 @@ router.get(
       return sendSuccessResponse(res, cached)
     }
 
-    // Get all points table entries for this sport, event year, and event name (gender will be derived)
+    // Get all points table entries for this sport and event_id (gender will be derived)
     // Only returns teams/players who have played at least one league match
     const allPointsEntries = await PointsTable.find({
       sports_name: normalizeSportName(sport),
-      event_year: eventYear,
-      event_name: eventName
+      event_id: eventId
     })
       .sort({ points: -1, matches_won: -1 })
       .lean()
 
     // Performance optimization: batch lookup sport document once (needed for gender derivation)
-    const sportDoc = await findSportByNameAndYear(sport, eventYear, eventName).catch(() => null)
+    const sportDoc = await findSportByNameAndId(sport, eventId).catch(() => null)
 
     // If no entries found, check if there are completed league matches that might need backfilling
     // Also check if there are any league matches at all for this gender
     if (allPointsEntries.length === 0) {
       const EventSchedule = (await import('../models/EventSchedule.js')).default
       
-      // Check for completed league matches (might need backfilling) - filter by both event_year and event_name
+      // Check for completed league matches (might need backfilling) - filter by event_id
       const completedLeagueMatches = await EventSchedule.countDocuments({
         sports_name: normalizeSportName(sport),
-        event_year: eventYear,
-        event_name: eventName,
+        event_id: eventId,
         match_type: 'league',
         status: { $in: ['completed', 'draw', 'cancelled'] }
       })
       
-      // Check for any league matches (completed or scheduled) for this gender - filter by both event_year and event_name
+      // Check for any league matches (completed or scheduled) for this gender - filter by event_id
       const allLeagueMatches = await EventSchedule.find({
         sports_name: normalizeSportName(sport),
-        event_year: eventYear,
-        event_name: eventName,
+        event_id: eventId,
         match_type: 'league'
       }).lean()
       
@@ -124,10 +109,10 @@ router.get(
       
       if (completedLeagueMatches > 0 && leagueMatchesForGender === 0) {
         // There are league matches but none for this gender - might be a filtering issue
-        logger.warn(`[PointsTable] No points table entries found for ${sport} (${eventYear}, ${gender}), but ${completedLeagueMatches} completed league matches exist. Consider running backfill.`)
+        logger.warn(`[PointsTable] No points table entries found for ${sport} (${eventId}, ${gender}), but ${completedLeagueMatches} completed league matches exist. Consider running backfill.`)
       } else if (leagueMatchesForGender === 0) {
         // No league matches at all for this gender
-        logger.info(`[PointsTable] No league matches found for ${sport} (${eventYear}, ${gender}). Points table only tracks league matches, not knockout/final matches.`)
+        logger.info(`[PointsTable] No league matches found for ${sport} (${eventId}, ${gender}). Points table only tracks league matches, not knockout/final matches.`)
       }
     }
 
@@ -150,7 +135,7 @@ router.get(
     
     // Log warning if gender derivation failed for some entries (for debugging)
     if (entriesWithNullGender.length > 0) {
-      logger.warn(`[PointsTable] Could not derive gender for ${entriesWithNullGender.length} entries in ${sport} (${eventYear}):`, entriesWithNullGender.slice(0, 5))
+      logger.warn(`[PointsTable] Could not derive gender for ${entriesWithNullGender.length} entries in ${sport} (${eventId}):`, entriesWithNullGender.slice(0, 5))
     }
 
     // Check if there are any league matches for this gender (for better error messaging)
@@ -159,8 +144,7 @@ router.get(
       const EventSchedule = (await import('../models/EventSchedule.js')).default
       const allLeagueMatches = await EventSchedule.find({
         sports_name: normalizeSportName(sport),
-        event_year: eventYear,
-        event_name: eventName,
+        event_id: eventId,
         match_type: 'league'
       }).lean()
       
@@ -189,7 +173,7 @@ router.get(
 
 /**
  * POST /api/points-table/backfill/:sport
- * Backfill points table for a specific sport (admin only)
+ * Backfill points table for a specific sport (admin or coordinator for that sport)
  * Useful when points table entries are missing for existing completed matches
  * Note: Backfill is a read-only recalculation operation and is allowed anytime
  * (not restricted by event period since it only recalculates from existing completed matches)
@@ -197,35 +181,25 @@ router.get(
 router.post(
   '/points-table/backfill/:sport',
   authenticateToken,
-  requireAdmin,
   asyncHandler(async (req, res) => {
     const { sport } = req.params
     
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
+    const eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
+    const eventId = eventYearData.doc.event_id
     
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-    }
-    
-    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-    const eventYear = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { eventName: eventNameQuery })
-    
+    await requireAdminOrCoordinator(req.user.reg_number, sport, eventId)
+
     const { backfillPointsTableForSport } = await import('../utils/backfillPointsTable.js')
-    const result = await backfillPointsTableForSport(sport, eventYear)
+    const result = await backfillPointsTableForSport(sport, eventId)
     
     if (result.errors > 0 && result.processed === 0) {
       return sendErrorResponse(res, 500, result.message || 'Error backfilling points table')
     }
     
     // Clear cache after backfill
-    clearCache(`/api/points-table/${sport}?event_year=${eventYear}&gender=Male`)
-    clearCache(`/api/points-table/${sport}?event_year=${eventYear}&gender=Female`)
+    clearCache(`/api/points-table/${sport}?event_id=${encodeURIComponent(eventId)}&gender=Male`)
+    clearCache(`/api/points-table/${sport}?event_id=${encodeURIComponent(eventId)}&gender=Female`)
     
     return sendSuccessResponse(res, result, result.message || 'Points table backfilled successfully')
   })

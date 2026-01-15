@@ -177,7 +177,7 @@ export const validateUpdatePlayerData = async (data) => {
 
 /**
  * Validate captain assignment data
- * Requires event_year and event_name for composite key filtering
+ * Requires event_id for composite key filtering
  */
 export const validateCaptainAssignment = (data) => {
   const errors = []
@@ -190,12 +190,8 @@ export const validateCaptainAssignment = (data) => {
     errors.push('Sport name is required')
   }
 
-  if (!data.event_year) {
-    errors.push('Event year is required')
-  }
-
-  if (!data.event_name || !data.event_name.trim()) {
-    errors.push('Event name is required')
+  if (!data.event_id || !String(data.event_id).trim()) {
+    errors.push('Event ID is required')
   }
 
   return {

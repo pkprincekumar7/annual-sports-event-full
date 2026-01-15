@@ -4,19 +4,22 @@ import { fetchWithAuth, clearCache } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { useEventYearWithFallback, useApi, useEventYears } from '../hooks'
 import logger from '../utils/logger'
+import { isCoordinatorForSport } from '../utils/sportHelpers'
 
-function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = false, selectedEventYear, isActive = true, onStatusPopup }) {
+function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = false, selectedEventId, isActive = true, onStatusPopup }) {
   const [pointsTable, setPointsTable] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [selectedGender, setSelectedGender] = useState('Male') // Default to Male
   const [hasLeagueMatches, setHasLeagueMatches] = useState(true) // Assume true initially
-  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
-  const { loading: eventYearsLoading } = useEventYears() // Ensure event years are loaded for eventName lookup
+  const { eventYear, eventId } = useEventYearWithFallback(selectedEventId)
+  const { loading: eventYearsLoading } = useEventYears()
   const abortControllerRef = useRef(null)
   const currentSportRef = useRef(null)
   const previousIsActiveRef = useRef(false)
   const isAdmin = loggedInUser?.reg_number === 'admin'
+  const isCoordinator = !isAdmin && isCoordinatorForSport(loggedInUser, sport)
+  const canManageSport = isAdmin || isCoordinator
   const { loading: backfilling, execute: executeBackfill } = useApi()
 
   useEffect(() => {
@@ -92,7 +95,7 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
 
     try {
       const encodedSport = encodeURIComponent(sport)
-      const url = buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventYear, selectedGender, eventName)
+      const url = buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventId, selectedGender)
 
       const response = await fetchWithAuth(url, { signal })
 
@@ -150,31 +153,24 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
   }
 
   const handleBackfill = async () => {
-    if (!sport || !eventYear) {
+    if (!sport) {
       if (onStatusPopup) {
-        onStatusPopup('❌ Sport and event year are required for backfill.', 'error', 3000)
+        onStatusPopup('❌ Sport is required for backfill.', 'error', 3000)
       }
       return
     }
 
-    // Ensure eventName is available when eventYear is provided (backend requirement)
-    // Also wait for eventYears to finish loading if still loading
-    if (eventYear && !eventName) {
-      if (eventYearsLoading) {
-        if (onStatusPopup) {
-          onStatusPopup('❌ Please wait for event data to load before refreshing points table.', 'error', 3000)
-        }
-        return
-      }
+    // Wait for event data to load if still loading
+    if (eventYearsLoading) {
       if (onStatusPopup) {
-        onStatusPopup('❌ Event name is required for backfill. Unable to determine event name for the selected year.', 'error', 3000)
+        onStatusPopup('❌ Please wait for event data to load before refreshing points table.', 'error', 3000)
       }
       return
     }
 
     try {
       await executeBackfill(
-        () => fetchWithAuth(buildApiUrlWithYear(`/api/points-table/backfill/${encodeURIComponent(sport)}`, eventYear, null, eventName), {
+        () => fetchWithAuth(buildApiUrlWithYear(`/api/points-table/backfill/${encodeURIComponent(sport)}`, eventId), {
           method: 'POST',
         }),
         {
@@ -184,8 +180,8 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
               onStatusPopup(`✅ ${message}`, 'success', 4000)
             }
             // Clear cache and refresh points table
-            clearCache(buildApiUrlWithYear(`/api/points-table/${encodeURIComponent(sport)}`, eventYear, 'Male', eventName))
-            clearCache(buildApiUrlWithYear(`/api/points-table/${encodeURIComponent(sport)}`, eventYear, 'Female', eventName))
+            clearCache(buildApiUrlWithYear(`/api/points-table/${encodeURIComponent(sport)}`, eventId, 'Male'))
+            clearCache(buildApiUrlWithYear(`/api/points-table/${encodeURIComponent(sport)}`, eventId, 'Female'))
             // Reset current sport ref to force refresh
             currentSportRef.current = null
             // Refresh points table (create new abort controller for refresh)
@@ -255,7 +251,7 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
               Female
             </button>
           </div>
-          {isAdmin && (
+          {canManageSport && (
             <div className="flex justify-center">
               <Button
                 type="button"
@@ -349,7 +345,7 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
             Female
           </button>
         </div>
-        {isAdmin && (
+        {canManageSport && (
           <div className="flex justify-center">
             <Button
               type="button"

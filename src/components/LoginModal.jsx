@@ -41,7 +41,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup, onResetPas
           onSuccess: (data) => {
             // useApi already checked response.ok, parsed JSON, and verified data.success
             // Clear caches to ensure fresh data after login
-            // Use clearCachePattern to clear all variations with event_year/event_name parameters
+            // Use clearCachePattern to clear all variations with event_id parameters
             clearCachePattern('/api/me')
             clearCachePattern('/api/players')
             clearCachePattern('/api/captains-by-sport')

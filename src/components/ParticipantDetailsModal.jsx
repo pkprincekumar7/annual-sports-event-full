@@ -4,9 +4,10 @@ import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hoo
 import { fetchWithAuth } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { clearIndividualParticipationCaches } from '../utils/cacheHelpers'
+import { isCoordinatorForSport } from '../utils/sportHelpers'
 import logger from '../utils/logger'
 
-function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedEventYear }) {
+function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedEventId }) {
   const { eventYearConfig } = useEventYear()
   const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [participants, setParticipants] = useState([])
@@ -17,7 +18,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
   const currentSportRef = useRef(null)
   const abortControllerRef = useRef(null)
   const { loading: deleting, execute } = useApi()
-  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+  const { eventId } = useEventYearWithFallback(selectedEventId)
   const deleteConfirmModal = useModal(false)
 
   useEffect(() => {
@@ -85,7 +86,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
     try {
       // URL encode the sport name to handle special characters
       const encodedSport = encodeURIComponent(sport)
-      const url = buildApiUrlWithYear(`/api/participants/${encodedSport}`, eventYear, null, eventName)
+      const url = buildApiUrlWithYear(`/api/participants/${encodedSport}`, eventId)
       // Fetching participants for sport
       
       const response = await fetchWithAuth(url, { signal })
@@ -170,7 +171,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
           body: JSON.stringify({
             reg_number: participantToDelete.reg_number,
             sport: sport,
-            event_year: eventYear,
+            event_id: eventId,
           }),
         }),
         {
@@ -183,7 +184,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
               )
             }
             // Clear cache before refreshing to ensure we get fresh data
-            clearIndividualParticipationCaches(sport, eventYear, eventName)
+            clearIndividualParticipationCaches(sport, eventId)
             // Remove deleted participant from expanded participants if it was expanded
             setExpandedParticipants(prev => {
               const newSet = new Set(prev)
@@ -219,6 +220,8 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
   }
 
   const isAdmin = loggedInUser?.reg_number === 'admin'
+  const isCoordinator = !isAdmin && isCoordinatorForSport(loggedInUser, sport)
+  const canManageSport = isAdmin || isCoordinator
 
   return (
     <>
@@ -276,7 +279,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
                           </span>
                         </div>
                       </button>
-                      {isAdmin && (
+                      {canManageSport && (
                         <Button
                           type="button"
                           onClick={(e) => {

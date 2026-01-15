@@ -12,28 +12,23 @@ import logger from './logger.js'
 /**
  * Get knocked out participants from completed matches
  * @param {string} sportsName - Normalized sport name
- * @param {number} eventYear - Event year
+ * @param {string} eventId - Event ID
  * @param {string} gender - Gender filter ('Male' or 'Female')
  * @param {Object} sportDoc - Sport document
- * @param {string} eventName - Event name (optional for backward compatibility, but recommended)
+ * @param {string} eventId - Event ID
  * @returns {Promise<Set<string>>} Set of knocked out participant names (trimmed)
  */
-export async function getKnockedOutParticipants(sportsName, eventYear, gender, sportDoc, eventName = null) {
+export async function getKnockedOutParticipants(sportsName, eventId, gender, sportDoc) {
   if (!sportDoc) {
-    logger.warn(`getKnockedOutParticipants: sportDoc is null for ${sportsName} (${eventYear})`)
+    logger.warn(`getKnockedOutParticipants: sportDoc is null for ${sportsName} (${eventId})`)
     return new Set()
   }
 
-  // Build query with event_year and optionally event_name
+  // Build query with event_id
   const queryFilter = {
     sports_name: normalizeSportName(sportsName),
-    event_year: eventYear,
+    event_id: String(eventId).trim().toLowerCase(),
     status: 'completed'
-  }
-  
-  // If event_name is provided, include it in the filter
-  if (eventName) {
-    queryFilter.event_name = eventName
   }
 
   const allCompletedMatches = await EventSchedule.find(queryFilter).lean()
@@ -132,23 +127,18 @@ export async function getKnockedOutParticipants(sportsName, eventYear, gender, s
  * @param {string} eventName - Event name (optional for backward compatibility, but recommended)
  * @returns {Promise<Set<string>>} Set of participant names in scheduled matches (trimmed)
  */
-export async function getParticipantsInScheduledMatches(sportsName, eventYear, gender, sportDoc, eventName = null) {
+export async function getParticipantsInScheduledMatches(sportsName, eventId, gender, sportDoc) {
   if (!sportDoc) {
-    logger.warn(`getParticipantsInScheduledMatches: sportDoc is null for ${sportsName} (${eventYear})`)
+    logger.warn(`getParticipantsInScheduledMatches: sportDoc is null for ${sportsName} (${eventId})`)
     return new Set()
   }
 
-  // Build query with event_year and optionally event_name
+  // Build query with event_id
   const queryFilter = {
     sports_name: normalizeSportName(sportsName),
-    event_year: eventYear,
+    event_id: String(eventId).trim().toLowerCase(),
     match_type: { $in: ['knockout', 'final'] },
     status: 'scheduled'
-  }
-  
-  // If event_name is provided, include it in the filter
-  if (eventName) {
-    queryFilter.event_name = eventName
   }
 
   const allScheduledMatches = await EventSchedule.find(queryFilter).lean()
@@ -291,15 +281,15 @@ export function validateMatchTypeForSport(matchType, sportType) {
  * @param {number} eventYear - Event year
  * @returns {Promise<Object|null>} Error object if validation fails, null otherwise
  */
-export async function validateFinalMatchRequirement(sportDoc, derivedGender, teams, players, matchType, sportsName, eventYear, eventName = null) {
+export async function validateFinalMatchRequirement(sportDoc, derivedGender, teams, players, matchType, sportsName, eventId) {
   // Only validate for dual_team and dual_player sports
   if (sportDoc.type !== 'dual_team' && sportDoc.type !== 'dual_player') {
     return null
   }
 
   // Get knocked out participants and participants in scheduled matches
-  const knockedOut = await getKnockedOutParticipants(sportsName, eventYear, derivedGender, sportDoc, eventName)
-  const inScheduled = await getParticipantsInScheduledMatches(sportsName, eventYear, derivedGender, sportDoc, eventName)
+  const knockedOut = await getKnockedOutParticipants(sportsName, eventId, derivedGender, sportDoc)
+  const inScheduled = await getParticipantsInScheduledMatches(sportsName, eventId, derivedGender, sportDoc)
 
   // Get active participants
   const activeParticipants = await getActiveParticipants(sportDoc, derivedGender, knockedOut, inScheduled)
@@ -340,22 +330,17 @@ export async function validateFinalMatchRequirement(sportDoc, derivedGender, tea
  * @param {Object} sportDoc - Sport document
  * @returns {Promise<Object|null>} Error object if validation fails, null otherwise
  */
-export async function validateAllMatchesCompletedBeforeFinal(sportsName, eventYear, matchType, derivedGender, sportDoc, eventName = null) {
+export async function validateAllMatchesCompletedBeforeFinal(sportsName, eventId, matchType, derivedGender, sportDoc) {
   // Only validate for final matches
   if (matchType !== 'final') {
     return null
   }
 
-  // Build query with event_year and optionally event_name
+  // Build query with event_id
   const queryFilter = {
     sports_name: normalizeSportName(sportsName),
-    event_year: eventYear,
+    event_id: String(eventId).trim().toLowerCase(),
     match_type: { $in: ['league', 'knockout'] }
-  }
-  
-  // If event_name is provided, include it in the filter
-  if (eventName) {
-    queryFilter.event_name = eventName
   }
 
   // Find all matches for this sport and event year that are league or knockout
@@ -430,22 +415,17 @@ export async function validateAllMatchesCompletedBeforeFinal(sportsName, eventYe
  * @param {Object} sportDoc - Sport document
  * @returns {Promise<Object|null>} Error object if validation fails, null otherwise
  */
-export async function validateAllLeagueMatchesCompletedBeforeKnockout(sportsName, eventYear, matchType, derivedGender, sportDoc, eventName = null) {
+export async function validateAllLeagueMatchesCompletedBeforeKnockout(sportsName, eventId, matchType, derivedGender, sportDoc) {
   // Only validate for knockout matches
   if (matchType !== 'knockout') {
     return null
   }
 
-  // Build query with event_year and optionally event_name
+  // Build query with event_id
   const queryFilter = {
     sports_name: normalizeSportName(sportsName),
-    event_year: eventYear,
+    event_id: String(eventId).trim().toLowerCase(),
     match_type: 'league'
-  }
-  
-  // If event_name is provided, include it in the filter
-  if (eventName) {
-    queryFilter.event_name = eventName
   }
 
   // Find all league matches for this sport and event year

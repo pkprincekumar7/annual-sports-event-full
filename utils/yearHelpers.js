@@ -9,16 +9,15 @@ import { sendErrorResponse } from './errorHandler.js'
 
 /**
  * Get event year with caching and validation
- * @param {number|null} eventYear - Optional event year value (from query/body)
+ * @param {string|null} eventId - Optional event_id value (from query/body)
  * @param {Object} options - Options object
- * @param {boolean} options.requireYear - If true, event year must be provided (default: false)
- * @param {boolean} options.returnDoc - If true, returns both event_year and document (default: false)
- * @param {string|null} options.eventName - Optional event name for composite key filtering
- * @returns {Promise<number|Object>} Returns event year number, or { event_year, doc } if returnDoc is true
+ * @param {boolean} options.requireId - If true, event_id must be provided (default: false)
+ * @param {boolean} options.returnDoc - If true, returns both event_id and document (default: false)
+ * @returns {Promise<string|Object>} Returns event_id, or { event_id, doc } if returnDoc is true
  * @throws {Error} Throws error if event year validation fails (should be caught by asyncHandler)
  */
-export async function getEventYear(eventYear = null, options = {}) {
-  const { requireYear = false, returnDoc = false, eventName = null } = options
+export async function getEventYear(eventId = null, options = {}) {
+  const { requireId = false, returnDoc = false } = options
 
   // Get active event year first (needed for fallback)
   let activeEventYearDoc = null
@@ -35,53 +34,45 @@ export async function getEventYear(eventYear = null, options = {}) {
     }
   }
 
-  // If eventYear is provided, validate it exists
-  if (eventYear !== null && eventYear !== undefined) {
-    const eventYearNum = parseInt(eventYear)
-    if (isNaN(eventYearNum)) {
-      throw new Error('Event year must be a valid number')
+  // If eventId is provided, validate it exists
+  if (eventId !== null && eventId !== undefined && eventId !== '') {
+    const normalizedEventId = String(eventId).trim().toLowerCase()
+    if (!normalizedEventId) {
+      throw new Error('Event ID must be a valid string')
     }
 
-    // Build query with both event_year and event_name
-    // If eventName is not provided, use active event's event_name for consistency
-    const query = { event_year: eventYearNum }
-    const eventNameToUse = eventName ? eventName.trim() : (activeEventYearDoc ? activeEventYearDoc.event_name : null)
-    if (eventNameToUse) {
-      query.event_name = eventNameToUse
-    }
-
-    const eventYearDoc = await EventYear.findOne(query).lean()
+    const eventYearDoc = await EventYear.findOne({ event_id: normalizedEventId }).lean()
     if (!eventYearDoc) {
       throw new Error('Event year not found')
     }
 
-    return returnDoc ? { event_year: eventYearNum, doc: eventYearDoc } : eventYearNum
+    return returnDoc ? { event_id: eventYearDoc.event_id, doc: eventYearDoc } : eventYearDoc.event_id
   }
 
-  // If eventYear is required but not provided
-  if (requireYear) {
-    throw new Error('Event year is required')
+  // If eventId is required but not provided
+  if (requireId) {
+    throw new Error('Event ID is required')
   }
 
-  // Use active event year (with both event_year and event_name)
+  // Use active event (with event_id)
   if (!activeEventYearDoc) {
     throw new Error('No active event year found')
   }
 
-  return returnDoc ? { event_year: activeEventYearDoc.event_year, doc: activeEventYearDoc } : activeEventYearDoc.event_year
+  return returnDoc ? { event_id: activeEventYearDoc.event_id, doc: activeEventYearDoc } : activeEventYearDoc.event_id
 }
 
 /**
  * Validate that an event year exists
- * @param {number} eventYear - Event year to validate
+ * @param {string} eventId - Event ID to validate
  * @returns {Promise<boolean>} True if event year exists
  */
-export async function validateEventYearExists(eventYear) {
-  if (!eventYear) return false
-  const eventYearNum = parseInt(eventYear)
-  if (isNaN(eventYearNum)) return false
+export async function validateEventYearExists(eventId) {
+  if (!eventId) return false
+  const normalizedEventId = String(eventId).trim().toLowerCase()
+  if (!normalizedEventId) return false
   
-  const eventYearDoc = await EventYear.findOne({ event_year: eventYearNum }).lean()
+  const eventYearDoc = await EventYear.findOne({ event_id: normalizedEventId }).lean()
   return !!eventYearDoc
 }
 

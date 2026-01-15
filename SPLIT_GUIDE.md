@@ -124,9 +124,6 @@ MONGODB_URI=mongodb://localhost:27017/annual-sports
 # JWT Configuration
 JWT_SECRET=your-secret-key-change-in-production
 
-# Application Configuration
-REGISTRATION_DEADLINE=2026-01-07T00:00:00
-
 # CORS Configuration (if needed)
 # CORS_ORIGIN=http://localhost:5173
 ```
@@ -186,7 +183,6 @@ Copy `.env.example` to `.env` and configure:
 - `PORT` - Server port (default: 3001)
 - `MONGODB_URI` - MongoDB connection string
 - `JWT_SECRET` - Secret key for JWT tokens
-- `REGISTRATION_DEADLINE` - Registration deadline date
 
 ## Running
 
@@ -524,7 +520,6 @@ CMD ["nginx", "-g", "daemon off;"]
 PORT=3001
 MONGODB_URI=mongodb://your-production-mongodb-uri
 JWT_SECRET=your-strong-production-secret
-REGISTRATION_DEADLINE=2026-01-07T00:00:00
 CORS_ORIGIN=https://your-frontend-domain.com
 ```
 

@@ -16,12 +16,13 @@ import { getPointsEntryGender, getMatchGender } from './genderHelpers.js'
  * @param {string} gender - Gender ('Male' or 'Female')
  * @returns {Promise<void>}
  */
-export async function recalculatePointsTableForGender(sportName, eventYear, gender) {
+export async function recalculatePointsTableForGender(sportName, eventId, gender) {
   // Find sport to verify it exists and is dual type
   const Sport = (await import('../models/Sport.js')).default
+  const normalizedEventId = String(eventId).trim().toLowerCase()
   const sportDoc = await Sport.findOne({
     name: sportName,
-    event_year: eventYear
+    event_id: normalizedEventId
   }).lean()
 
   if (!sportDoc || (sportDoc.type !== 'dual_team' && sportDoc.type !== 'dual_player')) {
@@ -34,7 +35,7 @@ export async function recalculatePointsTableForGender(sportName, eventYear, gend
   // Get all completed league matches for this sport and year
   const allLeagueMatches = await EventSchedule.find({
     sports_name: normalizedSportsName,
-    event_year: eventYear,
+    event_id: normalizedEventId,
     match_type: 'league',
     status: { $in: ['completed', 'draw', 'cancelled'] }
   }).lean()
@@ -118,16 +119,14 @@ export async function recalculatePointsTableForGender(sportName, eventYear, gend
   // Update or create points table entries
   for (const [participant, stats] of pointsMap) {
     let pointsEntry = await PointsTable.findOne({
-      event_year: eventYear,
-      event_name: sportDoc.event_name, // Include event_name for composite key
+      event_id: sportDoc.event_id,
       sports_name: normalizedSportsName,
       participant: participant
     })
 
     if (!pointsEntry) {
       pointsEntry = new PointsTable({
-        event_year: eventYear,
-        event_name: sportDoc.event_name, // Include event_name for composite key
+        event_id: sportDoc.event_id,
         sports_name: normalizedSportsName,
         participant: participant,
         participant_type: participantType,
@@ -171,7 +170,7 @@ export async function updatePointsTable(match, previousStatus, previousWinner = 
   // Only applicable for dual_team and dual_player sports
   const sportDoc = await (await import('../models/Sport.js')).default.findOne({
     name: match.sports_name,
-    event_year: match.event_year
+    event_id: match.event_id
   }).lean()
 
   if (!sportDoc || (sportDoc.type !== 'dual_team' && sportDoc.type !== 'dual_player')) {
@@ -208,15 +207,14 @@ export async function updatePointsTable(match, previousStatus, previousWinner = 
     // Find or create points table entry (gender is not stored, will be derived when querying)
     // Use participant and sport/year as unique key (gender is derived)
     let pointsEntry = await PointsTable.findOne({
-      event_year: match.event_year,
+      event_id: match.event_id,
       sports_name: normalizedSportsName,
       participant: trimmedParticipant
     })
 
     if (!pointsEntry) {
       pointsEntry = new PointsTable({
-        event_year: match.event_year,
-        event_name: match.event_name, // Add event_name for composite key
+        event_id: match.event_id,
         sports_name: normalizedSportsName,
         participant: trimmedParticipant,
         participant_type: participantType,

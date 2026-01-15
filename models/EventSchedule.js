@@ -14,14 +14,11 @@ const qualifierSchema = new mongoose.Schema({
 }, { _id: false })
 
 const eventScheduleSchema = new mongoose.Schema({
-  event_year: {
-    type: Number,
-    required: true
-  },
-  event_name: {
+  event_id: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
+    lowercase: true
   },
   match_number: {
     type: Number,
@@ -82,15 +79,18 @@ const eventScheduleSchema = new mongoose.Schema({
 })
 
 // Create indexes for faster lookups
-eventScheduleSchema.index({ event_year: 1, event_name: 1, sports_name: 1, match_number: 1 }, { unique: true }) // Compound unique - unique match numbers per sport per event year and name
-eventScheduleSchema.index({ event_year: 1, event_name: 1, sports_name: 1 }) // For efficient event year + event name + sport queries
-eventScheduleSchema.index({ event_year: 1, event_name: 1, sports_name: 1, status: 1 }) // For efficient event year + event name + sport + status queries
-eventScheduleSchema.index({ event_year: 1, event_name: 1 }) // For efficient event year + event name queries
+eventScheduleSchema.index({ event_id: 1, sports_name: 1, match_number: 1 }, { unique: true }) // Unique match per sport/event_id
+eventScheduleSchema.index({ event_id: 1, sports_name: 1 }) // For efficient event_id + sport queries
+eventScheduleSchema.index({ event_id: 1, sports_name: 1, status: 1 }) // For efficient event_id + sport + status queries
+eventScheduleSchema.index({ event_id: 1 }) // For efficient event_id queries
 
-// Pre-save hook to lowercase sports_name
+// Pre-save hook to normalize sports_name and event_id
 eventScheduleSchema.pre('save', function(next) {
   if (this.isModified('sports_name')) {
     this.sports_name = this.sports_name.toLowerCase().trim()
+  }
+  if (this.isModified('event_id') && this.event_id) {
+    this.event_id = this.event_id.toLowerCase().trim()
   }
   next()
 })

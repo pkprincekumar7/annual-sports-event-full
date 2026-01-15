@@ -5,9 +5,10 @@ import { fetchWithAuth, API_URL, clearCache, clearCachePattern } from '../utils/
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { GENDER_OPTIONS, DEFAULT_PLAYERS_PAGE_SIZE } from '../constants/app'
 import logger from '../utils/logger'
+import { trimFormData, validateEmail, validatePhone, validateRequired } from '../utils/formValidation'
 import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
-function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) {
+function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
   const [players, setPlayers] = useState([])
   const [loading, setLoading] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState(null)
@@ -44,7 +45,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [departments, setDepartments] = useState([])
   const [loadingDepartments, setLoadingDepartments] = useState(false)
-  const { eventYear, eventName } = useEventYearWithFallback(selectedEventYear)
+  const { eventYear, eventId } = useEventYearWithFallback(selectedEventId)
   const { eventYearConfig } = useEventYear()
   const isRefreshingRef = useRef(false) // Use ref to track if we're refreshing after update
   const searchTimeoutRef = useRef(null) // Use ref for debouncing search
@@ -116,8 +117,9 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
   const fetchPlayers = async (signal = null, showError = true, search = null, page = 1) => {
     setLoading(true)
     try {
-      let url = buildApiUrlWithYear('/api/players', eventYear, null, eventName)
-      url += `&page=${page}&limit=${PAGE_SIZE}`
+      let url = buildApiUrlWithYear('/api/players', eventId)
+      const baseSeparator = url.includes('?') ? '&' : '?'
+      url += `${baseSeparator}page=${page}&limit=${PAGE_SIZE}`
       if (search && search.trim()) {
         url += `&search=${encodeURIComponent(search.trim())}`
       }
@@ -203,7 +205,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
       abortController.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, eventYear, searchQuery, currentPage]) // Include eventYear, searchQuery, and currentPage to refetch when they change
+  }, [isOpen, eventId, searchQuery, currentPage]) // Include eventId, searchQuery, and currentPage to refetch when they change
 
   // Debounced search effect
   useEffect(() => {
@@ -317,7 +319,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
     try {
       // Fetch player enrollments
       const response = await fetchWithAuth(
-        buildApiUrlWithYear(`/api/player-enrollments/${player.reg_number}`, eventYear, null, eventName)
+        buildApiUrlWithYear(`/api/player-enrollments/${player.reg_number}`, eventId)
       )
 
       if (!response.ok) {
@@ -365,7 +367,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
     try {
       await executeDelete(
         () => fetchWithAuth(
-          buildApiUrlWithYear(`/api/delete-player/${playerToDelete.reg_number}`, eventYear, null, eventName),
+          buildApiUrlWithYear(`/api/delete-player/${playerToDelete.reg_number}`, eventId),
           {
             method: 'DELETE',
           }
@@ -492,7 +494,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
     try {
       // OPTIMIZATION: Fetch enrollments for all selected players in a single API call
       const response = await fetchWithAuth(
-        buildApiUrlWithYear('/api/bulk-player-enrollments', eventYear, null, eventName),
+        buildApiUrlWithYear('/api/bulk-player-enrollments', eventId),
         {
           method: 'POST',
           body: JSON.stringify({ reg_numbers: regNumbers }),
@@ -565,7 +567,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
 
     try {
       const response = await fetchWithAuth(
-        buildApiUrlWithYear('/api/bulk-delete-players', eventYear, null, eventName),
+        buildApiUrlWithYear('/api/bulk-delete-players', eventId),
         {
           method: 'POST',
           body: JSON.stringify({ reg_numbers: regNumbers }),
@@ -680,28 +682,30 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
   }
 
   const handleSavePlayer = async () => {
-    // Validate required fields
-    if (!editedData.reg_number || !editedData.full_name || !editedData.gender || 
-        !editedData.department_branch || !editedData.mobile_number || 
-        !editedData.email_id) {
+    const trimmed = trimFormData(editedData)
+    const requiredValidation = validateRequired({
+      'Registration number': trimmed.reg_number,
+      'Full name': trimmed.full_name,
+      Gender: trimmed.gender,
+      'Department/Branch': trimmed.department_branch,
+      'Mobile number': trimmed.mobile_number,
+      'Email ID': trimmed.email_id,
+    })
+    if (!requiredValidation.isValid) {
       if (onStatusPopup) {
-        onStatusPopup('❌ Please fill all required fields.', 'error', 2500)
+        onStatusPopup(`❌ ${requiredValidation.errors.join(' ')}`, 'error', 2500)
       }
       return
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(editedData.email_id)) {
+    if (!validateEmail(trimmed.email_id)) {
       if (onStatusPopup) {
         onStatusPopup('❌ Invalid email format.', 'error', 2500)
       }
       return
     }
 
-    // Validate phone number
-    const phoneRegex = /^[0-9]{10}$/
-    if (!phoneRegex.test(editedData.mobile_number)) {
+    if (!validatePhone(trimmed.mobile_number)) {
       if (onStatusPopup) {
         onStatusPopup('❌ Invalid mobile number. Must be 10 digits.', 'error', 2500)
       }
@@ -711,7 +715,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
     try {
       // Exclude batch_name from update request (it cannot be modified)
       // Include gender (required by backend validation, but backend prevents changes)
-      const { batch_name, ...updateData } = editedData
+      const { batch_name, ...updateData } = trimmed
       
       await execute(
         () => fetchWithAuth('/api/update-player', {
@@ -731,8 +735,9 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventYear }) 
             clearCachePattern('/api/players')
             
             // Use a separate function to avoid showing loading state and errors
-            let refreshUrl = buildApiUrlWithYear('/api/players', eventYear, null, eventName)
-            refreshUrl += `&page=${currentPage}&limit=${PAGE_SIZE}`
+            let refreshUrl = buildApiUrlWithYear('/api/players', eventId)
+            const baseSeparator = refreshUrl.includes('?') ? '&' : '?'
+            refreshUrl += `${baseSeparator}page=${currentPage}&limit=${PAGE_SIZE}`
             if (searchQuery && searchQuery.trim()) {
               refreshUrl += `&search=${encodeURIComponent(searchQuery.trim())}`
             }

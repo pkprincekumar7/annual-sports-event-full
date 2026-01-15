@@ -12,7 +12,7 @@ import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundErr
 import { validateCaptainAssignment, trimObjectFields } from '../utils/validation.js'
 import { clearCache } from '../utils/cache.js'
 import { getEventYear } from '../utils/yearHelpers.js'
-import { findSportByNameAndYear } from '../utils/sportHelpers.js'
+import { findSportByNameAndId } from '../utils/sportHelpers.js'
 import { computePlayersParticipationBatch } from '../utils/playerHelpers.js'
 
 const router = express.Router()
@@ -21,7 +21,7 @@ const router = express.Router()
  * POST /api/add-coordinator
  * Add coordinator role to a player (admin only)
  * Workflow: Admin assigns a player as coordinator for a sport
- * Event Year Required: event_year field required in request body (defaults to active event year)
+ * Event ID Required: event_id field required in request body (defaults to active event)
  * Update Sports collection's eligible_coordinators array (add player reg_number for the specified event year)
  */
 router.post(
@@ -37,12 +37,11 @@ router.post(
       return sendErrorResponse(res, 400, validation.errors.join('; '))
     }
 
-    const { reg_number, sport, event_year, event_name } = trimmed
+    const { reg_number, sport, event_id } = trimmed
 
-    // Get event year with document (event_name is now required via validation)
-    const eventYearData = await getEventYear(parseInt(event_year), { requireYear: true, returnDoc: true, eventName: event_name.trim() })
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    // Get event with document
+    const eventYearData = await getEventYear(String(event_id).trim(), { requireId: true, returnDoc: true })
+    const eventId = eventYearData.doc.event_id
 
     // Validate player exists
     const player = await Player.findOne({ reg_number })
@@ -50,8 +49,23 @@ router.post(
       return handleNotFoundError(res, 'Player')
     }
 
-    // Find sport by name, event_year, and event_name
-    const sportDoc = await findSportByNameAndYear(sport, eventYear, eventName, { lean: false })
+    // Find sport by name and event_id
+    const sportDoc = await findSportByNameAndId(sport, eventId, { lean: false })
+
+    // Coordinators cannot be captains or participants for the same sport
+    const isEligibleCaptain = sportDoc.eligible_captains && sportDoc.eligible_captains.includes(reg_number)
+    const isTeamCaptain = (sportDoc.teams_participated || []).some(team => team.captain === reg_number)
+    const isTeamPlayer = (sportDoc.teams_participated || []).some(
+      team => Array.isArray(team.players) && team.players.includes(reg_number)
+    )
+    const isIndividualParticipant = (sportDoc.players_participated || []).includes(reg_number)
+    if (isEligibleCaptain || isTeamCaptain || isTeamPlayer || isIndividualParticipant) {
+      return sendErrorResponse(
+        res,
+        400,
+        `Player cannot be assigned as coordinator for ${sport} because they already participate in that sport.`
+      )
+    }
 
     // Check if already in eligible_coordinators
     if (sportDoc.eligible_coordinators && sportDoc.eligible_coordinators.includes(reg_number)) {
@@ -66,8 +80,8 @@ router.post(
     await sportDoc.save()
 
     // Clear cache
-    clearCache(`/api/sports?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
-    clearCache(`/api/sports/${sport}?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
+    clearCache(`/api/sports?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/sports/${sport}?event_id=${encodeURIComponent(eventId)}`)
 
     return sendSuccessResponse(res, { sport: sportDoc }, `Coordinator added successfully for ${sport}`)
   })
@@ -76,7 +90,7 @@ router.post(
 /**
  * DELETE /api/remove-coordinator
  * Remove coordinator role from a player (admin only)
- * Event Year Required: event_year field required in request body (defaults to active event year)
+ * Event ID Required: event_id field required in request body (defaults to active event)
  * Update Sports collection's eligible_coordinators array (remove player reg_number for the specified event year)
  */
 router.delete(
@@ -92,15 +106,14 @@ router.delete(
       return sendErrorResponse(res, 400, validation.errors.join('; '))
     }
 
-    const { reg_number, sport, event_year, event_name } = trimmed
+    const { reg_number, sport, event_id } = trimmed
 
-    // Get event year with document (event_name is now required via validation)
-    const eventYearData = await getEventYear(parseInt(event_year), { requireYear: true, returnDoc: true, eventName: event_name.trim() })
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    // Get event with document
+    const eventYearData = await getEventYear(String(event_id).trim(), { requireId: true, returnDoc: true })
+    const eventId = eventYearData.doc.event_id
 
-    // Find sport by name, event_year, and event_name
-    const sportDoc = await findSportByNameAndYear(sport, eventYear, eventName, { lean: false })
+    // Find sport by name and event_id
+    const sportDoc = await findSportByNameAndId(sport, eventId, { lean: false })
 
     // Check if player is in eligible_coordinators
     if (!sportDoc.eligible_coordinators || !sportDoc.eligible_coordinators.includes(reg_number)) {
@@ -112,8 +125,8 @@ router.delete(
     await sportDoc.save()
 
     // Clear cache
-    clearCache(`/api/sports?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
-    clearCache(`/api/sports/${sport}?event_year=${eventYear}&event_name=${encodeURIComponent(eventName)}`)
+    clearCache(`/api/sports?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/sports/${sport}?event_id=${encodeURIComponent(eventId)}`)
 
     return sendSuccessResponse(res, { sport: sportDoc }, `Coordinator role removed successfully for ${sport}`)
   })
@@ -122,32 +135,20 @@ router.delete(
 /**
  * GET /api/coordinators-by-sport
  * Get all coordinators grouped by sport (admin only)
- * Event Year Filter: Accepts ?event_year=2026 parameter (defaults to active event year)
+ * Event ID Filter: Accepts ?event_id=2026-umang parameter (defaults to active event)
  */
 router.get(
   '/coordinators-by-sport',
   authenticateToken,
   requireAdmin,
   asyncHandler(async (req, res) => {
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-    }
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
     
     let eventYearData
     
     try {
       // Try to get event year with document - if it doesn't exist, return empty object
-      // Extract event_name from query if provided for composite key filtering
-      const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-      eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
     } catch (error) {
       // If event year not found, return empty object instead of error
       if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -157,13 +158,11 @@ router.get(
       throw error
     }
 
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    const eventId = eventYearData.doc.event_id
 
-    // Get all sports with eligible coordinators for this event year and event name
+    // Get all sports with eligible coordinators for this event
     const sports = await Sport.find({
-      event_year: eventYear,
-      event_name: eventName,
+      event_id: eventId,
       eligible_coordinators: { $exists: true, $ne: [] }
     }).lean()
 
@@ -188,7 +187,7 @@ router.get(
         .lean()
 
       // OPTIMIZATION: Batch compute participation for all coordinators in one query
-      const participationMap = await computePlayersParticipationBatch(Array.from(coordinatorRegNumbers), eventYear)
+      const participationMap = await computePlayersParticipationBatch(Array.from(coordinatorRegNumbers), eventId)
 
       // Add computed fields to each coordinator
       const coordinatorsWithComputed = coordinators.map(coordinator => {

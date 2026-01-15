@@ -18,9 +18,9 @@ const router = express.Router()
 /**
  * GET /api/export-excel
  * Export players data to Excel (admin only)
- * Event Year Filter: Accepts ?event_year=2026 parameter (defaults to active event year)
- * Query Sports collection to get all sports dynamically (filtered by event year)
- * Compute participation from Sports collection (filtered by event year)
+ * Event ID Filter: Accepts ?event_id=2026-umang parameter (defaults to active event)
+ * Query Sports collection to get all sports dynamically (filtered by event_id)
+ * Compute participation from Sports collection (filtered by event_id)
  * Use year field directly from Player model (already formatted as "1st Year (2025)") - this is academic year, not event year
  */
 router.get(
@@ -28,59 +28,29 @@ router.get(
   authenticateToken,
   requireAdmin,
   asyncHandler(async (req, res) => {
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-    }
-    
-    // Extract event_year and event_name from query (defaults to active event if not provided)
-    const eventYearQuery = hasEventYear ? parseInt(req.query.event_year) : null
-    const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
+    const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
 
-    // Validate year parameter if provided
-    if (eventYearQuery !== null && (isNaN(eventYearQuery) || eventYearQuery <= 0)) {
-      return sendErrorResponse(res, 400, 'Invalid event year parameter. Event year must be a positive number.')
-    }
-
-    // Get event year with document (defaults to active event year if not provided)
-    // getEventYear will use active event's event_name if eventNameQuery is not provided
-    let eventYearData
+    // Get event year with document (defaults to active event if not provided)
+    let eventYearDoc = null
+    let eventId = null
     try {
-      eventYearData = await getEventYear(eventYearQuery, { returnDoc: true, eventName: eventNameQuery })
+      const eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
+      eventYearDoc = eventYearData.doc
+      eventId = eventYearDoc.event_id
     } catch (error) {
       if (error.message === 'Event year not found' || error.message === 'No active event year found') {
-        return sendErrorResponse(res, 400, error.message === 'No active event year found' 
-          ? 'No active event year found. Please configure an active event year or provide a valid event year parameter.'
-          : `Event year ${eventYearQuery}${eventNameQuery ? ` with event name "${eventNameQuery}"` : ''} not found. Please provide a valid event year.`)
+        eventYearDoc = null
+        eventId = null
+      } else {
+        throw error
       }
-      throw error
     }
 
-    const eventYear = eventYearData.event_year
-    const eventYearDoc = eventYearData.doc
-    const eventName = eventYearDoc.event_name
-
-    // Ensure eventYear is valid before proceeding
-    if (!eventYear || isNaN(eventYear) || !eventYearDoc) {
-      return sendErrorResponse(res, 400, 'Invalid event year. Unable to process export request.')
-    }
-
-    // Validate event year has event_name
-    if (!eventName || !eventName.trim()) {
-      return sendErrorResponse(res, 400, 'Event year is missing event name. Please configure the event name for the event year.')
-    }
-
-    // Get all sports for this event year and event name
-    const sports = await Sport.find({ event_year: eventYear, event_name: eventName })
-      .sort({ category: 1, name: 1 })
-      .lean()
+    // Validate event has event_id
+    // Get all sports for this event
+    const sports = eventId
+      ? await Sport.find({ event_id: eventId }).sort({ category: 1, name: 1 }).lean()
+      : []
 
     // Create sport columns dynamically
     const sportColumns = sports.map(sport => ({
@@ -98,21 +68,20 @@ router.get(
     // Filter players and compute participation data in one pass (optimization: compute once per player)
     const playersWithParticipation = []
     for (const player of nonAdminPlayers) {
-      // Compute participation data for this player (only once)
-      const participation = await computePlayerParticipation(player.reg_number, eventYear)
+      let participation = { participated_in: [], captain_in: [], coordinator_in: [] }
+      if (eventId) {
+        // Compute participation data for this player (only once)
+        participation = await computePlayerParticipation(player.reg_number, eventId)
+      }
       
-      // Check if player has any participation (as participant or captain) for this year
+      // Always include players; when eventId is provided, participation may be empty
       const hasParticipation = (participation.participated_in && participation.participated_in.length > 0) ||
                                (participation.captain_in && participation.captain_in.length > 0)
       
-      // Only include players who have participation or captain status for this year
-      // Store participation data with player to avoid recomputation
-      if (hasParticipation) {
-        playersWithParticipation.push({
-          ...player,
-          _participation: participation // Store participation data for later use
-        })
-      }
+      playersWithParticipation.push({
+        ...player,
+        _participation: participation // Store participation data for later use
+      })
     }
 
     // Prepare data for Excel (reuse pre-computed participation data)
@@ -180,7 +149,8 @@ router.get(
     })
 
     // Set response headers
-    const filename = `Players_Report_${eventYear}_${new Date().toISOString().split('T')[0]}.xlsx`
+    const eventYearLabel = eventYearDoc?.event_year ? eventYearDoc.event_year : 'no-event'
+    const filename = `Players_Report_${eventYearLabel}_${new Date().toISOString().split('T')[0]}.xlsx`
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
 

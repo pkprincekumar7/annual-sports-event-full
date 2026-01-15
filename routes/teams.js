@@ -13,7 +13,7 @@ import { trimObjectFields } from '../utils/validation.js'
 import { getCache, setCache, clearCache } from '../utils/cache.js'
 import { clearTeamGenderCache, clearSportGenderCache } from '../utils/genderHelpers.js'
 import { getEventYear } from '../utils/yearHelpers.js'
-import { findSportByNameAndYear } from '../utils/sportHelpers.js'
+import { findSportByNameAndId } from '../utils/sportHelpers.js'
 import { requireAdminOrCoordinator } from '../utils/coordinatorHelpers.js'
 
 const router = express.Router()
@@ -21,40 +21,29 @@ const router = express.Router()
 /**
  * POST /api/update-team-participation
  * Captain creates a team (workflow: captain assigned via POST /api/add-captain)
- * Event Year Required: event_year field required in request body (defaults to active event year)
- * Update Sports collection's teams_participated array (for the specified event year)
+ * Event ID Required: event_id field required in request body (defaults to active event)
+ * Update Sports collection's teams_participated array (for the specified event)
  */
 router.post(
   '/update-team-participation',
   authenticateToken,
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
-    let { team_name, sport, reg_numbers, event_year, event_name } = req.body
+    let { team_name, sport, reg_numbers, event_id } = req.body
 
     // Trim fields
-    const trimmed = trimObjectFields({ team_name, sport, event_year, event_name })
+    const trimmed = trimObjectFields({ team_name, sport, event_id })
     sport = trimmed.sport
     team_name = trimmed.team_name
-    event_year = trimmed.event_year
-    event_name = trimmed.event_name
+    event_id = trimmed.event_id
 
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = event_year !== undefined && event_year !== null && event_year !== ''
-    const hasEventName = event_name !== undefined && event_name !== null && event_name !== '' && event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    if (!event_id || !String(event_id).trim()) {
+      return sendErrorResponse(res, 400, 'event_id is required')
     }
 
-    // Get event year (default to active event year if not provided)
-    const eventNameBody = hasEventName ? event_name.trim() : null
-    const eventYearData = await getEventYear(hasEventYear ? parseInt(event_year) : null, { returnDoc: true, eventName: eventNameBody })
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    // Get event (default to active event if not provided)
+    const eventYearData = await getEventYear(String(event_id).trim(), { returnDoc: true })
+    const eventId = eventYearData.doc.event_id
 
     // Validate required fields
     if (!team_name || !sport || !reg_numbers || !Array.isArray(reg_numbers) || reg_numbers.length === 0) {
@@ -82,8 +71,16 @@ router.post(
       )
     }
 
-    // Find sport by name, event_year, and event_name
-    const sportDoc = await findSportByNameAndYear(sport, eventYear, eventName, { lean: false })
+    // Find sport by name and event_id
+    const sportDoc = await findSportByNameAndId(sport, eventId, { lean: false })
+
+    // Coordinators cannot participate in the same sport
+    if (sportDoc.eligible_coordinators && sportDoc.eligible_coordinators.includes(loggedInUserRegNumber)) {
+      return handleForbiddenError(
+        res,
+        `You are a coordinator for ${sport} and cannot create or join a team for that sport.`
+      )
+    }
 
     // Validate sport is a team sport
     if (sportDoc.type !== 'dual_team' && sportDoc.type !== 'multi_team') {
@@ -118,6 +115,18 @@ router.post(
     }
 
     const playerData = reg_numbers.map(rn => playersMap.get(rn))
+
+    // Coordinators cannot participate in the same sport
+    if (sportDoc.eligible_coordinators && sportDoc.eligible_coordinators.length > 0) {
+      const coordinatorInTeam = reg_numbers.find(rn => sportDoc.eligible_coordinators.includes(rn))
+      if (coordinatorInTeam) {
+        return sendErrorResponse(
+          res,
+          400,
+          `Player ${coordinatorInTeam} is a coordinator for ${sport} and cannot participate in that sport.`
+        )
+      }
+    }
 
     // Validate that all players have the same gender
     if (playerData.length > 0) {
@@ -228,12 +237,12 @@ router.post(
     await sportDoc.save()
 
     // Clear cache
-    clearCache(`/api/sports?event_year=${eventYear}`)
-    clearCache(`/api/sports/${sport}?event_year=${eventYear}`)
-    clearCache(`/api/teams/${sport}?event_year=${eventYear}`)
-    clearCache(`/api/sports-counts?event_year=${eventYear}`)
+    clearCache(`/api/sports?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/sports/${sport}?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/teams/${sport}?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/sports-counts?event_id=${encodeURIComponent(eventId)}`)
     // Clear gender cache for this team (team composition changed)
-    clearTeamGenderCache(team_name, sport, eventYear)
+    clearTeamGenderCache(team_name, sport, eventYear, eventName)
 
     return sendSuccessResponse(
       res,
@@ -246,7 +255,7 @@ router.post(
 /**
  * GET /api/teams/:sport
  * Get all teams for a specific sport
- * Event Year Filter: Accepts ?event_year=2026 parameter (defaults to active event year)
+ * Event ID Filter: Accepts ?event_id=2026-umang parameter (defaults to active event)
  * Query Sports collection instead of Player collection
  */
 router.get(
@@ -262,23 +271,10 @@ router.get(
 
     let eventYearData
     
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = req.query.event_year !== undefined && req.query.event_year !== null && req.query.event_year !== ''
-    const hasEventName = req.query.event_name !== undefined && req.query.event_name !== null && req.query.event_name !== '' && req.query.event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
-    }
-    
     try {
       // Try to get event year with document - if it doesn't exist, return empty teams array
-      // Extract event_name from query if provided for composite key filtering
-      const eventNameQuery = hasEventName ? req.query.event_name.trim() : null
-      eventYearData = await getEventYear(hasEventYear ? parseInt(req.query.event_year) : null, { returnDoc: true, eventName: eventNameQuery })
+      const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
+      eventYearData = await getEventYear(eventIdQuery, { returnDoc: true })
     } catch (error) {
       // If event year not found, return empty teams array instead of error
       if (error.message === 'Event year not found' || error.message === 'No active event year found') {
@@ -293,21 +289,20 @@ router.get(
       throw error
     }
 
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    const eventId = eventYearData.doc.event_id
 
     // Check cache
-    const cacheKey = `/api/teams/${sport}?event_year=${eventYear}`
+    const cacheKey = `/api/teams/${sport}?event_id=${encodeURIComponent(eventId)}`
     const cached = getCache(cacheKey)
     if (cached) {
       // Always use sendSuccessResponse for consistency, even for cached data
       return sendSuccessResponse(res, cached)
     }
 
-    // Find sport by name, event_year, and event_name
+    // Find sport by name and event_id
     let sportDoc
     try {
-      sportDoc = await findSportByNameAndYear(sport, eventYear, eventName)
+      sportDoc = await findSportByNameAndId(sport, eventId)
     } catch (error) {
       // If sport not found, return empty teams array
       if (error.message.includes('not found')) {
@@ -386,34 +381,35 @@ router.get(
 /**
  * POST /api/update-team-player
  * Update/replace a player in a team (admin only)
- * Event Year Filter: Accepts ?event_year=2026 parameter (defaults to active event year)
- * Update Sports collection's teams_participated[].players array (for the specified event year)
+ * Event ID Filter: Accepts ?event_id=2026-umang parameter (defaults to active event)
+ * Update Sports collection's teams_participated[].players array (for the specified event)
  */
 router.post(
   '/update-team-player',
   authenticateToken,
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
-    let { team_name, sport, old_reg_number, new_reg_number, event_year } = req.body
+    let { team_name, sport, old_reg_number, new_reg_number, event_id } = req.body
 
     // Trim fields
-    const trimmed = trimObjectFields({ team_name, sport, old_reg_number, new_reg_number, event_year })
+    const trimmed = trimObjectFields({ team_name, sport, old_reg_number, new_reg_number, event_id })
     sport = trimmed.sport
     team_name = trimmed.team_name
     old_reg_number = trimmed.old_reg_number
     new_reg_number = trimmed.new_reg_number
-    event_year = trimmed.event_year
+    event_id = trimmed.event_id
 
-    // Get event year with document (default to active event year if not provided)
-    // Extract event_name from body if provided for composite key filtering
-    const eventNameBody = req.body.event_name ? req.body.event_name.trim() : null
-    const eventYearData = await getEventYear(event_year ? parseInt(event_year) : null, { returnDoc: true, eventName: eventNameBody })
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    if (!event_id || !String(event_id).trim()) {
+      return sendErrorResponse(res, 400, 'event_id is required')
+    }
+
+    // Get event with document
+    const eventYearData = await getEventYear(String(event_id).trim(), { returnDoc: true })
+    const eventId = eventYearData.doc.event_id
 
     // Check if user is admin or coordinator for this sport
     try {
-      await requireAdminOrCoordinator(req.user.reg_number, sport, eventYear, eventName)
+      await requireAdminOrCoordinator(req.user.reg_number, sport, eventId)
     } catch (error) {
       return sendErrorResponse(res, 403, error.message)
     }
@@ -427,8 +423,8 @@ router.post(
       )
     }
 
-    // Find sport by name, event_year, and event_name
-    const sportDoc = await findSportByNameAndYear(sport, eventYear, eventName, { lean: false })
+    // Find sport by name and event_id
+    const sportDoc = await findSportByNameAndId(sport, eventId, { lean: false })
 
     // Find the team
     const team = sportDoc.teams_participated.find(
@@ -516,12 +512,12 @@ router.post(
     }
 
     // Clear cache
-    clearCache(`/api/sports?event_year=${eventYear}`)
-    clearCache(`/api/sports/${sport}?event_year=${eventYear}`)
-    clearCache(`/api/teams/${sport}?event_year=${eventYear}`)
-    clearCache(`/api/sports-counts?event_year=${eventYear}`)
+    clearCache(`/api/sports?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/sports/${sport}?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/teams/${sport}?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/sports-counts?event_id=${encodeURIComponent(eventId)}`)
     // Clear gender cache for this team (team composition changed - first player might have changed)
-    clearTeamGenderCache(team_name, sport, eventYear)
+    clearTeamGenderCache(team_name, sport, eventYear, eventName)
 
     const newPlayerData = newPlayer.toObject()
     delete newPlayerData.password
@@ -541,43 +537,32 @@ router.post(
 /**
  * DELETE /api/delete-team
  * Delete a team (remove from teams_participated array) (admin only)
- * Event Year Required: event_year field required in request body (defaults to active event year)
+ * Event ID Required: event_id field required in request body (defaults to active event)
  */
 router.delete(
   '/delete-team',
   authenticateToken,
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
-    let { team_name, sport, event_year, event_name } = req.body
+    let { team_name, sport, event_id } = req.body
 
     // Trim fields
-    const trimmed = trimObjectFields({ team_name, sport, event_year, event_name })
+    const trimmed = trimObjectFields({ team_name, sport, event_id })
     sport = trimmed.sport
     team_name = trimmed.team_name
-    event_year = trimmed.event_year
-    event_name = trimmed.event_name
+    event_id = trimmed.event_id
 
-    // For optional event_year/event_name: either both must be provided, or neither
-    // If one is provided, the other is also required for composite key filtering
-    const hasEventYear = event_year !== undefined && event_year !== null && event_year !== ''
-    const hasEventName = event_name !== undefined && event_name !== null && event_name !== '' && event_name.trim()
-    
-    if (hasEventYear && !hasEventName) {
-      return sendErrorResponse(res, 400, 'event_name is required when event_year is provided')
-    }
-    if (hasEventName && !hasEventYear) {
-      return sendErrorResponse(res, 400, 'event_year is required when event_name is provided')
+    if (!event_id || !String(event_id).trim()) {
+      return sendErrorResponse(res, 400, 'event_id is required')
     }
 
-    // Get event year with document (default to active event year if not provided)
-    const eventNameBody = hasEventName ? event_name.trim() : null
-    const eventYearData = await getEventYear(hasEventYear ? parseInt(event_year) : null, { returnDoc: true, eventName: eventNameBody })
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    // Get event with document
+    const eventYearData = await getEventYear(String(event_id).trim(), { returnDoc: true })
+    const eventId = eventYearData.doc.event_id
 
     // Check if user is admin or coordinator for this sport
     try {
-      await requireAdminOrCoordinator(req.user.reg_number, sport, eventYear, eventName)
+      await requireAdminOrCoordinator(req.user.reg_number, sport, eventId)
     } catch (error) {
       return sendErrorResponse(res, 403, error.message)
     }
@@ -587,8 +572,8 @@ router.delete(
       return sendErrorResponse(res, 400, 'Team name and sport are required')
     }
 
-    // Find sport by name, event_year, and event_name
-    const sportDoc = await findSportByNameAndYear(sport, eventYear, eventName, { lean: false })
+    // Find sport by name and event_id
+    const sportDoc = await findSportByNameAndId(sport, eventId, { lean: false })
 
     // Find the team
     const teamIndex = sportDoc.teams_participated.findIndex(
@@ -610,12 +595,12 @@ router.delete(
     await sportDoc.save()
 
     // Clear cache
-    clearCache(`/api/sports?event_year=${eventYear}`)
-    clearCache(`/api/sports/${sport}?event_year=${eventYear}`)
-    clearCache(`/api/teams/${sport}?event_year=${eventYear}`)
-    clearCache(`/api/sports-counts?event_year=${eventYear}`)
+    clearCache(`/api/sports?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/sports/${sport}?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/teams/${sport}?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/sports-counts?event_id=${encodeURIComponent(eventId)}`)
     // Clear gender cache for this team (team deleted)
-    clearTeamGenderCache(team_name, sport, eventYear)
+    clearTeamGenderCache(team_name, sport, eventId)
 
     return sendSuccessResponse(
       res,
@@ -637,11 +622,11 @@ router.post(
   '/validate-participations',
   authenticateToken,
   asyncHandler(async (req, res) => {
-    let { reg_numbers, sport, event_year } = req.body
+    let { reg_numbers, sport, event_id } = req.body
 
     // Trim fields
     sport = sport?.trim()
-    event_year = event_year ? parseInt(event_year) : null
+    event_id = event_id ? String(event_id).trim() : null
     if (Array.isArray(reg_numbers)) {
       reg_numbers = reg_numbers.map((rn) => rn?.trim()).filter((rn) => rn)
     }
@@ -651,15 +636,12 @@ router.post(
       return sendErrorResponse(res, 400, 'Registration numbers array and sport are required')
     }
 
-    // Get event year with document (default to active event year if not provided)
-    // Extract event_name from body if provided for composite key filtering
-    const eventNameBody = req.body.event_name ? req.body.event_name.trim() : null
-    const eventYearData = await getEventYear(event_year ? parseInt(event_year) : null, { returnDoc: true, eventName: eventNameBody })
-    const eventYear = eventYearData.event_year
-    const eventName = eventYearData.doc.event_name
+    // Get event with document (default to active event if not provided)
+    const eventYearData = await getEventYear(event_id || null, { returnDoc: true })
+    const eventId = eventYearData.doc.event_id
 
-    // Find sport by name, event_year, and event_name
-    const sportDoc = await findSportByNameAndYear(sport, eventYear, eventName)
+    // Find sport by name and event_id
+    const sportDoc = await findSportByNameAndId(sport, eventId)
 
     const errors = []
 

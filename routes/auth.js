@@ -11,6 +11,7 @@ import logger from '../utils/logger.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
 import { computePlayerParticipation } from '../utils/playerHelpers.js'
+import { getPlayerBatchName } from '../utils/batchHelpers.js'
 import { getCache, setCache } from '../utils/cache.js'
 import { findActiveEventYear } from '../utils/yearHelpers.js'
 import { JWT_EXPIRES_IN } from '../constants/index.js'
@@ -95,6 +96,16 @@ router.post(
     playerData.participated_in = participation.participated_in
     playerData.captain_in = participation.captain_in
     playerData.coordinator_in = participation.coordinator_in
+    if (eventId) {
+      try {
+        playerData.batch_name = await getPlayerBatchName(playerData.reg_number, eventId)
+      } catch (error) {
+        logger.warn(`Could not get batch_name for player ${playerData.reg_number}:`, error)
+        playerData.batch_name = null
+      }
+    } else {
+      playerData.batch_name = null
+    }
 
     return sendSuccessResponse(
       res,

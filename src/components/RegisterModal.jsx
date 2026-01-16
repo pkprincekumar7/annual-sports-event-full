@@ -48,7 +48,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
   
   // Fetch departments for department_branch dropdown
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || !isGeneralRegistration) {
       setDepartments([])
       setLoadingDepartments(false)
       return
@@ -95,14 +95,14 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       isMounted = false
       abortController.abort()
     }
-  }, [isOpen])
+  }, [isOpen, isGeneralRegistration])
   
   // Generate department options from fetched departments
   const departmentOptions = departments
   
   // Fetch batches for batch_name dropdown
   useEffect(() => {
-    if (!isOpen || !eventYear) return
+    if (!isOpen || !isGeneralRegistration || !eventId) return
     
     let isMounted = true
     const abortController = new AbortController()
@@ -137,10 +137,11 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       isMounted = false
       abortController.abort()
     }
-  }, [isOpen, eventYear, eventName])
+  }, [isOpen, isGeneralRegistration, eventId])
   
   // Generate batch options from fetched batches
   const batchOptions = batches.map(batch => ({ value: batch.name, label: batch.name }))
+
 
   // Fetch players list for team player dropdowns
   useEffect(() => {
@@ -160,8 +161,8 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     const currentSportType = getSportType(selectedSport)
     const currentIsTeam = isTeamSport(currentSportType)
 
-    // Don't fetch if eventYear is not available
-    if (!eventYear) {
+    // Don't fetch if eventId is not available
+    if (!eventId) {
       if (!currentIsTeam) {
         setLoadingParticipants(false)
         setTotalParticipants(0)
@@ -272,7 +273,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
           if (data.success && isMountedRef.current) {
             const playersList = data.players || []
             const filteredPlayers = selectedSport?.name
-              ? playersList.filter(player => !isCoordinatorForSport(player, selectedSport.name))
+              ? playersList.filter(player => !isCoordinatorForSportScope(player, selectedSport.name, selectedSport))
               : playersList
             setPlayers(filteredPlayers)
           } else if (isMountedRef.current) {
@@ -289,7 +290,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       }
 
       const fetchTotalTeams = async () => {
-        if (!currentSportName || !eventYear) return
+        if (!currentSportName || !eventId) return
         
         setLoadingTeams(true)
         try {
@@ -327,7 +328,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     return () => {
       isMountedRef.current = false
     }
-  }, [isOpen, selectedSport?.name, selectedSport?.type, eventYear])
+  }, [isOpen, selectedSport?.name, selectedSport?.type, eventId, loggedInUser?.reg_number])
 
   // Reset selected players when modal opens/closes or sport changes
   useEffect(() => {

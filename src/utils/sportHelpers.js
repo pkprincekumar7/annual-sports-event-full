@@ -99,6 +99,21 @@ export function isCoordinatorForSport(user, sportName) {
 }
 
 /**
+ * Check if a user is a coordinator for a specific sport with fallback to sport doc
+ * @param {Object} user - User object with coordinator_in array
+ * @param {string} sportName - Sport name to check
+ * @param {Object|null} sportDoc - Sport object with eligible_coordinators
+ * @returns {boolean} True if user is coordinator for the sport
+ */
+export function isCoordinatorForSportScope(user, sportName, sportDoc = null) {
+  if (!user || !sportName) return false
+  const byUser = isCoordinatorForSport(user, sportName)
+  const bySport = Array.isArray(sportDoc?.eligible_coordinators) &&
+    sportDoc.eligible_coordinators.includes(user?.reg_number)
+  return byUser || bySport
+}
+
+/**
  * Get team size from sport object
  * Handles both 'players' field (from SportsSection) and 'team_size' field (from database)
  * @param {Object} sport - Sport object

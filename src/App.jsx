@@ -534,6 +534,7 @@ function App() {
         onClose={() => setIsCaptainManagementModalOpen(false)}
         onStatusPopup={showStatusPopup}
         selectedEventId={selectedEventId}
+        loggedInUser={loggedInUser}
       />
       <CoordinatorManagementModal
         isOpen={isCoordinatorManagementModalOpen}
@@ -554,6 +555,7 @@ function App() {
           setSelectedSport(null)
         }}
         sport={selectedSport?.name}
+        sportDetails={selectedSport}
         loggedInUser={loggedInUser}
         onStatusPopup={showStatusPopup}
         selectedEventId={selectedEventId}
@@ -565,6 +567,7 @@ function App() {
           setSelectedSport(null)
         }}
         sport={selectedSport?.name}
+        sportDetails={selectedSport}
         loggedInUser={loggedInUser}
         onStatusPopup={showStatusPopup}
         selectedEventId={selectedEventId}
@@ -583,6 +586,7 @@ function App() {
         }}
         sport={selectedEventSport?.name}
         sportType={selectedEventSport?.sportType || (selectedEventSport?.type === 'team' ? 'team' : 'individual')}
+        sportDetails={selectedEventSport}
         loggedInUser={loggedInUser}
         onStatusPopup={showStatusPopup}
         selectedEventId={selectedEventId}

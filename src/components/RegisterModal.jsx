@@ -8,7 +8,7 @@ import logger from '../utils/logger'
 import { GENDER_OPTIONS } from '../constants/app'
 import { formatSportName } from '../utils/stringHelpers'
 import { trimFormData, validatePlayerForm } from '../utils/formValidation'
-import { isCoordinatorForSport } from '../utils/sportHelpers'
+import { isCoordinatorForSportScope } from '../utils/sportHelpers'
 import { isTeamSport, getSportType, getTeamSize, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual } from '../utils/sportHelpers'
 import { validateParticipantSelection, validateNoDuplicates, validateGenderMatch, validateBatchMatch } from '../utils/participantValidation'
 import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
@@ -426,6 +426,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     }
   }
 
+  const isCoordinatorForSelectedSport = (sport) => {
+    return isCoordinatorForSportScope(loggedInUser, sport?.name, sport)
+  }
+
   // Handle team event form submission
   const handleTeamSubmit = async (e) => {
     e.preventDefault()
@@ -441,7 +445,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       return
     }
 
-    if (isCoordinatorForSport(loggedInUser, selectedSport?.name)) {
+    if (isCoordinatorForSelectedSport(selectedSport)) {
       onStatusPopup(`❌ You are a coordinator for ${selectedSport?.name} and cannot participate in this sport.`, 'error', 3000)
       return
     }
@@ -629,7 +633,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       return
     }
 
-    if (isCoordinatorForSport(loggedInUser, selectedSport?.name)) {
+    if (isCoordinatorForSelectedSport(selectedSport)) {
       onStatusPopup(`❌ You are a coordinator for ${selectedSport?.name} and cannot participate in this sport.`, 'error', 3000)
       return
     }

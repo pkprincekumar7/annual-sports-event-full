@@ -6,9 +6,10 @@ import { useEventYearWithFallback } from '../hooks'
 import logger from '../utils/logger'
 import { LoadingSpinner, EmptyState } from './ui'
 import { formatSportName } from '../utils/stringHelpers'
+import { isCoordinatorForSportScope } from '../utils/sportHelpers'
 
 
-function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUser, isEnrolled, isCaptain, canCreateOrViewTeam, teamsCount, participantsCount }) {
+function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUser, isEnrolled, isCaptain, isCoordinator, canCreateOrViewTeam, teamsCount, participantsCount }) {
   const isAdmin = loggedInUser?.reg_number === 'admin'
   
   // Use props if provided, otherwise default to -1 (loading state)
@@ -56,14 +57,23 @@ function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUs
         style={{ backgroundImage: `url('${imageUrl}')` }}
       />
       {/* Badges */}
-      {isUserEnrolled && (
-        <div className="absolute top-3 right-3 z-20 px-2 py-0.5 rounded-md bg-gradient-to-r from-[#22c55e] to-[#16a34a] text-white text-[0.7rem] font-bold uppercase tracking-[0.1em] shadow-[0_2px_8px_rgba(34,197,94,0.5)] animate-pulse">
-          Enrolled!
-        </div>
-      )}
-      {canCreateTeam && (
-        <div className="absolute top-3 right-3 z-20 px-2 py-0.5 rounded-md bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-white text-[0.7rem] font-bold uppercase tracking-[0.1em] shadow-[0_2px_8px_rgba(59,130,246,0.5)] animate-pulse">
-          Create Team
+      {(isCoordinator || isUserEnrolled || canCreateTeam) && (
+        <div className="absolute top-3 right-3 z-20 flex flex-col gap-1 items-end">
+          {isCoordinator && (
+            <div className="px-2 py-0.5 rounded-md bg-gradient-to-r from-[#14b8a6] to-[#0f766e] text-white text-[0.7rem] font-bold uppercase tracking-[0.1em] shadow-[0_2px_8px_rgba(20,184,166,0.5)]">
+              Coordinator
+            </div>
+          )}
+          {isUserEnrolled && (
+            <div className="px-2 py-0.5 rounded-md bg-gradient-to-r from-[#22c55e] to-[#16a34a] text-white text-[0.7rem] font-bold uppercase tracking-[0.1em] shadow-[0_2px_8px_rgba(34,197,94,0.5)] animate-pulse">
+              Enrolled!
+            </div>
+          )}
+          {canCreateTeam && (
+            <div className="px-2 py-0.5 rounded-md bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-white text-[0.7rem] font-bold uppercase tracking-[0.1em] shadow-[0_2px_8px_rgba(59,130,246,0.5)] animate-pulse">
+              Create Team
+            </div>
+          )}
         </div>
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-[rgba(0,0,0,0.9)] to-[rgba(0,0,0,0.2)] flex flex-col justify-end p-[0.9rem] px-[1.1rem] text-[#f9fafb] drop-shadow-[0_3px_12px_rgba(0,0,0,0.9)] z-10">
@@ -280,6 +290,14 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
     return loggedInUser.captain_in.includes(sportName)
   }
 
+  // Helper function to check if user is coordinator for a sport
+  const isCoordinatorForSportCard = (sport) => {
+    if (!loggedInUser || isAdmin) {
+      return false
+    }
+    return isCoordinatorForSportScope(loggedInUser, sport?.name, sport)
+  }
+
   // Helper function to check if user can create or view a team for a sport
   const canCreateOrViewTeam = (sportName) => {
     if (isAdmin) {
@@ -336,6 +354,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
                 loggedInUser={loggedInUser}
                 isEnrolled={isEnrolledInSport(sport.name, 'team')}
                 isCaptain={isCaptainForSport(sport.name)}
+                isCoordinator={isCoordinatorForSportCard(sport)}
                 canCreateOrViewTeam={canCreateOrViewTeam(sport.name)}
                 teamsCount={sportsCounts.teams_counts[sport.name?.toLowerCase()]}
                 participantsCount={undefined}
@@ -361,6 +380,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
                 loggedInUser={loggedInUser}
                 isEnrolled={isEnrolledInSport(sport.name, 'individual')}
                 isCaptain={false}
+                isCoordinator={isCoordinatorForSportCard(sport)}
                 teamsCount={undefined}
                 participantsCount={sportsCounts.participants_counts[sport.name?.toLowerCase()]}
               />
@@ -385,6 +405,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
                 loggedInUser={loggedInUser}
                 isEnrolled={isEnrolledInSport(sport.name, 'individual')}
                 isCaptain={false}
+                isCoordinator={isCoordinatorForSportCard(sport)}
                 teamsCount={undefined}
                 participantsCount={sportsCounts.participants_counts[sport.name?.toLowerCase()]}
               />

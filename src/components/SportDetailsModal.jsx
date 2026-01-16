@@ -5,7 +5,7 @@ import ParticipantDetailsModal from './ParticipantDetailsModal'
 import EventScheduleModal from './EventScheduleModal'
 import PointsTableModal from './PointsTableModal'
 import { formatSportName } from '../utils/stringHelpers'
-import { isTeamSport, getSportType, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual, isCoordinatorForSport } from '../utils/sportHelpers'
+import { isTeamSport, getSportType, isCaptainForSport, isEnrolledInTeamEvent, hasParticipatedInIndividual, isCoordinatorForSportScope } from '../utils/sportHelpers'
 import { fetchWithAuth } from '../utils/api'
 import { buildSportApiUrl } from '../utils/apiHelpers'
 import { useEventYearWithFallback } from '../hooks'
@@ -81,7 +81,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
     }
     
     const isAdmin = loggedInUser?.reg_number === 'admin'
-    const isCoordinator = !isAdmin && isCoordinatorForSport(loggedInUser, selectedSport?.name)
+    const isCoordinator = !isAdmin && isCoordinatorForSportScope(loggedInUser, selectedSport?.name, selectedSport)
     const canManageSport = isAdmin || isCoordinator
     // Get sport type from fetched sportDetails (most reliable) or from selectedSport
     const sportType = sportDetails?.type || getSportType(selectedSport)
@@ -178,7 +178,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
 
   // Compute values needed for useMemo (must be before useMemo hook)
   const isAdmin = loggedInUser?.reg_number === 'admin'
-  const isCoordinator = !isAdmin && isCoordinatorForSport(loggedInUser, selectedSport?.name)
+  const isCoordinator = !isAdmin && isCoordinatorForSportScope(loggedInUser, selectedSport?.name, selectedSport)
   const canManageSport = isAdmin || isCoordinator
   // Get sport type from fetched sportDetails (most reliable) or from selectedSport
   const sportType = sportDetails?.type || getSportType(selectedSport)
@@ -240,6 +240,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
               isOpen={true}
               onClose={onClose}
               sport={selectedSport.name}
+              sportDetails={selectedSport}
               loggedInUser={loggedInUser}
               onStatusPopup={onStatusPopup}
               embedded={true}
@@ -270,6 +271,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             isOpen={true}
             onClose={onClose}
             sport={selectedSport.name}
+            sportDetails={selectedSport}
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
@@ -284,6 +286,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             isOpen={true}
             onClose={onClose}
             sport={selectedSport.name}
+            sportDetails={selectedSport}
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
@@ -299,6 +302,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             onClose={onClose}
             sport={selectedSport.name}
             sportType={legacySportType}
+            sportDetails={selectedSport}
             loggedInUser={loggedInUser}
             onStatusPopup={onStatusPopup}
             embedded={true}
@@ -339,6 +343,7 @@ function SportDetailsModal({ isOpen, onClose, selectedSport, loggedInUser, onSta
             isOpen={true}
             onClose={onClose}
             sport={selectedSport.name}
+            sportDetails={selectedSport}
             loggedInUser={loggedInUser}
             embedded={true}
             selectedEventId={selectedEventId}

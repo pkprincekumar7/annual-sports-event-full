@@ -4,6 +4,7 @@ import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hoo
 import { fetchWithAuth, clearCache } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { formatSportName } from '../utils/stringHelpers'
+import { isCoordinatorForSportScope } from '../utils/sportHelpers'
 import logger from '../utils/logger'
 import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
@@ -12,7 +13,7 @@ const TABS = {
   REMOVE: 'remove'
 }
 
-function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
+function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventId, loggedInUser }) {
   const [activeTab, setActiveTab] = useState(TABS.ADD)
   
   // Add Captain State
@@ -32,6 +33,7 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventI
   const { eventYear, eventId } = useEventYearWithFallback(selectedEventId)
   const { eventYearConfig } = useEventYear()
   const confirmModal = useModal(false)
+  const isAdmin = loggedInUser?.reg_number === 'admin'
   
   // Check if database operations should be disabled
   const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
@@ -75,10 +77,12 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventI
 
         if (Array.isArray(sportsData)) {
           const teamSports = sportsData.filter(s => s.type === 'dual_team' || s.type === 'multi_team')
-          setSports(teamSports)
+          const visibleSports = isAdmin ? teamSports : teamSports.filter(s => isCoordinatorForSportScope(loggedInUser, s.name, s))
+          setSports(visibleSports)
         } else if (sportsData.success) {
           const teamSports = (sportsData.sports || []).filter(s => s.type === 'dual_team' || s.type === 'multi_team')
-          setSports(teamSports)
+          const visibleSports = isAdmin ? teamSports : teamSports.filter(s => isCoordinatorForSportScope(loggedInUser, s.name, s))
+          setSports(visibleSports)
         } else {
           setSports([])
         }
@@ -95,7 +99,7 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventI
       isMounted = false
       abortController.abort()
     }
-  }, [isOpen, eventYear, activeTab])
+  }, [isOpen, eventYear, activeTab, isAdmin, loggedInUser])
 
   // Fetch captains by sport for Remove tab
   useEffect(() => {
@@ -112,7 +116,16 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventI
         })
         .then((data) => {
           if (data.success) {
-            setCaptainsBySport(data.captainsBySport || {})
+            const captains = data.captainsBySport || {}
+            const filteredCaptains = isAdmin
+              ? captains
+              : Object.keys(captains).reduce((acc, sportName) => {
+                if (isCoordinatorForSportScope(loggedInUser, sportName)) {
+                  acc[sportName] = captains[sportName]
+                }
+                return acc
+              }, {})
+            setCaptainsBySport(filteredCaptains)
           } else {
             setCaptainsBySport({})
             if (!isRefreshingRef.current && onStatusPopup && data.error) {
@@ -127,7 +140,7 @@ function CaptainManagementModal({ isOpen, onClose, onStatusPopup, selectedEventI
           }
         })
     }
-  }, [isOpen, eventYear, activeTab])
+  }, [isOpen, eventYear, activeTab, isAdmin, loggedInUser])
 
   // Reset state when modal closes
   useEffect(() => {

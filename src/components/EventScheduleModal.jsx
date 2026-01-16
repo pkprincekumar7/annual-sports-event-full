@@ -12,9 +12,9 @@ import {
   validateDifferentParticipants 
 } from '../utils/participantValidation'
 import { getEventPeriodStatus, getEventStatusUpdatePeriodStatus } from '../utils/yearHelpers'
-import { isCoordinatorForSport } from '../utils/sportHelpers'
+import { isCoordinatorForSportScope } from '../utils/sportHelpers'
 
-function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, onStatusPopup, embedded = false, selectedEventId }) {
+function EventScheduleModal({ isOpen, onClose, sport, sportType, sportDetails: sportDetailsProp = null, loggedInUser, onStatusPopup, embedded = false, selectedEventId }) {
   const { eventYearConfig } = useEventYear()
   const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [matches, setMatches] = useState([])
@@ -22,7 +22,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const [expandedMatches, setExpandedMatches] = useState(new Set())
   const [showAddForm, setShowAddForm] = useState(false)
   const [deletingMatchId, setDeletingMatchId] = useState(null)
-  const [sportDetails, setSportDetails] = useState(null) // Store sport details to know exact type
+  const [fetchedSportDetails, setFetchedSportDetails] = useState(null) // Store sport details to know exact type
   const [selectedGenderTab, setSelectedGenderTab] = useState('Male') // Gender tab for viewing matches (default to Male)
   
   // Match backend date restrictions for scheduling vs status updates
@@ -55,7 +55,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const [pendingQualifiers, setPendingQualifiers] = useState({}) // { matchId: [{ participant, position }] }
   
   const isAdmin = loggedInUser?.reg_number === 'admin'
-  const isCoordinator = !isAdmin && isCoordinatorForSport(loggedInUser, sport)
+  const sportDetails = fetchedSportDetails || sportDetailsProp
+  const isCoordinator = !isAdmin && isCoordinatorForSportScope(loggedInUser, sport, sportDetails)
   const canManageSport = isAdmin || isCoordinator
   const { loading: submitting, execute: executeSubmit } = useApi()
   const { loading: updatingStatus, execute: executeStatusUpdate } = useApi()
@@ -91,7 +92,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       setSelectedGender('')
       setAllPlayersList([])
       setUpdatingMatchId(null)
-      setSportDetails(null)
+      setFetchedSportDetails(null)
       setPendingQualifiers({})
       return
     }
@@ -141,12 +142,12 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
         const data = await response.json()
         // API returns sport object directly
         if (data && data.name) {
-          setSportDetails(data)
+          setFetchedSportDetails(data)
         }
       }
     } catch (err) {
       logger.error('Error fetching sport details:', err)
-      setSportDetails(null)
+      setFetchedSportDetails(null)
     }
   }
 

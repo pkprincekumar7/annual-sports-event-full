@@ -4,9 +4,9 @@ import { fetchWithAuth, clearCache } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { useEventYearWithFallback, useApi, useEventYears } from '../hooks'
 import logger from '../utils/logger'
-import { isCoordinatorForSport } from '../utils/sportHelpers'
+import { isCoordinatorForSportScope } from '../utils/sportHelpers'
 
-function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = false, selectedEventId, isActive = true, onStatusPopup }) {
+function PointsTableModal({ isOpen, onClose, sport, sportDetails = null, loggedInUser, embedded = false, selectedEventId, isActive = true, onStatusPopup }) {
   const [pointsTable, setPointsTable] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -18,7 +18,7 @@ function PointsTableModal({ isOpen, onClose, sport, loggedInUser, embedded = fal
   const currentSportRef = useRef(null)
   const previousIsActiveRef = useRef(false)
   const isAdmin = loggedInUser?.reg_number === 'admin'
-  const isCoordinator = !isAdmin && isCoordinatorForSport(loggedInUser, sport)
+  const isCoordinator = !isAdmin && isCoordinatorForSportScope(loggedInUser, sport, sportDetails)
   const canManageSport = isAdmin || isCoordinator
   const { loading: backfilling, execute: executeBackfill } = useApi()
 

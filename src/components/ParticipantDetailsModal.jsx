@@ -4,11 +4,11 @@ import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hoo
 import { fetchWithAuth } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { clearIndividualParticipationCaches } from '../utils/cacheHelpers'
-import { isCoordinatorForSport } from '../utils/sportHelpers'
+import { isCoordinatorForSportScope } from '../utils/sportHelpers'
 import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 import logger from '../utils/logger'
 
-function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedEventId }) {
+function ParticipantDetailsModal({ isOpen, onClose, sport, sportDetails = null, loggedInUser, onStatusPopup, embedded = false, selectedEventId }) {
   const { eventYearConfig } = useEventYear()
   const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
   const isOperationDisabled = operationStatus.disabled
@@ -267,7 +267,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
   }
 
   const isAdmin = loggedInUser?.reg_number === 'admin'
-  const isCoordinator = !isAdmin && isCoordinatorForSport(loggedInUser, sport)
+  const isCoordinator = !isAdmin && isCoordinatorForSportScope(loggedInUser, sport, sportDetails)
   const canManageSport = isAdmin || isCoordinator
 
   return (

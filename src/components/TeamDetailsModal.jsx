@@ -3,13 +3,13 @@ import { Modal, Button, Input, ConfirmationDialog, LoadingSpinner, ErrorMessage,
 import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
 import { fetchWithAuth, clearCache, clearCachePattern } from '../utils/api'
 import { clearSportCaches } from '../utils/cacheHelpers'
-import { isCoordinatorForSport } from '../utils/sportHelpers'
+import { isCoordinatorForSportScope } from '../utils/sportHelpers'
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
 import { validateGenderMatch, validateBatchMatch, validateNoDuplicates } from '../utils/participantValidation'
 import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
-function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedEventId }) {
+function TeamDetailsModal({ isOpen, onClose, sport, sportDetails = null, loggedInUser, onStatusPopup, embedded = false, selectedEventId }) {
   const { eventYearConfig } = useEventYear()
   const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [teams, setTeams] = useState([])
@@ -33,7 +33,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
   const isOperationDisabled = operationStatus.disabled
   
   const isAdmin = loggedInUser?.reg_number === 'admin'
-  const isCoordinator = !isAdmin && isCoordinatorForSport(loggedInUser, sport)
+  const isCoordinator = !isAdmin && isCoordinatorForSportScope(loggedInUser, sport, sportDetails)
   const canManageSport = isAdmin || isCoordinator
   const isCaptain = !canManageSport && loggedInUser?.captain_in && 
     Array.isArray(loggedInUser.captain_in) && 

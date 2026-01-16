@@ -6,7 +6,7 @@
 import express from 'express'
 import Sport from '../models/Sport.js'
 import Player from '../models/Player.js'
-import { authenticateToken, requireAdmin } from '../middleware/auth.js'
+import { authenticateToken } from '../middleware/auth.js'
 import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { validateCaptainAssignment, trimObjectFields } from '../utils/validation.js'
@@ -14,20 +14,20 @@ import { clearCache, clearCachePattern } from '../utils/cache.js'
 import { getEventYear } from '../utils/yearHelpers.js'
 import { findSportByNameAndId } from '../utils/sportHelpers.js'
 import { computePlayersParticipationBatch } from '../utils/playerHelpers.js'
+import { ADMIN_REG_NUMBER } from '../constants/index.js'
 
 const router = express.Router()
 
 /**
  * POST /api/add-captain
- * Add captain role to a player (admin only)
- * Workflow: Admin assigns a player as captain for a sport (makes player eligible to create a team)
+ * Add captain role to a player (admin or coordinator)
+ * Workflow: Admin or coordinator assigns a player as captain for a sport (makes player eligible to create a team)
  * Event ID Required: event_id field required in request body (defaults to active event)
  * Update Sports collection's eligible_captains array (add player reg_number for the specified event year)
  */
 router.post(
   '/add-captain',
   authenticateToken,
-  requireAdmin,
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
@@ -51,6 +51,15 @@ router.post(
 
     // Find sport by name and event_id
     const sportDoc = await findSportByNameAndId(sport, eventId, { lean: false })
+
+    // Allow admin or coordinator for this sport
+    const isAdmin = req.user?.reg_number === ADMIN_REG_NUMBER
+    if (!isAdmin) {
+      const coordinators = sportDoc.eligible_coordinators || []
+      if (!coordinators.includes(req.user?.reg_number)) {
+        return sendErrorResponse(res, 403, 'Admin or coordinator access required for this sport')
+      }
+    }
 
     // Captains cannot be coordinators for the same sport
     if (sportDoc.eligible_coordinators && sportDoc.eligible_coordinators.includes(reg_number)) {
@@ -94,14 +103,13 @@ router.post(
 
 /**
  * DELETE /api/remove-captain
- * Remove captain role from a player (admin only)
+ * Remove captain role from a player (admin or coordinator)
  * Event ID Required: event_id field required in request body (defaults to active event)
  * Update Sports collection's eligible_captains array (remove player reg_number for the specified event year)
  */
 router.delete(
   '/remove-captain',
   authenticateToken,
-  requireAdmin,
   requireRegistrationPeriod,
   asyncHandler(async (req, res) => {
     const trimmed = trimObjectFields(req.body)
@@ -119,6 +127,15 @@ router.delete(
 
     // Find sport by name and event_id
     const sportDoc = await findSportByNameAndId(sport, eventId, { lean: false })
+
+    // Allow admin or coordinator for this sport
+    const isAdmin = req.user?.reg_number === ADMIN_REG_NUMBER
+    if (!isAdmin) {
+      const coordinators = sportDoc.eligible_coordinators || []
+      if (!coordinators.includes(req.user?.reg_number)) {
+        return sendErrorResponse(res, 403, 'Admin or coordinator access required for this sport')
+      }
+    }
 
     // Check if player is in eligible_captains
     if (!sportDoc.eligible_captains || !sportDoc.eligible_captains.includes(reg_number)) {
@@ -153,13 +170,12 @@ router.delete(
 
 /**
  * GET /api/captains-by-sport
- * Get all captains grouped by sport (admin only)
+ * Get all captains grouped by sport (admin or coordinator)
  * Event ID Filter: Accepts ?event_id=2026-umang parameter (defaults to active event)
  */
 router.get(
   '/captains-by-sport',
   authenticateToken,
-  requireAdmin,
   asyncHandler(async (req, res) => {
     const eventIdQuery = req.query.event_id ? String(req.query.event_id).trim() : null
     
@@ -179,11 +195,17 @@ router.get(
 
     const eventId = eventYearData.doc.event_id
 
-    // Get all sports with eligible captains for this event
-    const sports = await Sport.find({
+    const isAdmin = req.user?.reg_number === ADMIN_REG_NUMBER
+    const sportsQuery = {
       event_id: eventId,
       eligible_captains: { $exists: true, $ne: [] }
-    }).lean()
+    }
+    if (!isAdmin) {
+      sportsQuery.eligible_coordinators = req.user?.reg_number
+    }
+
+    // Get all sports with eligible captains for this event
+    const sports = await Sport.find(sportsQuery).lean()
 
     const captainsBySport = {}
 

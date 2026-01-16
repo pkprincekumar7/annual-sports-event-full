@@ -26,6 +26,10 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
   const isRegistrationPeriodActive = eventYearConfig?.registration_dates
     ? isWithinRegistrationPeriod(eventYearConfig.registration_dates)
     : false
+  const isAdmin = loggedInUser?.reg_number === 'admin'
+  const isCoordinator = Array.isArray(loggedInUser?.coordinator_in) && loggedInUser.coordinator_in.length > 0
+  const canManageCaptains = isAdmin || isCoordinator
+  const canListPlayers = isAdmin || isCoordinator
 
   useEffect(() => {
     // All date fields are required in EventYear model, so they will always be present
@@ -207,7 +211,7 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
                         >
                           <span className="text-[#ffe66d]">●</span> Profile
                         </button>
-                        {loggedInUser?.reg_number === 'admin' && onCaptainManagementClick && (
+                        {canManageCaptains && onCaptainManagementClick && (
                           <button
                             onClick={() => {
                               setIsMenuOpen(false)
@@ -240,7 +244,7 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
                             <span className="text-[#f59e0b]">●</span> Add/Remove Batch
                           </button>
                         )}
-                        {loggedInUser?.reg_number === 'admin' && onListPlayersClick && (
+                        {canListPlayers && onListPlayersClick && (
                           <button
                             onClick={() => {
                               setIsMenuOpen(false)

@@ -330,11 +330,7 @@ router.post(
       return sendErrorResponse(res, 400, 'Active event is missing event_id. Please configure the event ID for the active event.')
     }
 
-    // Create new player object (without year field)
-    const newPlayer = new Player(playerData)
-    await newPlayer.save()
-
-    // Validate batch exists and add player to batch
+    // Validate batch exists before creating player
     if (!batch_name || !batch_name.trim()) {
       return sendErrorResponse(res, 400, 'Batch name is required')
     }
@@ -348,10 +344,20 @@ router.post(
       return sendErrorResponse(res, 400, `Batch "${batch_name}" does not exist. Please create the batch first.`)
     }
 
-    // Add player to batch if not already present
-    if (!batch.players.includes(reg_number)) {
-      batch.players.push(reg_number)
-      await batch.save()
+    // Create new player object (without year field)
+    const newPlayer = new Player(playerData)
+    await newPlayer.save()
+
+    try {
+      // Add player to batch if not already present
+      if (!batch.players.includes(reg_number)) {
+        batch.players.push(reg_number)
+        await batch.save()
+      }
+    } catch (batchError) {
+      // Roll back player creation if batch update fails
+      await Player.findOneAndDelete({ reg_number })
+      throw batchError
     }
 
     const savedPlayer = newPlayer.toObject()
@@ -433,6 +439,7 @@ router.put(
     // Clear cache (use pattern to clear all variations with query params)
     clearCachePattern('/api/players')
     clearCachePattern('/api/me')
+    clearCachePattern('/api/teams')
     // Clear gender cache for this player (in case gender derivation is affected)
     clearPlayerGenderCache(reg_number)
 
@@ -827,12 +834,19 @@ router.delete(
       }
     }
 
+    // Remove player from batch (if assigned)
+    await Batch.updateMany(
+      { event_id: eventId, players: reg_number },
+      { $pull: { players: reg_number } }
+    )
+
     // Delete player from database
     await Player.findOneAndDelete({ reg_number })
 
     // Clear cache (use pattern to clear all variations with query params)
     clearCachePattern('/api/players')
     clearCache(`/api/me?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/batches?event_id=${encodeURIComponent(eventId)}`)
     clearPlayerGenderCache(reg_number)
 
     return sendSuccessResponse(
@@ -1126,6 +1140,14 @@ router.post(
       clearCache(`/api/sports-counts?event_id=${encodeURIComponent(eventId)}`)
     }
 
+    // Remove deleted players from batches (if assigned)
+    if (regNumbersToDelete.length > 0) {
+      await Batch.updateMany(
+        { event_id: eventId, players: { $in: regNumbersToDelete } },
+        { $pull: { players: { $in: regNumbersToDelete } } }
+      )
+    }
+
     // OPTIMIZATION: Delete all players in one query
     if (regNumbersToDelete.length > 0) {
       await Player.deleteMany({ reg_number: { $in: regNumbersToDelete } })
@@ -1139,6 +1161,7 @@ router.post(
     // Clear cache (use pattern to clear all variations with query params)
     clearCachePattern('/api/players')
     clearCache(`/api/me?event_id=${encodeURIComponent(eventId)}`)
+    clearCache(`/api/batches?event_id=${encodeURIComponent(eventId)}`)
 
     return sendSuccessResponse(
       res,

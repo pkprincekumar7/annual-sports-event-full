@@ -6,14 +6,16 @@
 import express from 'express'
 import Sport from '../models/Sport.js'
 import Player from '../models/Player.js'
+import EventSchedule from '../models/EventSchedule.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError, handleForbiddenError } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
-import { getCache, setCache, clearCache } from '../utils/cache.js'
+import { getCache, setCache, clearCache, clearCachePattern } from '../utils/cache.js'
 import { clearTeamGenderCache, clearSportGenderCache } from '../utils/genderHelpers.js'
 import { getEventYear } from '../utils/yearHelpers.js'
-import { findSportByNameAndId } from '../utils/sportHelpers.js'
+import { findSportByNameAndId, normalizeSportName } from '../utils/sportHelpers.js'
+import { getPlayersBatchNames } from '../utils/batchHelpers.js'
 import { requireAdminOrCoordinator } from '../utils/coordinatorHelpers.js'
 
 const router = express.Router()
@@ -74,6 +76,12 @@ router.post(
     // Find sport by name and event_id
     const sportDoc = await findSportByNameAndId(sport, eventId, { lean: false })
 
+    // Validate captain eligibility
+    const loggedInUserRegNumber = req.user?.reg_number
+    if (!loggedInUserRegNumber) {
+      return handleForbiddenError(res, 'You must be logged in to create a team')
+    }
+
     // Coordinators cannot participate in the same sport
     if (sportDoc.eligible_coordinators && sportDoc.eligible_coordinators.includes(loggedInUserRegNumber)) {
       return handleForbiddenError(
@@ -116,6 +124,31 @@ router.post(
 
     const playerData = reg_numbers.map(rn => playersMap.get(rn))
 
+    // CRITICAL: Validate that all players are in the same batch
+    const batchMap = await getPlayersBatchNames(reg_numbers, eventId)
+    const missingBatch = reg_numbers.filter(rn => !batchMap[rn])
+    if (missingBatch.length > 0) {
+      return sendErrorResponse(
+        res,
+        400,
+        `Batch assignment missing for: ${missingBatch.join(', ')}. Please assign batches before creating a team.`
+      )
+    }
+
+    const firstBatch = batchMap[reg_numbers[0]]
+    const batchMismatches = reg_numbers.filter(rn => batchMap[rn] && batchMap[rn] !== firstBatch)
+    if (batchMismatches.length > 0) {
+      const mismatchNames = batchMismatches.map((rn) => {
+        const player = playersMap.get(rn)
+        return player ? `${player.full_name} (${player.reg_number})` : rn
+      })
+      return sendErrorResponse(
+        res,
+        400,
+        `Batch mismatch: ${mismatchNames.join(', ')} must be in the same batch (${firstBatch}) as other team members.`
+      )
+    }
+
     // Coordinators cannot participate in the same sport
     if (sportDoc.eligible_coordinators && sportDoc.eligible_coordinators.length > 0) {
       const coordinatorInTeam = reg_numbers.find(rn => sportDoc.eligible_coordinators.includes(rn))
@@ -142,25 +175,7 @@ router.post(
       }
     }
 
-    // CRITICAL: Validate that all players have the same year
-    if (playerData.length > 0) {
-      const firstYear = playerData[0].year
-      const yearMismatches = playerData.filter((p) => p.year !== firstYear).map((p) => `${p.full_name} (${p.reg_number})`)
-
-      if (yearMismatches.length > 0) {
-        return sendErrorResponse(
-          res,
-          400,
-          `Year mismatch: ${yearMismatches.join(', ')} must be in the same year (${firstYear}) as other team members.`
-        )
-      }
-    }
-
     // Validate captain eligibility
-    const loggedInUserRegNumber = req.user?.reg_number
-    if (!loggedInUserRegNumber) {
-      return handleForbiddenError(res, 'You must be logged in to create a team')
-    }
 
     // Check if logged-in user is in eligible_captains
     if (!sportDoc.eligible_captains || !sportDoc.eligible_captains.includes(loggedInUserRegNumber)) {
@@ -241,8 +256,10 @@ router.post(
     clearCache(`/api/sports/${sport}?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/teams/${sport}?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/sports-counts?event_id=${encodeURIComponent(eventId)}`)
+    clearCachePattern('/api/players')
+    clearCachePattern('/api/me')
     // Clear gender cache for this team (team composition changed)
-    clearTeamGenderCache(team_name, sport, eventYear, eventName)
+    clearTeamGenderCache(team_name, sport, eventId)
 
     return sendSuccessResponse(
       res,
@@ -333,6 +350,9 @@ router.get(
     // Create a map for quick lookup
     const playersMap = new Map(playersList.map(p => [p.reg_number, p]))
 
+    // Batch lookup for team player details
+    const batchMap = await getPlayersBatchNames(Array.from(allRegNumbers), eventId)
+
     // Get teams from teams_participated array and populate player details
     const teams = (sportDoc.teams_participated || []).map(team => {
       const playerRegNumbers = team.players || []
@@ -345,7 +365,7 @@ router.get(
             reg_number: player.reg_number,
             full_name: player.full_name,
             department_branch: player.department_branch,
-            year: player.year,
+            batch_name: batchMap[player.reg_number] || null,
             gender: player.gender,
             mobile_number: player.mobile_number,
             email_id: player.email_id,
@@ -455,6 +475,24 @@ router.post(
       return handleNotFoundError(res, 'New player')
     }
 
+    // Coordinators cannot participate in the same sport
+    if (sportDoc.eligible_coordinators && sportDoc.eligible_coordinators.includes(new_reg_number)) {
+      return sendErrorResponse(
+        res,
+        400,
+        `Player ${new_reg_number} is a coordinator for ${sport} and cannot participate in that sport.`
+      )
+    }
+
+    // Team must have exactly one captain (cannot add another eligible captain)
+    if (sportDoc.eligible_captains && sportDoc.eligible_captains.includes(new_reg_number)) {
+      return sendErrorResponse(
+        res,
+        400,
+        `Player ${new_reg_number} is an eligible captain for ${sport}. Teams can only include one captain.`
+      )
+    }
+
     // Get all current team members (excluding the old player)
     const currentTeamMembersRegNumbers = team.players.filter(rn => rn !== old_reg_number)
     const currentTeamMembers = await Player.find({
@@ -472,13 +510,40 @@ router.post(
         )
       }
 
-      // CRITICAL: Validate same year
-      const teamYear = currentTeamMembers[0].year
-      if (newPlayer.year !== teamYear) {
+      // CRITICAL: Validate batch match
+      const batchMap = await getPlayersBatchNames(
+        [...currentTeamMembersRegNumbers, new_reg_number],
+        eventId
+      )
+      const teamBatch = currentTeamMembersRegNumbers.length > 0
+        ? batchMap[currentTeamMembersRegNumbers[0]]
+        : null
+
+      const missingBatch = currentTeamMembersRegNumbers.filter(rn => !batchMap[rn])
+      if (!teamBatch || missingBatch.length > 0) {
         return sendErrorResponse(
           res,
           400,
-          `Year mismatch: New player must be in the same year (${teamYear}) as other team members.`
+          'Unable to determine batch for existing team members. Please verify batch assignments.'
+        )
+      }
+
+      const teamBatchMismatches = currentTeamMembersRegNumbers.filter(
+        rn => batchMap[rn] && batchMap[rn] !== teamBatch
+      )
+      if (teamBatchMismatches.length > 0) {
+        return sendErrorResponse(
+          res,
+          400,
+          `Existing team members are not in the same batch (${teamBatch}). Please fix team composition first.`
+        )
+      }
+
+      if (batchMap[new_reg_number] !== teamBatch) {
+        return sendErrorResponse(
+          res,
+          400,
+          `Batch mismatch: New player must be in the same batch (${teamBatch}) as other team members.`
         )
       }
     }
@@ -516,8 +581,10 @@ router.post(
     clearCache(`/api/sports/${sport}?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/teams/${sport}?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/sports-counts?event_id=${encodeURIComponent(eventId)}`)
+    clearCachePattern('/api/players')
+    clearCachePattern('/api/me')
     // Clear gender cache for this team (team composition changed - first player might have changed)
-    clearTeamGenderCache(team_name, sport, eventYear, eventName)
+    clearTeamGenderCache(team_name, sport, eventId)
 
     const newPlayerData = newPlayer.toObject()
     delete newPlayerData.password
@@ -585,6 +652,21 @@ router.delete(
 
     const team = sportDoc.teams_participated[teamIndex]
 
+    // Block deletion if match history exists for this team
+    const normalizedSport = normalizeSportName(sport)
+    const teamMatchCount = await EventSchedule.countDocuments({
+      event_id: eventId,
+      sports_name: normalizedSport,
+      teams: team.team_name
+    })
+    if (teamMatchCount > 0) {
+      return sendErrorResponse(
+        res,
+        400,
+        `Cannot delete team "${team_name}". Match history exists for ${sport}.`
+      )
+    }
+
     // Get team members info
     const teamMembers = await Player.find({
       reg_number: { $in: team.players || [] }
@@ -599,6 +681,8 @@ router.delete(
     clearCache(`/api/sports/${sport}?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/teams/${sport}?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/sports-counts?event_id=${encodeURIComponent(eventId)}`)
+    clearCachePattern('/api/players')
+    clearCachePattern('/api/me')
     // Clear gender cache for this team (team deleted)
     clearTeamGenderCache(team_name, sport, eventId)
 

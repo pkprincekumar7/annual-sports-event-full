@@ -918,6 +918,15 @@ When `event_id` is optional (defaults to active event), it may be omitted:
 
 ---
 
+## Frontend Sync Status
+
+- ✅ Registration period gating in UI now covers start/end dates
+- ✅ Team creation/replacement validates year match to mirror backend rules
+- ✅ Event scheduling and status updates are gated by event period rules
+- ⚠️ Some edge cases still rely on backend errors (e.g., missing event configuration)
+
+---
+
 ## Summary
 
 ### ✅ Well-Implemented Validations:

@@ -386,6 +386,10 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
             isRefreshingRef.current = true
             // Clear players cache pattern to match backend behavior
             clearCachePattern('/api/players')
+            clearCachePattern('/api/teams')
+            clearCachePattern('/api/participants')
+            clearCachePattern('/api/sports-counts')
+            clearCachePattern('/api/event-schedule')
             fetchPlayers(null, false, searchQuery, currentPage).finally(() => {
               isRefreshingRef.current = false
             })

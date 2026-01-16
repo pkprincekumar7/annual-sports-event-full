@@ -11,7 +11,7 @@ import {
   validateGenderMatch, 
   validateDifferentParticipants 
 } from '../utils/participantValidation'
-import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
+import { getEventPeriodStatus, getEventStatusUpdatePeriodStatus } from '../utils/yearHelpers'
 import { isCoordinatorForSport } from '../utils/sportHelpers'
 
 function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, onStatusPopup, embedded = false, selectedEventId }) {
@@ -25,9 +25,11 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const [sportDetails, setSportDetails] = useState(null) // Store sport details to know exact type
   const [selectedGenderTab, setSelectedGenderTab] = useState('Male') // Gender tab for viewing matches (default to Male)
   
-  // Check if database operations should be disabled
-  const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
-  const isOperationDisabled = operationStatus.disabled
+  // Match backend date restrictions for scheduling vs status updates
+  const schedulingStatus = getEventPeriodStatus(eventYearConfig)
+  const isSchedulingDisabled = schedulingStatus.disabled
+  const statusUpdateStatus = getEventStatusUpdatePeriodStatus(eventYearConfig)
+  const isStatusUpdateDisabled = statusUpdateStatus.disabled
   
   // Form state
   const [matchType, setMatchType] = useState('league')
@@ -346,9 +348,9 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   }
 
   const handleDeleteClick = (matchId) => {
-    if (isOperationDisabled) {
+    if (isSchedulingDisabled) {
       if (onStatusPopup) {
-        onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+        onStatusPopup(`❌ ${schedulingStatus.reason}`, 'error', 4000)
       }
       return
     }
@@ -358,6 +360,13 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
 
   const handleStatusChange = async (matchId, newStatus) => {
     if (!newStatus || newStatus === '') {
+      return
+    }
+
+    if (isStatusUpdateDisabled) {
+      if (onStatusPopup) {
+        onStatusPopup(`❌ ${statusUpdateStatus.reason}`, 'error', 4000)
+      }
       return
     }
 
@@ -437,6 +446,13 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
       return
     }
 
+    if (isStatusUpdateDisabled) {
+      if (onStatusPopup) {
+        onStatusPopup(`❌ ${statusUpdateStatus.reason}`, 'error', 4000)
+      }
+      return
+    }
+
     // Find the match to check if it's in the future
     const match = matches.find(m => m._id === matchId)
     if (match && isMatchInFuture(match.match_date)) {
@@ -503,6 +519,13 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
 
   // Handle clicking "Qualified" button next to a participant
   const handleQualifyParticipant = (matchId, participant) => {
+    if (isStatusUpdateDisabled) {
+      if (onStatusPopup) {
+        onStatusPopup(`❌ ${statusUpdateStatus.reason}`, 'error', 4000)
+      }
+      return
+    }
+
     // Find the match to check if it's in the future
     const match = matches.find(m => m._id === matchId)
     if (match && isMatchInFuture(match.match_date)) {
@@ -537,6 +560,13 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
     if (qualifiers.length === 0) {
       if (onStatusPopup) {
         onStatusPopup('❌ Please select at least one qualifier before freezing.', 'error', 3000)
+      }
+      return
+    }
+
+    if (isStatusUpdateDisabled) {
+      if (onStatusPopup) {
+        onStatusPopup(`❌ ${statusUpdateStatus.reason}`, 'error', 4000)
       }
       return
     }
@@ -684,9 +714,9 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   }
 
   const handleAddMatch = () => {
-    if (isOperationDisabled) {
+    if (isSchedulingDisabled) {
       if (onStatusPopup) {
-        onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+        onStatusPopup(`❌ ${schedulingStatus.reason}`, 'error', 4000)
       }
       return
     }
@@ -758,9 +788,16 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
   const handleSubmitMatch = async (e) => {
     e.preventDefault()
     
-    if (isOperationDisabled) {
+    if (isSchedulingDisabled) {
       if (onStatusPopup) {
-        onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+        onStatusPopup(`❌ ${schedulingStatus.reason}`, 'error', 4000)
+      }
+      return
+    }
+
+    if (!eventId) {
+      if (onStatusPopup) {
+        onStatusPopup('❌ Event is not configured. Please try again later.', 'error', 3000)
       }
       return
     }
@@ -1307,8 +1344,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
               <Button
                 type="button"
                 onClick={handleAddMatch}
-                disabled={isOperationDisabled}
-                title={isOperationDisabled ? operationStatus.reason : ''}
+                disabled={isSchedulingDisabled}
+                title={isSchedulingDisabled ? schedulingStatus.reason : ''}
                 variant="success"
                 className="px-4 py-2 text-[0.85rem] font-bold rounded-lg"
               >
@@ -1667,9 +1704,9 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
               <div className="flex justify-center gap-3">
                 <Button
                   type="submit"
-                  disabled={isOperationDisabled || submitting}
+                  disabled={isSchedulingDisabled || submitting}
                   loading={submitting}
-                  title={isOperationDisabled ? operationStatus.reason : ''}
+                  title={isSchedulingDisabled ? schedulingStatus.reason : ''}
                   variant="success"
                   className="w-32 md:w-36 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-[0.85rem] font-bold rounded-lg"
                 >
@@ -1753,8 +1790,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                   e.stopPropagation()
                                   handleDeleteClick(match._id)
                                 }}
-                                disabled={isOperationDisabled || updatingStatus || updatingWinner}
-                                title={isOperationDisabled ? operationStatus.reason : ''}
+                                disabled={isSchedulingDisabled || updatingStatus || updatingWinner}
+                                title={isSchedulingDisabled ? schedulingStatus.reason : ''}
                                 variant="danger"
                                 className="px-2 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em] rounded-[8px]"
                               >
@@ -1770,6 +1807,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                       handleStatusChange(match._id, e.target.value)
                                     }}
                                     disabled={
+                                      isStatusUpdateDisabled ||
                                       updatingStatus || 
                                       updatingMatchId === match._id
                                     }
@@ -1856,7 +1894,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                           e.stopPropagation()
                                           handleQualifyParticipant(match._id, team)
                                         }}
-                                        disabled={updatingMatchId === match._id}
+                                        disabled={isStatusUpdateDisabled || updatingMatchId === match._id}
+                                        title={isStatusUpdateDisabled ? statusUpdateStatus.reason : ''}
                                         variant="success"
                                         className="px-2 py-1 text-[0.75rem] font-bold rounded"
                                       >
@@ -1870,7 +1909,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                           e.stopPropagation()
                                           handleWinnerSelect(match._id, team)
                                         }}
-                                        disabled={updatingWinner || updatingMatchId === match._id}
+                                        disabled={isStatusUpdateDisabled || updatingWinner || updatingMatchId === match._id}
+                                        title={isStatusUpdateDisabled ? statusUpdateStatus.reason : ''}
                                         variant="success"
                                         className="px-2.5 py-1.5 text-[0.85rem] font-bold rounded-lg"
                                       >
@@ -1900,7 +1940,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                     e.stopPropagation()
                                     handleFreezeQualifiers(match._id)
                                   }}
-                                  disabled={updatingQualifiers || updatingMatchId === match._id}
+                                  disabled={isStatusUpdateDisabled || updatingQualifiers || updatingMatchId === match._id}
+                                  title={isStatusUpdateDisabled ? statusUpdateStatus.reason : ''}
                                   variant="success"
                                   className="px-3 py-1.5 text-[0.85rem] font-bold rounded-lg"
                                 >
@@ -1947,7 +1988,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                           e.stopPropagation()
                                           handleQualifyParticipant(match._id, playerRegNumber)
                                         }}
-                                        disabled={updatingMatchId === match._id}
+                                        disabled={isStatusUpdateDisabled || updatingMatchId === match._id}
+                                        title={isStatusUpdateDisabled ? statusUpdateStatus.reason : ''}
                                         variant="success"
                                         className="px-2 py-1 text-[0.75rem] font-bold rounded"
                                       >
@@ -1961,7 +2003,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                           e.stopPropagation()
                                           handleWinnerSelect(match._id, playerRegNumber)
                                         }}
-                                        disabled={updatingWinner || updatingMatchId === match._id}
+                                        disabled={isStatusUpdateDisabled || updatingWinner || updatingMatchId === match._id}
+                                        title={isStatusUpdateDisabled ? statusUpdateStatus.reason : ''}
                                         variant="success"
                                         className="px-2.5 py-1.5 text-[0.85rem] font-bold rounded-lg"
                                       >
@@ -1991,7 +2034,8 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, loggedInUser, o
                                     e.stopPropagation()
                                     handleFreezeQualifiers(match._id)
                                   }}
-                                  disabled={updatingQualifiers || updatingMatchId === match._id}
+                                  disabled={isStatusUpdateDisabled || updatingQualifiers || updatingMatchId === match._id}
+                                  title={isStatusUpdateDisabled ? statusUpdateStatus.reason : ''}
                                   variant="success"
                                   className="px-3 py-1.5 text-[0.85rem] font-bold rounded-lg"
                                 >

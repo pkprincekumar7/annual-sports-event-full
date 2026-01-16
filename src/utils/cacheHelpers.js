@@ -30,7 +30,10 @@ export const clearSportCaches = (sportName, eventId = null) => {
  */
 export const clearTeamParticipationCaches = (sportName, eventId = null) => {
   clearSportCaches(sportName, eventId)
+  clearCachePattern('/api/players')
   clearCachePattern('/api/me') // Current user's participation data changes (clear all variations)
+  clearCachePattern('/api/sports-counts')
+  clearCachePattern('/api/event-schedule')
 }
 
 /**
@@ -40,7 +43,10 @@ export const clearTeamParticipationCaches = (sportName, eventId = null) => {
  */
 export const clearIndividualParticipationCaches = (sportName, eventId = null) => {
   clearSportCaches(sportName, eventId)
+  clearCachePattern('/api/players')
   clearCachePattern('/api/me') // Current user's participation data changes (clear all variations)
+  clearCachePattern('/api/sports-counts')
+  clearCachePattern('/api/event-schedule')
 }
 
 /**

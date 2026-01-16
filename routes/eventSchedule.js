@@ -122,7 +122,11 @@ router.get(
     const sportDoc = await findSportByNameAndId(decodedSport, eventId)
     
     if (!sportDoc) {
-      return sendErrorResponse(res, 404, `Sport "${decodedSport}" not found for event year ${eventYear}`)
+      return sendErrorResponse(
+        res,
+        404,
+        `Sport "${decodedSport}" not found for event year ${eventYearData.doc.event_year}`
+      )
     }
 
     // Get knocked out participants and participants in scheduled matches using utility functions

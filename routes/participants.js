@@ -6,13 +6,14 @@
 import express from 'express'
 import Sport from '../models/Sport.js'
 import Player from '../models/Player.js'
+import EventSchedule from '../models/EventSchedule.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { trimObjectFields } from '../utils/validation.js'
-import { getCache, setCache, clearCache } from '../utils/cache.js'
+import { getCache, setCache, clearCache, clearCachePattern } from '../utils/cache.js'
 import { getEventYear } from '../utils/yearHelpers.js'
-import { findSportByNameAndId } from '../utils/sportHelpers.js'
+import { findSportByNameAndId, normalizeSportName } from '../utils/sportHelpers.js'
 import { requireAdminOrCoordinator } from '../utils/coordinatorHelpers.js'
 
 const router = express.Router()
@@ -190,6 +191,8 @@ router.post(
     clearCache(`/api/participants/${sport}?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/participants-count/${sport}?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/sports-counts?event_id=${encodeURIComponent(eventId)}`)
+    clearCachePattern('/api/players')
+    clearCachePattern('/api/me')
 
     return sendSuccessResponse(res, { sport: sportDoc }, `Participation updated successfully for ${sport}`)
   })
@@ -236,6 +239,7 @@ router.delete(
 
     // Find sport by name and event_id
     const sportDoc = await findSportByNameAndId(sport, eventId, { lean: false })
+    const normalizedSport = normalizeSportName(sport)
 
     let removed = false
 
@@ -257,6 +261,20 @@ router.delete(
         )
       }
 
+      // Block removal if match history exists for this team
+      const teamMatchCount = await EventSchedule.countDocuments({
+        event_id: eventId,
+        sports_name: normalizedSport,
+        teams: team.team_name
+      })
+      if (teamMatchCount > 0) {
+        return sendErrorResponse(
+          res,
+          400,
+          `Cannot remove participation. Team "${team.team_name}" has match history in ${sport}.`
+        )
+      }
+
       // Remove player from team
       team.players = team.players.filter(p => p !== reg_number)
       
@@ -267,6 +285,19 @@ router.delete(
       
       removed = true
     } else if (sportDoc.players_participated && sportDoc.players_participated.includes(reg_number)) {
+      const playerMatchCount = await EventSchedule.countDocuments({
+        event_id: eventId,
+        sports_name: normalizedSport,
+        players: reg_number
+      })
+      if (playerMatchCount > 0) {
+        return sendErrorResponse(
+          res,
+          400,
+          `Cannot remove participation. Player has match history in ${sport}.`
+        )
+      }
+
       // Player is an individual participant - remove from players_participated
       sportDoc.players_participated = sportDoc.players_participated.filter(p => p !== reg_number)
       removed = true
@@ -285,6 +316,8 @@ router.delete(
     clearCache(`/api/participants/${sport}?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/participants-count/${sport}?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/sports-counts?event_id=${encodeURIComponent(eventId)}`)
+    clearCachePattern('/api/players')
+    clearCachePattern('/api/me')
 
     return sendSuccessResponse(res, { sport: sportDoc }, `Participation removed successfully for ${sport}`)
   })

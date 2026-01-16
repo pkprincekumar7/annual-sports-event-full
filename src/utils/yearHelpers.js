@@ -246,6 +246,69 @@ export function isRegistrationPeriodEnded(eventYearConfig) {
 }
 
 /**
+ * Check if registration period has started (frontend)
+ * @param {Object} eventYearConfig - Event year configuration object with registration_dates
+ * @returns {boolean} True if registration period has started
+ */
+export function isRegistrationPeriodStarted(eventYearConfig) {
+  if (!eventYearConfig || !eventYearConfig.registration_dates || !eventYearConfig.registration_dates.start) {
+    return false
+  }
+
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  const regStart = new Date(eventYearConfig.registration_dates.start)
+  regStart.setHours(0, 0, 0, 0)
+
+  return now >= regStart
+}
+
+/**
+ * Check if current date is within event period (after registration end, before event end)
+ * @param {Object} eventYearConfig - Event year configuration object with registration_dates and event_dates
+ * @returns {boolean} True if within event period
+ */
+export function isWithinEventPeriod(eventYearConfig) {
+  if (!eventYearConfig || !eventYearConfig.registration_dates || !eventYearConfig.event_dates) {
+    return false
+  }
+
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  const regEnd = new Date(eventYearConfig.registration_dates.end)
+  regEnd.setHours(23, 59, 59, 999)
+
+  const eventEnd = new Date(eventYearConfig.event_dates.end)
+  eventEnd.setHours(23, 59, 59, 999)
+
+  return now > regEnd && now <= eventEnd
+}
+
+/**
+ * Check if current date is within event status update period (event start to event end)
+ * @param {Object} eventYearConfig - Event year configuration object with event_dates
+ * @returns {boolean} True if within event status update period
+ */
+export function isWithinEventStatusUpdatePeriod(eventYearConfig) {
+  if (!eventYearConfig || !eventYearConfig.event_dates || !eventYearConfig.event_dates.start || !eventYearConfig.event_dates.end) {
+    return false
+  }
+
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  const eventStart = new Date(eventYearConfig.event_dates.start)
+  eventStart.setHours(0, 0, 0, 0)
+
+  const eventEnd = new Date(eventYearConfig.event_dates.end)
+  eventEnd.setHours(23, 59, 59, 999)
+
+  return now >= eventStart && now <= eventEnd
+}
+
+/**
  * Check if database operations should be disabled (frontend)
  * Operations are disabled if:
  * 1. Event year configuration is not available
@@ -271,6 +334,14 @@ export function shouldDisableDatabaseOperations(eventYearConfig) {
     }
   }
 
+  // Check if registration period has not started yet
+  if (!isRegistrationPeriodStarted(eventYearConfig)) {
+    return {
+      disabled: true,
+      reason: `Registration has not started yet. It begins on ${formatDateForDisplay(eventYearConfig.registration_dates.start)}.`
+    }
+  }
+
   // Check if event has ended
   if (isEventEnded(eventYearConfig)) {
     return {
@@ -291,6 +362,73 @@ export function shouldDisableDatabaseOperations(eventYearConfig) {
     disabled: false,
     reason: ''
   }
+}
+
+/**
+ * Check if event scheduling operations should be disabled (frontend)
+ * Matches backend requireEventPeriod: after registration end, before event end
+ * @param {Object} eventYearConfig - Event year configuration object
+ * @returns {Object} { disabled: boolean, reason: string }
+ */
+export function getEventPeriodStatus(eventYearConfig) {
+  if (!eventYearConfig || !eventYearConfig.registration_dates || !eventYearConfig.event_dates) {
+    return {
+      disabled: true,
+      reason: 'Event dates are not configured. Please contact administrator.'
+    }
+  }
+
+  if (isEventEnded(eventYearConfig)) {
+    return {
+      disabled: true,
+      reason: 'Event has ended. Match scheduling is closed.'
+    }
+  }
+
+  const regEnd = new Date(eventYearConfig.registration_dates.end)
+  regEnd.setHours(23, 59, 59, 999)
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  if (now <= regEnd) {
+    return {
+      disabled: true,
+      reason: `Match scheduling opens after registration ends (${formatDateForDisplay(eventYearConfig.registration_dates.end)}).`
+    }
+  }
+
+  if (!isWithinEventPeriod(eventYearConfig)) {
+    return {
+      disabled: true,
+      reason: 'Match scheduling is only allowed during the event period.'
+    }
+  }
+
+  return { disabled: false, reason: '' }
+}
+
+/**
+ * Check if event status updates are allowed (frontend)
+ * Matches backend requireEventStatusUpdatePeriod: event start to event end
+ * @param {Object} eventYearConfig - Event year configuration object
+ * @returns {Object} { disabled: boolean, reason: string }
+ */
+export function getEventStatusUpdatePeriodStatus(eventYearConfig) {
+  if (!eventYearConfig || !eventYearConfig.event_dates || !eventYearConfig.event_dates.start || !eventYearConfig.event_dates.end) {
+    return {
+      disabled: true,
+      reason: 'Event dates are not configured. Please contact administrator.'
+    }
+  }
+
+  if (!isWithinEventStatusUpdatePeriod(eventYearConfig)) {
+    return {
+      disabled: true,
+      reason: `Match status updates are only allowed during the event period (${formatDateForDisplay(eventYearConfig.event_dates.start)} to ${formatDateForDisplay(eventYearConfig.event_dates.end)}).`
+    }
+  }
+
+  return { disabled: false, reason: '' }
 }
 
 /**

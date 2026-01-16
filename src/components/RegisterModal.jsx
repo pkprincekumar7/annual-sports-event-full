@@ -360,6 +360,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     e.preventDefault()
 
     if (isSubmitting) return
+    if (isOperationDisabled) {
+      onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+      return
+    }
 
     const form = e.target
     const formData = trimFormData({
@@ -427,6 +431,10 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     e.preventDefault()
 
     if (isSubmittingTeam) return
+    if (isOperationDisabled) {
+      onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+      return
+    }
 
     if (!loggedInUser) {
       onStatusPopup('❌ Please login to register a team.', 'error', 2500)
@@ -444,6 +452,11 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       loggedInUser.captain_in.includes(selectedSport?.name)
     if (!isCaptainForThisSport) {
       onStatusPopup('❌ You can only create teams for sports where you are assigned as captain. Please contact admin to assign you as captain for this sport.', 'error', 4000)
+      return
+    }
+
+    if (!eventId) {
+      onStatusPopup('❌ Event is not configured. Please try again later.', 'error', 3000)
       return
     }
 
@@ -601,8 +614,18 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
     if (isSubmittingIndividual) return
 
+    if (isOperationDisabled) {
+      onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+      return
+    }
+
     if (!loggedInUser) {
       onStatusPopup('❌ Please login to participate.', 'error', 2500)
+      return
+    }
+
+    if (!eventId) {
+      onStatusPopup('❌ Event is not configured. Please try again later.', 'error', 3000)
       return
     }
 

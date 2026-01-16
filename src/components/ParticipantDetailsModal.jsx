@@ -1,14 +1,17 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Modal, Button, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
 import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
 import { fetchWithAuth } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { clearIndividualParticipationCaches } from '../utils/cacheHelpers'
 import { isCoordinatorForSport } from '../utils/sportHelpers'
+import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 import logger from '../utils/logger'
 
 function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup, embedded = false, selectedEventId }) {
   const { eventYearConfig } = useEventYear()
+  const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
+  const isOperationDisabled = operationStatus.disabled
   const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [participants, setParticipants] = useState([])
   const [loading, setLoading] = useState(false)
@@ -20,6 +23,28 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
   const { loading: deleting, execute } = useApi()
   const { eventId } = useEventYearWithFallback(selectedEventId)
   const deleteConfirmModal = useModal(false)
+
+  const hasParticipantMatchHistory = useCallback(async (regNumber) => {
+    if (!regNumber || !sport || !eventId) {
+      return false
+    }
+
+    try {
+      const encodedSport = encodeURIComponent(sport)
+      const url = buildApiUrlWithYear(`/api/event-schedule/${encodedSport}`, eventId)
+      const response = await fetchWithAuth(url)
+      if (!response.ok) {
+        return true
+      }
+
+      const data = await response.json()
+      const matches = Array.isArray(data?.matches) ? data.matches : []
+      return matches.some(match => Array.isArray(match.players) && match.players.includes(regNumber))
+    } catch (error) {
+      logger.error('Failed to check participant match history:', error)
+      return true
+    }
+  }, [eventId, sport])
 
   useEffect(() => {
     if (!isOpen || !sport) {
@@ -156,6 +181,12 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
   }
 
   const handleDeleteClick = (participant) => {
+    if (isOperationDisabled) {
+      if (onStatusPopup) {
+        onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+      }
+      return
+    }
     setParticipantToDelete(participant)
     deleteConfirmModal.open()
   }
@@ -164,6 +195,22 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
     if (!participantToDelete) return
 
     deleteConfirmModal.close()
+
+    if (!eventId) {
+      if (onStatusPopup) {
+        onStatusPopup('❌ Event is not configured. Please try again later.', 'error', 3000)
+      }
+      return
+    }
+
+    const hasMatchHistory = await hasParticipantMatchHistory(participantToDelete.reg_number)
+    if (hasMatchHistory) {
+      if (onStatusPopup) {
+        onStatusPopup('❌ Cannot remove participation with match history. Please remove matches first.', 'error', 4000)
+      }
+      return
+    }
+
     try {
       await execute(
         () => fetchWithAuth('/api/remove-participation', {
@@ -286,10 +333,10 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatu
                             e.stopPropagation()
                             handleDeleteClick(participant)
                           }}
-                          disabled={deleting}
+                          disabled={isOperationDisabled || deleting}
                           variant="danger"
                           className="self-start mt-2 mb-2 ml-4 md:mt-0 md:mb-0 md:ml-2 md:mr-2 md:self-auto px-4 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em] rounded-[8px]"
-                          title="Remove Participation"
+                          title={isOperationDisabled ? operationStatus.reason : 'Remove Participation'}
                         >
                           {deleting ? 'Deleting...' : 'Delete'}
                         </Button>

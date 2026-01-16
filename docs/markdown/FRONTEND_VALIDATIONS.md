@@ -28,8 +28,10 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **No Duplicates**: Validates no duplicate players in team selection
 - ✅ **Gender Match**: All selected players must have same gender as logged-in user
 - ✅ **Batch Match**: All selected players must be in same batch as logged-in user
+- ✅ **Year Match**: All selected players must be in same year (matches backend rule)
 - ✅ **Captain Validation**: Validates user is captain for the sport before allowing team creation
 - ✅ **Participation Limits**: Calls `/api/validate-participations` to check backend limits
+- ✅ **Event ID Presence**: Guards team/individual submissions when event is not configured
 
 #### Conditional Rendering:
 - ✅ **General vs Team Registration**: Shows different forms based on `isGeneralRegistration`
@@ -41,6 +43,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 #### Enable/Disable States:
 - ✅ **Submit Buttons**: Disabled during submission (`isSubmitting`, `isSubmittingTeam`, `isSubmittingIndividual`)
 - ✅ **Database Operations Disabled**: Submit buttons disabled when `shouldDisableDatabaseOperations` returns disabled (shows tooltip reason)
+- ✅ **Registration Start/End Gating**: Client blocks submission before registration starts and after it ends
 
 ---
 
@@ -118,6 +121,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 #### Business Logic Validations:
 - ✅ **Gender Match**: Validates replacement player has same gender
 - ✅ **Batch Match**: Validates replacement player is in same batch
+- ✅ **Year Match**: Validates replacement player is in same year
 - ✅ **No Duplicates**: Validates replacement player is not already in team
 
 #### Conditional Rendering:
@@ -144,6 +148,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 #### Enable/Disable States:
 - ✅ **Delete Button**: Disabled during deletion (`deleting`)
+- ✅ **Registration Period Gating**: Delete disabled when `shouldDisableDatabaseOperations` returns disabled
 
 ---
 
@@ -188,7 +193,8 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **Delete Button**: Disabled during deletion (`deleting`)
 - ✅ **Date Fields**: May be disabled based on match status
 - ✅ **Match Type**: May be disabled based on existing matches
-- ✅ **Database Operations Disabled**: Add/Update/Delete actions disabled when `shouldDisableDatabaseOperations` returns disabled (tooltip reason)
+- ✅ **Event Period Gating**: Add/Delete disabled outside backend event period (after registration end, before event end)
+- ✅ **Status Update Period Gating**: Status/winner/qualifier updates disabled outside event period
 
 ---
 
@@ -440,14 +446,13 @@ The frontend now ensures that `event_id` is passed in API calls where required:
 ## Missing Validations / Recommendations
 
 ### 1. Date-Based UI Restrictions
-- ✅ **Present**: Many admin/captain/coordinator flows use `shouldDisableDatabaseOperations` to disable actions outside allowed periods
-- ⚠️ **Missing**: Some user-facing flows may still allow submissions without explicit UI disabling
-  - **Recommendation**: Extend date-based disable checks to all registration-related forms and buttons
+- ✅ **Present**: Registration start/end gating applied to registration-related forms and management actions
+- ✅ **Present**: Event scheduling and status updates gated by event period helpers
+- ⚠️ **Partial**: Some UI elements still rely on backend errors for edge cases (e.g., event ID not configured)
+  - **Recommendation**: Add proactive guards wherever `event_id` can be missing
 
 ### 2. Role-Based Field Restrictions
-- ✅ **Present**: Admin-only fields are conditionally rendered
-- ⚠️ **Missing**: Coordinator role checks in UI (currently only checked in backend)
-  - **Recommendation**: Add coordinator role checks in frontend to hide/show coordinator-specific actions
+- ✅ **Present**: Admin/coordinator-only actions are conditionally rendered for management flows
 
 ### 3. Real-time Validation Feedback
 - ⚠️ **Partial**: Some forms validate on submit only
@@ -496,33 +501,40 @@ The frontend now ensures that `event_id` is passed in API calls where required:
 
 ---
 
+## Sync Status (Frontend vs Backend)
+
+- ✅ Registration period gating covers start/end dates in UI
+- ✅ Team creation/replacement validates year match to mirror backend rules
+- ✅ Event scheduling and match status updates gated by event period rules
+- ⚠️ Some edge cases still rely on backend errors (e.g., missing event configuration)
+
+---
+
 ## Summary
 
 ### ✅ Well-Implemented Validations:
 1. Field-level validations (required, email, phone)
-2. Business logic validations (gender match, batch match, duplicates)
-3. Role-based conditional rendering (admin, captain, player)
+2. Business logic validations (gender match, batch match, year match, duplicates)
+3. Role-based conditional rendering (admin, captain, coordinator, player)
 4. Form submission disabled states
 5. Date relationship validations
 6. Match scheduling validations
 
 ### ⚠️ Areas for Improvement:
-1. Date-based UI restrictions (disable forms/buttons outside allowed periods)
-2. Real-time validation feedback
-3. Coordinator role checks in UI
-4. Min/max date restrictions on date pickers
-5. Number input type restrictions
-6. Search input length validation
-7. Additional confirmation dialogs
-8. More comprehensive loading states
+1. Real-time validation feedback
+2. Min/max date restrictions on date pickers
+3. Number input type restrictions
+4. Search input length validation
+5. Additional confirmation dialogs
+6. More comprehensive loading states
 
 ---
 
 ## Total Validation Coverage
 
 - **Field-Level Validations**: ~85% coverage
-- **Business Logic Validations**: ~90% coverage
-- **Role-Based UI**: ~95% coverage
-- **Date-Based UI**: ~60% coverage (needs improvement)
-- **Enable/Disable States**: ~80% coverage
+- **Business Logic Validations**: ~92% coverage
+- **Role-Based UI**: ~96% coverage
+- **Date-Based UI**: ~80% coverage
+- **Enable/Disable States**: ~85% coverage
 - **Conditional Rendering**: ~90% coverage

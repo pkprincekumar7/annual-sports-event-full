@@ -10,6 +10,7 @@ import Sport from '../models/Sport.js'
 import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { asyncHandler, sendErrorResponse } from '../utils/errorHandler.js'
 import { computePlayerParticipation } from '../utils/playerHelpers.js'
+import { getPlayersBatchNames } from '../utils/batchHelpers.js'
 import { getEventYear } from '../utils/yearHelpers.js'
 import { ADMIN_REG_NUMBER } from '../constants/index.js'
 
@@ -84,13 +85,17 @@ router.get(
       })
     }
 
+    const batchMap = eventId
+      ? await getPlayersBatchNames(playersWithParticipation.map(p => p.reg_number), eventId)
+      : {}
+
     // Prepare data for Excel (reuse pre-computed participation data)
     const excelData = playersWithParticipation.map((player) => {
       // Use pre-computed participation data (no need to recompute)
       const participation = player._participation
       
-      // Year is already stored directly
-      const yearDisplay = player.year || ''
+      // Use batch name as year display (year field removed)
+      const yearDisplay = batchMap[player.reg_number] || ''
 
       const row = {
         'REG Number': player.reg_number || '',

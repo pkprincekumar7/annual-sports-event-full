@@ -38,6 +38,28 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
   const isCaptain = !canManageSport && loggedInUser?.captain_in && 
     Array.isArray(loggedInUser.captain_in) && 
     loggedInUser.captain_in.includes(sport)
+
+  const hasTeamMatchHistory = useCallback(async (teamName) => {
+    if (!teamName || !sport || !eventId) {
+      return false
+    }
+
+    try {
+      const encodedSport = encodeURIComponent(sport)
+      const url = buildApiUrlWithYear(`/api/event-schedule/${encodedSport}`, eventId)
+      const response = await fetchWithAuth(url)
+      if (!response.ok) {
+        return true
+      }
+
+      const data = await response.json()
+      const matches = Array.isArray(data?.matches) ? data.matches : []
+      return matches.some(match => Array.isArray(match.teams) && match.teams.includes(teamName))
+    } catch (error) {
+      logger.error('Failed to check team match history:', error)
+      return true
+    }
+  }, [eventId, sport])
   
   // Check if user is enrolled in this team event (non-captain participant)
   const isEnrolledInTeam = !canManageSport && !isCaptain && loggedInUser?.participated_in && 
@@ -271,6 +293,13 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
       return
     }
 
+    if (!eventId) {
+      if (onStatusPopup) {
+        onStatusPopup('❌ Event is not configured. Please try again later.', 'error', 3000)
+      }
+      return
+    }
+
     if (selectedReplacementPlayer === editingPlayer.old_reg_number) {
       if (onStatusPopup) {
         onStatusPopup('❌ Please select a different player.', 'error', 2500)
@@ -316,6 +345,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
         }
         return
       }
+
     }
 
     // Check for duplicate (new player already in team)
@@ -348,6 +378,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
             // Clear cache before refreshing to ensure we get fresh data
             clearSportCaches(sport, eventId)
             clearCachePattern('/api/me') // Current user's data may have changed (clear all variations)
+            clearCachePattern('/api/players')
             // Refresh team data (no signal needed for manual refresh)
             fetchTeamDetails(null)
             setEditingPlayer(null)
@@ -371,6 +402,21 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
 
   const handleDeleteTeam = async (teamName) => {
     deleteConfirmModal.close()
+    if (!eventId) {
+      if (onStatusPopup) {
+        onStatusPopup('❌ Event is not configured. Please try again later.', 'error', 3000)
+      }
+      return
+    }
+
+    const hasMatchHistory = await hasTeamMatchHistory(teamName)
+    if (hasMatchHistory) {
+      if (onStatusPopup) {
+        onStatusPopup('❌ Cannot delete team with match history. Please remove matches first.', 'error', 4000)
+      }
+      return
+    }
+
     try {
       await executeDelete(
         () => fetchWithAuth('/api/delete-team', {
@@ -389,6 +435,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup,
             // Clear cache before refreshing to ensure we get fresh data
             clearSportCaches(sport, eventId)
             clearCachePattern('/api/me') // If any logged-in user was in this team (clear all variations)
+            clearCachePattern('/api/players')
             // Remove deleted team from expanded teams if it was expanded
             setExpandedTeams(prev => {
               const newSet = new Set(prev)

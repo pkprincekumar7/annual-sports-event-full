@@ -10,7 +10,7 @@ import { authenticateToken, requireAdmin } from '../middleware/auth.js'
 import { requireRegistrationPeriod } from '../middleware/dateRestrictions.js'
 import { asyncHandler, sendSuccessResponse, sendErrorResponse, handleNotFoundError } from '../utils/errorHandler.js'
 import { validateCaptainAssignment, trimObjectFields } from '../utils/validation.js'
-import { clearCache } from '../utils/cache.js'
+import { clearCache, clearCachePattern } from '../utils/cache.js'
 import { getEventYear } from '../utils/yearHelpers.js'
 import { findSportByNameAndId } from '../utils/sportHelpers.js'
 import { computePlayersParticipationBatch } from '../utils/playerHelpers.js'
@@ -85,6 +85,8 @@ router.post(
     // Clear cache
     clearCache(`/api/sports?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/sports/${sport}?event_id=${encodeURIComponent(eventId)}`)
+    clearCachePattern('/api/players')
+    clearCachePattern('/api/me')
 
     return sendSuccessResponse(res, { sport: sportDoc }, `Captain added successfully for ${sport}`)
   })
@@ -142,6 +144,8 @@ router.delete(
     // Clear cache
     clearCache(`/api/sports?event_id=${encodeURIComponent(eventId)}`)
     clearCache(`/api/sports/${sport}?event_id=${encodeURIComponent(eventId)}`)
+    clearCachePattern('/api/players')
+    clearCachePattern('/api/me')
 
     return sendSuccessResponse(res, { sport: sportDoc }, `Captain role removed successfully for ${sport}`)
   })

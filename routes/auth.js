@@ -94,6 +94,7 @@ router.post(
     // Add computed fields
     playerData.participated_in = participation.participated_in
     playerData.captain_in = participation.captain_in
+    playerData.coordinator_in = participation.coordinator_in
 
     return sendSuccessResponse(
       res,
@@ -206,11 +207,6 @@ router.post(
 
     const newPassword = generateRandomPassword()
 
-    // Update player password and set change_password_required flag
-    player.password = newPassword
-    player.change_password_required = true
-    await player.save()
-
     // Send email with new password
     const emailResult = await sendPasswordResetEmail(
       trimmedEmail,
@@ -221,10 +217,14 @@ router.post(
     if (!emailResult.success) {
       // Log the error but don't fail the request (password is already reset)
       logger.error(`Failed to send password reset email to ${trimmedEmail}:`, emailResult.error)
-      // Still return success to user (don't reveal if email exists)
-      // But log the password for admin reference if email fails
-      logger.warn(`Password reset for ${trimmedEmail}. New password: ${newPassword} (Email sending failed)`)
+      // Do not update password if email delivery failed
+      return sendSuccessResponse(res, {}, 'If the registration number and email match, a new password has been sent')
     }
+
+    // Update player password and set change_password_required flag
+    player.password = newPassword
+    player.change_password_required = true
+    await player.save()
 
     // Return success (don't reveal if reg_number/email exists)
     return sendSuccessResponse(res, {}, 'If the registration number and email match, a new password has been sent')

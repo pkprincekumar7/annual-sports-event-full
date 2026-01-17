@@ -115,7 +115,7 @@ APP_NAME=Sports Event Management System
 | `SMTP_SECURE` | Use TLS/SSL | No (if SMTP) | `false` |
 | `SMTP_USER` | SMTP username | Yes (if SMTP) | - |
 | `SMTP_PASSWORD` | SMTP password | Yes (if SMTP) | - |
-| `EMAIL_FROM` | Sender email address | No | Uses provider default |
+| `EMAIL_FROM` | Sender email address | No | `GMAIL_USER` or `noreply@sportsevent.com` |
 | `EMAIL_FROM_NAME` | Sender display name | No | `Sports Event Management` |
 | `APP_NAME` | Application name for emails | No | `Sports Event Management System` |
 

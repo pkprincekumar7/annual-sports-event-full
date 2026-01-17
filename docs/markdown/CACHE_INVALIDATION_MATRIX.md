@@ -8,7 +8,7 @@ This document summarizes cache invalidation coverage for both backend
 ### Players / Auth
 - Reads: `/api/players`, `/api/me`, `/api/batches`
 - Writes:
-  - `POST /api/register`
+  - `POST /api/save-player`
   - `PUT /api/update-player`
   - `DELETE /api/delete-player/:reg_number`
   - `POST /api/bulk-delete-players`
@@ -39,6 +39,7 @@ This document summarizes cache invalidation coverage for both backend
   - `DELETE /api/remove-participation`
 - Clears:
   - `/api/sports?event_id=...`, `/api/sports/:sport?event_id=...`
+  - `/api/teams/:sport?event_id=...`
   - `/api/participants/:sport?event_id=...`,
     `/api/participants-count/:sport?event_id=...`
   - `/api/sports-counts?event_id=...`
@@ -56,7 +57,6 @@ This document summarizes cache invalidation coverage for both backend
 ### Event Schedule / Points
 - Reads:
   - `/api/event-schedule/:sport`
-  - `/api/event-schedule/:sport/teams-players`
   - `/api/points-table/:sport`
 - Writes:
   - `POST /api/event-schedule`

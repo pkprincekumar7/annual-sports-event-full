@@ -46,6 +46,13 @@ This document provides a comprehensive security audit of the Annual Sports Event
   - Returns `403 Forbidden` with message "Admin access required" if not admin
 - **Status**: ✅ **Properly implemented**
 
+#### `requireAdminOrCoordinator`
+- **Purpose**: Allows admin or coordinator access for a specific sport
+- **Implementation**:
+  - Admin bypass based on `ADMIN_REG_NUMBER`
+  - Expects `sport` and `event_id` in request (body, query, or params)
+  - Queries `Sport` for `eligible_coordinators` matching the user
+
 ### JWT Token Configuration
 
 - **Secret**: Stored in environment variable `JWT_SECRET` (defaults to weak secret for development)
@@ -62,30 +69,31 @@ This document provides a comprehensive security audit of the Annual Sports Event
 ### Public Endpoints (No Authentication Required)
 
 1. `POST /api/login` - ✅ Public (correct)
-2. `POST /api/save-player` - ✅ Public (registration, requires registration period)
-3. `GET /api/event-years/active` - ✅ Public (read-only)
-4. `GET /api/sports` - ✅ Public (read-only, supports optional `event_id` query parameters)
-5. `GET /api/sports/:name` - ✅ Public (read-only, supports optional `event_id` query parameters)
-6. `GET /api/departments` - ✅ Public (read-only, departments are not year-dependent)
+2. `POST /api/reset-password` - ✅ Public (password reset)
+3. `POST /api/save-player` - ✅ Public (registration, requires registration period)
+4. `GET /api/event-years/active` - ✅ Public (read-only)
+5. `GET /api/sports` - ✅ Public (read-only, supports optional `event_id` query parameters)
+6. `GET /api/sports/:name` - ✅ Public (read-only, supports optional `event_id` query parameters)
+7. `GET /api/departments` - ✅ Public (read-only, departments are not year-dependent)
 
 ### Authenticated Endpoints (Any Logged-in User)
 
 1. `GET /api/me` - ✅ `authenticateToken` only
 2. `GET /api/players` - ✅ `authenticateToken` only
 3. `POST /api/validate-participations` - ✅ `authenticateToken` only
-4. `POST /api/update-team-participation` - ✅ `authenticateToken, requireRegistrationPeriod`
-5. `POST /api/update-participation` - ✅ `authenticateToken, requireRegistrationPeriod`
-6. `GET /api/teams/:sport` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
-7. `GET /api/participants-count/:sport` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
-8. `GET /api/sports-counts` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
-10. `GET /api/event-schedule/:sport` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
-11. `GET /api/points-table/:sport` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
+4. `POST /api/update-team-participation` - ✅ `authenticateToken, requireRegistrationPeriod` (captain eligibility enforced in handler)
+5. `GET /api/teams/:sport` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
+6. `GET /api/participants-count/:sport` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
+7. `GET /api/sports-counts` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
+8. `GET /api/event-schedule/:sport` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
+9. `GET /api/points-table/:sport` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
+10. `GET /api/event-years` - ✅ `authenticateToken` only (list)
 
-### Admin-Only Endpoints (Require Admin Access)
+### Privileged Endpoints (Admin/Coordinator as noted)
 
 #### Event Year Management
-1. `GET /api/event-years` - ✅ `authenticateToken, requireAdmin`
-2. `POST /api/event-years` - ✅ `authenticateToken, requireAdmin, requireRegistrationPeriod`
+1. `GET /api/event-years` - ✅ `authenticateToken` (all authenticated users)
+2. `POST /api/event-years` - ✅ `authenticateToken, requireAdmin`
 3. `PUT /api/event-years/:event_id` - ✅ `authenticateToken, requireAdmin`
 4. `DELETE /api/event-years/:event_id` - ✅ `authenticateToken, requireAdmin`
 
@@ -102,9 +110,9 @@ This document provides a comprehensive security audit of the Annual Sports Event
 13. `DELETE /api/departments/:id` - ✅ `authenticateToken, requireAdmin`
 
 #### Captain Management
-15. `GET /api/captains-by-sport` - ✅ `authenticateToken, requireAdmin` (supports optional `event_id` query parameters)
-16. `POST /api/add-captain` - ✅ `authenticateToken, requireAdmin, requireRegistrationPeriod` (requires `event_id` in request body)
-17. `DELETE /api/remove-captain` - ✅ `authenticateToken, requireAdmin, requireRegistrationPeriod` (requires `event_id` in request body)
+15. `GET /api/captains-by-sport` - ✅ `authenticateToken` (admin or coordinator for assigned sports)
+16. `POST /api/add-captain` - ✅ `authenticateToken, requireRegistrationPeriod` (admin or coordinator for assigned sports)
+17. `DELETE /api/remove-captain` - ✅ `authenticateToken, requireRegistrationPeriod` (admin or coordinator for assigned sports)
 
 #### Team Management
 18. `GET /api/participants/:sport` - ✅ `authenticateToken, requireAdminOrCoordinator` (supports optional `event_id` query parameters)
@@ -112,8 +120,8 @@ This document provides a comprehensive security audit of the Annual Sports Event
 20. `DELETE /api/delete-team` - ✅ `authenticateToken, requireAdminOrCoordinator, requireRegistrationPeriod` (requires `event_id` in request body)
 
 #### Participant Management
-21. `DELETE /api/remove-participation` - ✅ `authenticateToken, requireAdmin, requireRegistrationPeriod` (requires `event_id` in request body)
-22. `POST /api/update-participation` - ✅ `authenticateToken, requireRegistrationPeriod` (requires `event_id` in request body)
+21. `DELETE /api/remove-participation` - ✅ `authenticateToken, requireRegistrationPeriod` (admin or coordinator for assigned sports)
+22. `POST /api/update-participation` - ✅ `authenticateToken, requireRegistrationPeriod` (admin or coordinator for assigned sports)
 
 #### Player Management
 23. `PUT /api/update-player` - ✅ `authenticateToken, requireAdmin, requireRegistrationPeriod`
@@ -139,7 +147,7 @@ This document provides a comprehensive security audit of the Annual Sports Event
 37. `DELETE /api/remove-batch` - ✅ `authenticateToken, requireAdmin, requireRegistrationPeriod` (requires `event_id` in request body)
 
 #### Points Table Management
-38. `POST /api/points-table/backfill/:sport` - ✅ `authenticateToken, requireAdmin, requireEventStatusUpdatePeriod` (supports optional `event_id` query parameters)
+38. `POST /api/points-table/backfill/:sport` - ✅ `authenticateToken` (admin or coordinator for assigned sports, allowed anytime)
 
 #### Data Export
 39. `GET /api/export-excel` - ✅ `authenticateToken, requireAdmin` (supports optional `event_id` query parameters)
@@ -147,10 +155,7 @@ This document provides a comprehensive security audit of the Annual Sports Event
 ### Security Verification
 
 #### ✅ All Admin-Only Endpoints Protected
-All endpoints that should be admin-only have the `requireAdmin` middleware, which:
-- Checks `req.user.reg_number === ADMIN_REG_NUMBER` (from constants)
-- Returns `403 Forbidden` status code with proper error message
-- Is placed after `authenticateToken` middleware (correct order)
+Admin-only endpoints enforce `requireAdmin` consistently. Some endpoints additionally allow coordinators (per-sport) via handler checks.
 
 #### ✅ Period-Based Restrictions
 - Registration operations require `requireRegistrationPeriod` middleware
@@ -162,15 +167,15 @@ All endpoints that should be admin-only have the `requireAdmin` middleware, whic
 - Admin-only modals are conditionally rendered based on admin status
 - Admin-only buttons are conditionally shown (`isAdmin` check)
 - All API calls use `fetchWithAuth` which includes authentication token
-- Frontend handles 403 errors properly (clears token and reloads)
-- Year selector only visible to admin users
+- Frontend does not clear tokens on 403 responses (by design)
+- Year selector visible to logged-in users
 
 #### ✅ Backend Protection
 - All admin-only endpoints have `requireAdmin` middleware
 - Middleware order is correct: `authenticateToken` → `requireAdmin` → `requireRegistrationPeriod`/`requireEventPeriod`
 - Returns proper HTTP status codes (400, 401, 403, 404, 500) with clear error messages
 - User existence verified on every authenticated request
-- Event filtering: All endpoints use `event_id` for data isolation
+- Event filtering: Endpoints use `event_id` for data isolation
 - Parameter validation: When `event_id` is mandatory, it must be provided; when optional, it may be omitted (defaults to active event)
 
 ---
@@ -180,8 +185,8 @@ All endpoints that should be admin-only have the `requireAdmin` middleware, whic
 ### Input Trimming
 - **Function**: `trimObjectFields()` in `utils/validation.js`
 - **Purpose**: Trims whitespace from all string fields in request body
-- **Usage**: Applied to all user inputs before validation
-- **Status**: ✅ **Properly implemented**
+- **Usage**: Applied in selected routes (auth, captains, teams, players); not globally
+- **Status**: ✅ **Partially implemented**
 
 ### Field Validation
 
@@ -190,14 +195,14 @@ All endpoints that should be admin-only have the `requireAdmin` middleware, whic
 - **Full Name**: Required, trimmed
 - **Gender**: Required, must be one of `['Male', 'Female']`
 - **Department**: Required, validated against Department collection (must exist)
-- **Year**: Required, must match format "1st Year (2025)", "2nd Year (2024)", etc.
+- **Batch**: Assigned via Batch collection after registration
 - **Mobile Number**: Required, must be exactly 10 digits
 - **Email**: Required, validated with regex pattern
 - **Password**: Required (no complexity requirements)
 
 #### Player Update (`validateUpdatePlayerData`)
 - **Editable Fields**: Full name, department, mobile number, email
-- **Non-Editable Fields**: Registration number, gender, year, password
+- **Non-Editable Fields**: Registration number, gender, batch, password
 - **Department Validation**: Validated against Department collection (must exist)
 
 #### Sport Validation
@@ -212,7 +217,7 @@ All endpoints that should be admin-only have the `requireAdmin` middleware, whic
 - **Match Type**: Must be one of `['league', 'knockout', 'final']`
 - **Status**: Must be one of `['scheduled', 'completed', 'draw', 'cancelled']`
 - **Match Date**: Must be today or future date, must be within event period
-- **Event Year/Name**: Optional in request body. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- **Event ID**: Optional `event_id` (defaults to active event if omitted)
 - **Participants**: Must exist in sport's participation arrays (filtered by `event_id`)
 - **Gender Matching**: All participants must have same gender
 - **Batch Matching**: All team members must be in same batch (using Batch collection)
@@ -233,7 +238,7 @@ All endpoints that should be admin-only have the `requireAdmin` middleware, whic
 ### Registration Period Middleware (`requireRegistrationPeriod`)
 
 - **Purpose**: Restricts operations to registration date range
-- **Allowed Operations**: Player registration, team creation, participation updates, sport/event year management
+- **Allowed Operations**: Player registration, team creation, participation updates, sport management
 - **Period Source**: Event year's `registration_dates.start` and `registration_dates.end` (filtered by `event_id`)
 - **Year Support**: Accepts optional `event_id` parameters (defaults to active year if not provided)
 - **Event ID**: Uses `event_id` to identify the correct event year document
@@ -256,10 +261,12 @@ All endpoints that should be admin-only have the `requireAdmin` middleware, whic
 - **Implementation**: Applied globally to all `/api` routes except:
   - GET requests (read-only operations)
   - Login endpoint
+  - Password management endpoints (`/change-password`, `/reset-password`)
   - Event schedule endpoints
   - Points table endpoints
   - Event year management endpoints (create, update, delete) - bypassed to allow initial setup
-- **Event ID**: Uses active event year's `registration_dates.end` (determined by `event_id`)
+  - Department management endpoints (not event-year dependent)
+- **Event ID**: Uses active event year's `registration_dates.end` (automatic detection; not event-specific per request)
 - **Status**: ✅ **Properly implemented** - Allows event year management to bypass deadline check
 
 ### Period Validation
@@ -351,7 +358,7 @@ app.use(cors())  // Allows all origins, methods, and headers
 
 #### 3. Event ID Parameter Validation
 - **Issue**: Frontend must ensure `event_id` is provided when required
-- **Risk**: Low-Medium - Incorrect filtering could expose or modify data from wrong event
+- **Risk**: Low-Medium - Incorrect filtering or missing parameters can block access or scope data incorrectly
 - **Status**: ✅ **Properly implemented** - Backend validates required `event_id` where applicable
 - **Recommendation**: 
   - Continue enforcing validation rules (required `event_id` vs optional `event_id`)
@@ -621,6 +628,7 @@ The system uses `event_id` to isolate data between different events that may occ
 2. **Default Behavior**: When parameters are optional, defaults to the active event
 3. **Frontend Consistency**: Frontend must pass `event_id` where required to ensure correct filtering
 4. **Cache Keys**: Cache keys include `event_id` to prevent cross-event cache pollution
+
 
 #### 🔒 Security Measures Implemented
 - ✅ Backend validation ensures `event_id` is provided when required

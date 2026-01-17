@@ -7,19 +7,18 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Public**: No authentication required
 - **Authenticated**: Any logged-in user (admin, coordinator, captain, or player)
 - **Admin**: Only users with admin registration number
-- **Coordinator**: Users assigned as coordinators for specific sports (can perform admin operations for their assigned sports)
+- **Coordinator**: Users assigned as coordinators for specific sports (can manage operations for their assigned sports)
 - **Captain**: Users assigned as captains for specific sports (can create teams for their assigned sports)
 - **Player**: Regular authenticated users
 
-**Note**: Coordinators can perform admin operations (except editing/deleting sports) for their assigned sports only. Captains can create teams for their assigned sports only.
+**Note**: Coordinators can manage operations for their assigned sports only. Captains can create teams for their assigned sports only (no admin override).
 
 ## Date Range Validation Types
 
 - **Registration Period**: Current date must be within `registration_dates.start` and `registration_dates.end`
 - **Event Period**: Current date must be after `registration_dates.end` and before `event_dates.end`
-- **Event Scheduling Period**: Current date must be after `registration_dates.start` and before `event_dates.end`
 - **Event Status Update Period**: Current date must be between `event_dates.start` and `event_dates.end`
-- **Registration Deadline Check**: Applied globally to all non-GET requests (except login, event-schedule, and points-table). Blocks requests after `registration_dates.end`
+- **Registration Deadline Check**: Applied globally to all non-GET requests (except login/password routes, event-schedule, points-table, event-years, and departments). Blocks requests after `registration_dates.end`
 - **Match Date Validation**: Match date must be within `event_dates.start` and `event_dates.end` (validated in route handler)
 
 ## Event ID Parameter
@@ -53,7 +52,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Date Validation**: None (password changes are always allowed)
 - **Request Body**: 
   - `current_password` (required): Current password
-  - `new_password` (required): New password (minimum 6 characters, must be different from current password)
+  - `new_password` (required): New password (must be different from current password)
 - **Validations**:
   - Current password must be correct
   - New password must be different from current password
@@ -66,6 +65,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Auth**: None
 - **Date Validation**: None (password reset is always allowed)
 - **Request Body**: 
+  - `reg_number` (required): Registration number
   - `email_id` (required): Email address registered in system
 - **Validations**:
   - Email format validation
@@ -92,7 +92,7 @@ This document lists all backend endpoints and the roles that can access them, al
   - Optional `event_id` query parameter (defaults to active event).
   - Optional `page` query parameter (default: 1)
   - Optional `limit` query parameter (default: 20)
-  - Optional `search` query parameter (searches by reg_number, full_name, email_id, department_branch)
+  - Optional `search` query parameter (searches by reg_number or full_name)
 - **Response**: Returns paginated players array with pagination metadata (currentPage, totalPages, totalCount, hasNextPage, hasPreviousPage)
 
 ### POST `/api/save-player`
@@ -137,7 +137,7 @@ This document lists all backend endpoints and the roles that can access them, al
 
 ### GET `/api/sports`
 - **Access**: Public
-- **Description**: Get all sports for a specific event year
+- **Description**: Get all sports for a specific event (`event_id`)
 - **Auth**: None
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
 - **Parameters**: Optional `event_id` query parameter (defaults to active event).
@@ -182,23 +182,23 @@ This document lists all backend endpoints and the roles that can access them, al
 ## Captain Routes (`/api`)
 
 ### POST `/api/add-captain`
-- **Access**: Admin
+- **Access**: Admin or Coordinator (assigned sport)
 - **Description**: Add captain role to a player
-- **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
+- **Auth**: `authenticateToken`, `requireRegistrationPeriod` (role check in handler)
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
 - **Parameters**: `event_id` is **required** in the request body.
 
 ### DELETE `/api/remove-captain`
-- **Access**: Admin
+- **Access**: Admin or Coordinator (assigned sport)
 - **Description**: Remove captain role from a player
-- **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
+- **Auth**: `authenticateToken`, `requireRegistrationPeriod` (role check in handler)
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
 - **Parameters**: `event_id` is **required** in the request body.
 
 ### GET `/api/captains-by-sport`
-- **Access**: Admin
+- **Access**: Admin or Coordinator (assigned sports only)
 - **Description**: Get all captains grouped by sport
-- **Auth**: `authenticateToken`, `requireAdmin`
+- **Auth**: `authenticateToken` (role/scoping handled in handler)
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
 - **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
@@ -247,7 +247,7 @@ This document lists all backend endpoints and the roles that can access them, al
 
 ### GET `/api/batches`
 - **Access**: Public
-- **Description**: Get all batches for an event year (includes `players` array with reg numbers)
+- **Description**: Get all batches for an event (`event_id`) (includes `players` array with reg numbers)
 - **Auth**: None
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
 - **Parameters**: Optional `event_id` query parameter (defaults to active event).
@@ -257,7 +257,7 @@ This document lists all backend endpoints and the roles that can access them, al
 ## Team Routes (`/api`)
 
 ### POST `/api/update-team-participation`
-- **Access**: Authenticated (Captain can create team for assigned sports, Admin/Coordinator can create for any sport)
+- **Access**: Captain (assigned sport only)
 - **Description**: Captain creates a team
 - **Auth**: `authenticateToken`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
@@ -272,13 +272,13 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ### POST `/api/update-team-player`
-- **Access**: Admin, Coordinator (for assigned sports)
+- **Access**: Admin or Coordinator (assigned sport)
 - **Description**: Update/replace a player in a team
 - **Auth**: `authenticateToken`, `requireAdminOrCoordinator`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
 
 ### DELETE `/api/delete-team`
-- **Access**: Admin, Coordinator (for assigned sports)
+- **Access**: Admin or Coordinator (assigned sport)
 - **Description**: Delete a team
 - **Auth**: `authenticateToken`, `requireAdminOrCoordinator`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
@@ -308,16 +308,16 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
 
 ### POST `/api/update-participation`
-- **Access**: Authenticated (Admin, Coordinator, Captain, Player)
+- **Access**: Admin or Coordinator (assigned sport)
 - **Description**: Update individual/cultural event participation
 - **Auth**: `authenticateToken`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
 - **Parameters**: `event_id` is required in the request body unless stated otherwise.
 
 ### DELETE `/api/remove-participation`
-- **Access**: Admin
+- **Access**: Admin or Coordinator (assigned sport)
 - **Description**: Remove participation (team or individual)
-- **Auth**: `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
+- **Auth**: `authenticateToken`, `requireRegistrationPeriod` (role check in handler)
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
 - **Parameters**: `event_id` is required in the request body unless stated otherwise.
 
@@ -339,20 +339,20 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Date Validation**: None (GET requests are exempt from registration deadline check, and event-schedule endpoints are exempt from global deadline check)
 
 ### POST `/api/event-schedule`
-- **Access**: Admin, Coordinator (for assigned sports)
+- **Access**: Admin or Coordinator (assigned sport)
 - **Description**: Create a new match
 - **Auth**: `authenticateToken`, `requireAdminOrCoordinator`, `requireEventPeriod`
 - **Date Validation**: **Event Period** - Current date must be after `registration_dates.end` and before `event_dates.end`. **Match Date Validation** - The `match_date` in the request body must be within `event_dates.start` and `event_dates.end`. Exempt from global registration deadline check.
 - **Parameters**: `event_id` is required in the request body unless stated otherwise.
 
 ### PUT `/api/event-schedule/:id`
-- **Access**: Admin, Coordinator (for assigned sports)
+- **Access**: Admin or Coordinator (assigned sport)
 - **Description**: Update match result (status, winner, qualifiers, match_date)
 - **Auth**: `authenticateToken`, `requireAdminOrCoordinator`, `requireEventStatusUpdatePeriod`
 - **Date Validation**: **Event Status Update Period** - Current date must be between `event_dates.start` and `event_dates.end`. Exempt from global registration deadline check.
 
 ### DELETE `/api/event-schedule/:id`
-- **Access**: Admin, Coordinator (for assigned sports)
+- **Access**: Admin or Coordinator (assigned sport)
 - **Description**: Delete a match
 - **Auth**: `authenticateToken`, `requireAdminOrCoordinator`, `requireEventPeriod`
 - **Date Validation**: **Event Period** - Current date must be after `registration_dates.end` and before `event_dates.end`. Exempt from global registration deadline check.
@@ -382,26 +382,26 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Access**: Admin
 - **Description**: Create new department
 - **Auth**: `authenticateToken`, `requireAdmin`
-- **Date Validation**: Subject to global registration deadline check (blocks after `registration_dates.end`)
+ - **Date Validation**: None (departments are exempt from global registration deadline check)
 
 ### PUT `/api/departments/:id`
 - **Access**: Admin
 - **Description**: Update department (only display_order can be updated)
 - **Auth**: `authenticateToken`, `requireAdmin`
-- **Date Validation**: Subject to global registration deadline check (blocks after `registration_dates.end`)
+ - **Date Validation**: None (departments are exempt from global registration deadline check)
 
 ### DELETE `/api/departments/:id`
 - **Access**: Admin
 - **Description**: Delete department (only if no players have this department)
 - **Auth**: `authenticateToken`, `requireAdmin`
-- **Date Validation**: Subject to global registration deadline check (blocks after `registration_dates.end`)
+ - **Date Validation**: None (departments are exempt from global registration deadline check)
 
 ---
 
 ## Event Year Routes (`/api/event-years`)
 
 ### GET `/api/event-years`
-- **Access**: Admin
+- **Access**: Authenticated (Admin, Coordinator, Captain, Player)
 - **Description**: Get all event years (includes computed is_active status)
 - **Auth**: `authenticateToken`, `requireAdmin`
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
@@ -456,10 +456,10 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Note**: Only available for dual_team and dual_player sports. Returns empty array for multi_team and multi_player sports.
 
 ### POST `/api/points-table/backfill/:sport`
-- **Access**: Admin
+- **Access**: Admin or Coordinator (assigned sport)
 - **Description**: Backfill points table for a specific sport
-- **Auth**: `authenticateToken`, `requireAdmin`, `requireEventStatusUpdatePeriod`
-- **Date Validation**: **Event Status Update Period** - Current date must be between `event_dates.start` and `event_dates.end`. Exempt from global registration deadline check.
+- **Auth**: `authenticateToken` (role check performed in handler)
+- **Date Validation**: None (explicitly allowed anytime; exempt from global registration deadline check)
 - **Parameters**: Optional `event_id` query parameter (defaults to active event).
 
 ---
@@ -480,14 +480,14 @@ This document lists all backend endpoints and the roles that can access them, al
 - POST `/api/change-password`
 - GET `/api/me`
 - GET `/api/players`
+- GET `/api/event-years`
 - GET `/api/sports-counts`
 - GET `/api/teams/:sport`
 - POST `/api/validate-participations`
 - GET `/api/participants-count/:sport`
-- POST `/api/update-participation`
 - GET `/api/event-schedule/:sport`
 - GET `/api/points-table/:sport`
-- POST `/api/update-team-participation` (captains can create teams for assigned sports)
+- POST `/api/update-team-participation` (captains only, assigned sports)
 
 ### Admin Only
 - PUT `/api/update-player`
@@ -498,30 +498,30 @@ This document lists all backend endpoints and the roles that can access them, al
 - POST `/api/sports`
 - PUT `/api/sports/:id`
 - DELETE `/api/sports/:id`
-- POST `/api/add-captain`
-- DELETE `/api/remove-captain`
-- GET `/api/captains-by-sport`
+- GET `/api/coordinators-by-sport`
 - POST `/api/add-coordinator`
 - DELETE `/api/remove-coordinator`
-- GET `/api/coordinators-by-sport`
 - POST `/api/add-batch`
 - DELETE `/api/remove-batch`
-- DELETE `/api/remove-participation`
 - GET `/api/export-excel`
 - POST `/api/departments`
 - PUT `/api/departments/:id`
 - DELETE `/api/departments/:id`
-- GET `/api/event-years`
 - POST `/api/event-years`
 - PUT `/api/event-years/:event_id`
 - DELETE `/api/event-years/:event_id`
-- POST `/api/points-table/backfill/:sport`
 
 ### Admin or Coordinator (for assigned sports)
 - POST `/api/update-team-player`
 - DELETE `/api/delete-team`
 - GET `/api/participants/:sport`
 - GET `/api/event-schedule/:sport/teams-players`
+- POST `/api/update-participation`
+- DELETE `/api/remove-participation`
+- POST `/api/add-captain`
+- DELETE `/api/remove-captain`
+- GET `/api/captains-by-sport`
+- POST `/api/points-table/backfill/:sport`
 - POST `/api/event-schedule`
 - PUT `/api/event-schedule/:id`
 - DELETE `/api/event-schedule/:id`
@@ -531,26 +531,16 @@ This document lists all backend endpoints and the roles that can access them, al
 
 ---
 
-## Total Endpoints: 49
+## Summary Notes
 
-### By Access Level:
-- **Public**: 8 endpoints (login, reset-password, sports, batches, departments, event-years/active, save-player)
-- **Authenticated**: 11 endpoints (change-password, me, players, sports-counts, teams, validate-participations, participants-count, update-participation, event-schedule, points-table, update-team-participation)
-- **Admin Only**: 24 endpoints
-- **Admin or Coordinator**: 6 endpoints
-- **Captain**: 1 endpoint (overlaps with Authenticated - update-team-participation)
-
-### By HTTP Method:
-- **GET**: 20 endpoints
-- **POST**: 17 endpoints (includes change-password, reset-password)
-- **PUT**: 4 endpoints
-- **DELETE**: 8 endpoints
+- Role lists above reflect the current route guards and handler checks.
+- Numeric counts are intentionally omitted to avoid drift as endpoints evolve.
 
 ---
 
 ## Notes
 
-1. **Coordinator Access**: Coordinators can perform admin operations (except editing/deleting sports) for their assigned sports only. The `requireAdminOrCoordinator` middleware checks if the user is a coordinator for the specific sport in the request.
+1. **Coordinator Access**: Coordinators can manage operations for their assigned sports only. The `requireAdminOrCoordinator` check enforces this in handlers.
 
 2. **Captain Access**: Captains can create teams for sports where they are assigned as captain. This is checked in the route handler logic, not via middleware.
 
@@ -560,7 +550,7 @@ This document lists all backend endpoints and the roles that can access them, al
 
 5. **Event Status Update Period**: Some endpoints (like updating match results) require the event status update period to be active. This is enforced via `requireEventStatusUpdatePeriod` middleware, which checks that the current date is between `event_dates.start` and `event_dates.end`.
 
-6. **Global Registration Deadline Check**: Applied to all non-GET requests (except login, event-schedule, and points-table endpoints). Blocks requests after `registration_dates.end`. This is enforced via `checkRegistrationDeadline` middleware in `server.js`.
+6. **Global Registration Deadline Check**: Applied to all non-GET requests except login/password routes, event-schedule, points-table, event-years, and departments. Blocks requests after `registration_dates.end`. This is enforced via `checkRegistrationDeadline` middleware in `server.js`.
 
 7. **Match Date Validation**: When creating matches via POST `/api/event-schedule`, the `match_date` in the request body must be within `event_dates.start` and `event_dates.end`. This is validated in the route handler.
 

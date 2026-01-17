@@ -5,7 +5,7 @@ This document lists all backend validations, security checks, authentication/aut
 ## Validation Types
 
 1. **Field-Level Validations**: Required fields, format validations (email, phone), type validations, range validations
-2. **Business Logic Validations**: Gender matching, year matching (legacy), duplicate checks, participation limits, match scheduling rules
+2. **Business Logic Validations**: Gender matching, batch matching, duplicate checks, team membership constraints, match scheduling rules
 3. **Authentication/Authorization**: JWT token verification, role-based access control (admin, coordinator, captain, player)
 4. **Date-Based Validations**: Registration period checks, event period checks, date relationship validations, match date validations
 5. **Data Integrity Validations**: Uniqueness checks, existence checks, referential integrity
@@ -42,12 +42,12 @@ This document lists all backend validations, security checks, authentication/aut
 #### `requireAdminOrCoordinator`
 - ✅ **Admin Bypass**: Admin always has access
 - ✅ **Sport Name Required**: Validates sport name in `req.body.sport`, `req.params.sport`, or `req.query.sport`
-- ✅ **Event ID Required**: Validates event_id in `req.body.event_id` or `req.query.event_id`
+- ✅ **Event ID Required**: Validates `event_id` in `req.body.event_id`, `req.params.event_id`, or `req.query.event_id`
 - ✅ **Coordinator Check**: Validates user is in `eligible_coordinators` array for the sport
 - ✅ **Event ID Filtering**: Uses `event_id` for sport lookup
 
 **Error Responses:**
-- `400`: Sport name or event missing
+- `400`: Sport name or event_id missing
 - `403`: Admin or coordinator access required
 - `500`: Coordinator verification error
 
@@ -56,49 +56,49 @@ This document lists all backend validations, security checks, authentication/aut
 ### 2. Date Restriction Middleware (`middleware/dateRestrictions.js`)
 
 #### `requireRegistrationPeriod`
-- ✅ **Active Event Year**: Validates active event exists
+- ✅ **Event Resolution**: Resolves event by `event_id` (falls back to active event if omitted)
 - ✅ **Date Range Check**: Validates current date is within `registration_dates.start` and `registration_dates.end`
 - ✅ **Date Comparison**: Uses date-only comparison (ignores time)
 
 **Error Responses:**
-- `400`: No active event found
-- `403`: Operation only allowed during registration period
+- `400`: No active event found, or outside registration period
+- `500`: Error checking registration period
 
 #### `requireEventPeriod`
-- ✅ **Active Event Year**: Validates active event exists
+- ✅ **Event Resolution**: Resolves event by `event_id` (falls back to active event if omitted)
 - ✅ **Date Range Check**: Validates current date is after `registration_dates.end` and before `event_dates.end`
 - ✅ **Date Comparison**: Uses date-only comparison (ignores time)
 
 **Error Responses:**
-- `400`: No active event found
-- `403`: Operation only allowed during event period
+- `400`: No active event found, or outside event period
+- `500`: Error checking event period
 
 #### `requireEventSchedulingPeriod`
-- ✅ **Active Event Year**: Validates active event exists
+- ✅ **Event Resolution**: Resolves event by `event_id` (falls back to active event if omitted)
 - ✅ **Date Range Check**: Validates current date is after `registration_dates.start` and before `event_dates.end`
 - ✅ **Date Comparison**: Uses date-only comparison (ignores time)
 
 **Error Responses:**
-- `400`: No active event found
-- `403`: Operation only allowed during event scheduling period
+- `400`: No active event found, or outside event scheduling period
+- `500`: Error checking event scheduling period
 
 #### `requireEventStatusUpdatePeriod`
-- ✅ **Active Event Year**: Validates active event exists
+- ✅ **Event Resolution**: Resolves event by `event_id` (falls back to active event if omitted)
 - ✅ **Date Range Check**: Validates current date is between `event_dates.start` and `event_dates.end`
 - ✅ **Date Comparison**: Uses date-only comparison (ignores time)
 
 **Error Responses:**
-- `400`: No active event found
-- `403`: Operation only allowed during event status update period
+- `400`: No active event found, or outside event status update period
+- `500`: Error checking event status update period
 
 #### `checkRegistrationDeadline`
-- ✅ **Active Event Year**: Validates active event exists
+- ✅ **Active Event Resolution**: Resolves active event via cache/DB
 - ✅ **Deadline Check**: Validates current date is before `registration_dates.end`
 - ✅ **Date Comparison**: Uses date-only comparison (ignores time)
 
 **Error Responses:**
-- `400`: No active event found
-- `403`: Registration deadline has passed
+- `400`: Registration deadline has passed
+- `500`: Registration deadline not configured or lookup error
 
 ---
 
@@ -166,9 +166,8 @@ This document lists all backend validations, security checks, authentication/aut
 
 **Returns:** `{ isValid: boolean, value: number|null, error: string|null }`
 
-#### `findSportByNameAndYear(sportName, eventYear, eventName, options)`
-- ✅ **Required Parameters**: Validates `sportName` and `eventYear` are provided
-- ✅ **Event Year Type**: Validates `eventYear` is a valid number
+#### `findSportByNameAndId(sportName, eventId, options)`
+- ✅ **Required Parameters**: Validates `sportName` and `eventId` are provided
 - ✅ **Event ID**: Uses `event_id` for sport lookup
 - ✅ **Normalization**: Normalizes sport name to lowercase
 
@@ -178,13 +177,11 @@ This document lists all backend validations, security checks, authentication/aut
 
 ### `utils/yearHelpers.js`
 
-#### `getEventYear(eventYear, options)`
-- ✅ **Event Year Type**: Validates `eventYear` is a valid number if provided
-- ✅ **Event Year Existence**: Validates event exists in EventYear collection
-- ✅ **Event ID**: Uses `event_id` for filtering
+#### `getEventYear(eventId, options)`
+- ✅ **Event ID Validation**: Validates `event_id` is a non-empty string if provided
+- ✅ **Event Existence**: Validates event exists in EventYear collection
 - ✅ **Active Event Fallback**: Falls back to active event if not provided
 - ✅ **Active Event Validation**: Validates active event exists if required
-- ✅ **Parameter Validation**: When `event_id` is provided, it is used to scope validation and lookups
 
 **Throws:** Error if validation fails
 
@@ -269,7 +266,6 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **New Password Not Empty**: Validates new password is not empty after trimming
 - ✅ **Current Password Verification**: Validates current password matches stored password
 - ✅ **Password Difference**: Validates new password is different from current password
-- ✅ **Password Length**: Minimum 6 characters (enforced in frontend, recommended in backend)
 
 **Error Responses:**
 - `400`: Current password and new password are required, new password cannot be empty, new password must be different from current password
@@ -283,12 +279,12 @@ This document lists all backend validations, security checks, authentication/aut
 **Middleware:** None (public endpoint)
 
 **Validations:**
-- ✅ **Required Fields**: Validates `email_id` is provided
-- ✅ **Input Trimming**: Email trimmed
+- ✅ **Required Fields**: Validates `reg_number` and `email_id` are provided
+- ✅ **Input Trimming**: Registration number and email trimmed
 - ✅ **Email Format**: Validates email format using regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
 - ✅ **Player Existence**: Validates player exists (but doesn't reveal if email exists for security)
 - ✅ **Password Generation**: Generates random 8-character alphanumeric password
-- ✅ **Email Sending**: Sends password reset email (logs error if email sending fails but doesn't fail request)
+- ✅ **Email Sending**: Sends password reset email (if email delivery fails, password is not updated)
 
 **Error Responses:**
 - `400`: Email ID is required, invalid email format
@@ -345,12 +341,10 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Input Validation**: Validates `reg_numbers` is a non-empty array
 - ✅ **Event ID Optional**: Accepts `event_id` in query or body (defaults to active event if not provided)
 - ✅ **Player Existence**: Validates all players exist
-- ✅ **Team Participation Check**: Validates players are not in teams
-- ✅ **Captain Check**: Validates players are not captains
-- ✅ **Non-Team Participation Check**: Validates players are not in non-team events
 
 **Error Responses:**
-- `400`: Invalid input, players not found, players in teams, players are captains, players in non-team events
+- `400`: Invalid input
+- `404`: Players not found
 
 #### `DELETE /api/delete-player/:reg_number`
 **Middleware:** `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
@@ -377,7 +371,8 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Match Participation Check**: Validates players are not in matches
 
 **Error Responses:**
-- `400`: Invalid input, batch size exceeded, cannot delete admin user, players not found, players in teams/matches
+- `400`: Invalid input, batch size exceeded, cannot delete admin user, players in teams/matches
+- `404`: Players not found
 
 ---
 
@@ -392,18 +387,18 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Array Validation**: Validates `reg_numbers` is a non-empty array
 - ✅ **Event ID Validation**: Requires `event_id` in request body.
 - ✅ **Duplicate Check**: Validates no duplicate players in team
-- ✅ **Sport Existence**: Validates sport exists (using `event_id`)
+ - ✅ **Sport Lookup (Best Effort)**: Attempts to load sport for gender derivation; no hard failure if missing
 - ✅ **Sport Type**: Validates sport is team sport (`dual_team` or `multi_team`)
 - ✅ **Team Name Uniqueness**: Validates team name doesn't already exist for sport
 - ✅ **Player Existence**: Validates all players exist
 - ✅ **Gender Match**: Validates all players have same gender
-- ✅ **Year Match (Legacy)**: Validates all players have the same `year` value (legacy field on Player)
+- ✅ **Batch Match**: Validates all players are in the same batch (via Batch collection)
 - ✅ **Captain Eligibility**: Validates logged-in user is in `eligible_captains` for sport
 - ✅ **Self-Inclusion**: Validates logged-in user is in team
 - ✅ **Captain Count**: Validates exactly one captain in team
 
 **Error Responses:**
-- `400`: Validation errors, duplicate players, sport not found, team name exists, players not found, gender mismatch, year mismatch, no captain, multiple captains, event_id required
+- `400`: Validation errors, duplicate players, sport not found, team name exists, players not found, gender mismatch, batch mismatch, no captain, multiple captains, event_id required
 - `403`: Not captain, not in team
 
 #### `POST /api/validate-participations`
@@ -415,10 +410,10 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Array Validation**: Validates `reg_numbers` is a non-empty array
 - ✅ **Sport Existence**: Validates sport exists
 - ✅ **Player Existence**: Validates all players exist
-- ✅ **Participation Limits**: Validates players haven't exceeded participation limits
+- ✅ **Team Membership Check**: Validates players are not already in a team for the sport
 
 **Error Responses:**
-- `400`: Invalid input, sport not found, players not found, participation limits exceeded
+- `400`: Invalid input, sport not found, players not found, already in team for sport
 
 ---
 
@@ -458,6 +453,7 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Winner Validation**: Validates winner exists for dual sports when completed
 - ✅ **Qualifiers Validation**: Validates qualifiers exist for multi sports when completed
 - ✅ **Admin/Coordinator Check**: Validates user is admin or coordinator for sport
+- ✅ **Future Match Guard**: Blocks status/winner/qualifier updates for future-dated matches
 
 **Error Responses:**
 - `400`: Validation errors, winner/qualifiers missing
@@ -612,14 +608,14 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Response Shape**: Returns batches with `players` array (registration numbers)
 
 **Error Responses:**
-- `400`: event_id required
+- None (returns empty list if event is not found)
 
 ---
 
 ### 8. Captains Routes (`routes/captains.js`)
 
 #### `POST /api/add-captain`
-**Middleware:** `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
+**Middleware:** `authenticateToken`, `requireRegistrationPeriod` (role check in handler)
 
 **Validations:**
 - ✅ **Input Trimming**: All fields trimmed
@@ -629,11 +625,10 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Duplicate Check**: Validates captain not already assigned
 
 **Error Responses:**
-- `400`: Validation errors, player not found, sport not found, event_id required
-- `409`: Captain already assigned
+- `400`: Validation errors, player not found, sport not found, event_id required, already assigned
 
 #### `DELETE /api/remove-captain`
-**Middleware:** `authenticateToken`, `requireAdmin`, `requireRegistrationPeriod`
+**Middleware:** `authenticateToken`, `requireRegistrationPeriod` (role check in handler)
 
 **Validations:**
 - ✅ **Input Trimming**: All fields trimmed
@@ -643,8 +638,7 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Captain Existence**: Validates captain is assigned
 
 **Error Responses:**
-- `400`: Validation errors, player not found, sport not found, event_id required
-- `404`: Captain not found
+- `400`: Validation errors, sport not found, event_id required, captain not assigned, cannot remove after team creation
 
 ---
 
@@ -686,10 +680,10 @@ This document lists all backend validations, security checks, authentication/aut
 
 **Validations:**
 - ✅ **Event ID Query Parameters**: Optional `event_id` query parameter (defaults to active event).
-- ✅ **Active Event Year**: Validates active event exists (if not provided)
+- ✅ **Active Event Fallback**: If event cannot be resolved, returns empty result
 
 **Error Responses:**
-- `400`: No active event found, event_id required
+- None (returns empty result when event is not found)
 
 ---
 
@@ -728,14 +722,14 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Sorting**: Automatically sorted by points (descending), then matches won (descending)
 
 **Error Responses:**
-- `400`: Gender parameter is required and must be "Male" or "Female", event_id required, no active event found
+- `400`: Gender parameter is required and must be "Male" or "Female"
 
 **Response:**
 - Returns points table array with participant name, points, matches played, won, lost, draw, cancelled
 - Includes `has_league_matches` flag to help frontend show appropriate message
 
 #### `POST /api/points-table/backfill/:sport`
-**Middleware:** `authenticateToken`, `requireAdmin`, `requireEventStatusUpdatePeriod`
+**Middleware:** `authenticateToken` (role check in handler)
 
 **Validations:**
 - ✅ **Event ID Query Parameters**: Optional `event_id` query parameter (defaults to active event).
@@ -746,9 +740,7 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Points Calculation**: Recalculates points from all completed league matches
 
 **Error Responses:**
-- `400`: Sport not found, event_id required, no active event found
-- `403`: Operation only allowed during event status update period
-- `500`: Error backfilling points table
+- `500`: Error backfilling points table or resolving event/sport access
 
 **Response:**
 - Returns result object with `processed` (number of entries processed), `errors` (number of errors), and `message`
@@ -762,13 +754,12 @@ This document lists all backend validations, security checks, authentication/aut
 
 **Validations:**
 - ✅ **Event ID Query Parameters**: Optional `event_id` query parameter (defaults to active event).
-- ✅ **Event Year Validation**: Validates event is a positive number if provided
-- ✅ **Event Year Existence**: Validates event exists (using event_id if provided)
-- ✅ **Player Filtering**: Only includes players who have participation or captain status for the event
+- ✅ **Event Resolution**: If event_id cannot be resolved, proceeds with empty event context
+- ✅ **Player Inclusion**: Includes all non-admin players (participation may be empty when event is unresolved)
 - ✅ **Sport Columns**: Dynamically creates columns for all sports in the event
 
 **Error Responses:**
-- `400`: Invalid event parameter, event not found, event_id required, no active event found
+- None (uses empty event context when event is not found)
 
 **Response:**
 - Returns Excel file (.xlsx) with player data and participation status for all sports
@@ -789,7 +780,6 @@ This document lists all backend validations, security checks, authentication/aut
 
 ### Data Normalization
 - ✅ **Sport Names**: Normalized to lowercase for consistency
-- ✅ **Email**: Trimmed and lowercased (implicitly)
 - ✅ **Registration Numbers**: Trimmed
 
 ---
@@ -842,7 +832,7 @@ This document lists all backend validations, security checks, authentication/aut
 ### Data Integrity
 - ✅ **Uniqueness Constraints**: Database indexes enforce uniqueness
 - ✅ **Referential Integrity**: Foreign key relationships validated before operations
-- ✅ **Transaction Safety**: Critical operations use database transactions where needed
+- ⚠️ **Transaction Safety**: No explicit transactions (uses ordered operations with best-effort rollback where needed)
 
 ---
 
@@ -921,7 +911,7 @@ When `event_id` is optional (defaults to active event), it may be omitted:
 ## Frontend Sync Status
 
 - ✅ Registration period gating in UI now covers start/end dates
-- ✅ Team creation/replacement validates year match to mirror backend rules
+- ✅ Team creation/replacement validates batch match to mirror backend rules
 - ✅ Event scheduling and status updates are gated by event period rules
 - ⚠️ Some edge cases still rely on backend errors (e.g., missing event configuration)
 
@@ -931,7 +921,7 @@ When `event_id` is optional (defaults to active event), it may be omitted:
 
 ### ✅ Well-Implemented Validations:
 1. Field-level validations (required, email, phone, gender, department)
-2. Business logic validations (gender match, year match, duplicates, participation limits)
+2. Business logic validations (gender match, batch match, duplicates, team membership constraints)
 3. Authentication/authorization (JWT, role-based access)
 4. Date-based validations (registration period, event period, date relationships)
 5. Data integrity validations (uniqueness, existence, referential integrity)
@@ -947,15 +937,16 @@ When `event_id` is optional (defaults to active event), it may be omitted:
 6. Date format validation
 7. Event year range validation
 8. String length validations
+9. Transaction safety for multi-step operations
 
 ---
 
-## Total Validation Coverage
+## Validation Coverage (Qualitative + Quantitative)
 
-- **Field-Level Validations**: ~90% coverage
-- **Business Logic Validations**: ~95% coverage
-- **Authentication/Authorization**: ~100% coverage
-- **Date-Based Validations**: ~95% coverage
-- **Data Integrity Validations**: ~90% coverage
-- **Input Sanitization**: ~85% coverage
-- **Error Handling**: ~95% coverage
+- **Field-Level Validations**: Strong coverage across required fields and formats (~85–90%)
+- **Business Logic Validations**: Strong coverage with sport, batch, and team constraints (~80–85%)
+- **Authentication/Authorization**: Comprehensive coverage for protected routes (~95–100%)
+- **Date-Based Validations**: Strong coverage for registration/event windows (~85–90%)
+- **Data Integrity Validations**: Strong coverage via existence/uniqueness checks (~80–85%)
+- **Input Sanitization**: Broad coverage via trimming and normalization (~75–80%)
+- **Error Handling**: Consistent responses with standardized helpers (~85–90%)

@@ -50,7 +50,7 @@ mkdir annual-sports-backend
 cd annual-sports-backend
 
 # Create directory structure
-mkdir -p config models routes middleware controllers utils
+mkdir -p config models routes middleware utils constants
 ```
 
 ### Step 2: Copy Backend Files
@@ -62,13 +62,20 @@ From the current project, copy the following files to `annual-sports-backend/`:
 cp server.js annual-sports-backend/
 cp -r config/ annual-sports-backend/
 cp -r models/ annual-sports-backend/
+cp -r routes/ annual-sports-backend/
+cp -r middleware/ annual-sports-backend/
+cp -r utils/ annual-sports-backend/
+cp -r constants/ annual-sports-backend/
 ```
 
 **Files to copy:**
 - `server.js` → `annual-sports-backend/server.js`
-- `config/database.js` → `annual-sports-backend/config/database.js`
-- `models/Player.js` → `annual-sports-backend/models/Player.js`
-- `utils/logger.js` → `annual-sports-backend/utils/logger.js`
+- `config/` → `annual-sports-backend/config/`
+- `models/` → `annual-sports-backend/models/`
+- `routes/` → `annual-sports-backend/routes/`
+- `middleware/` → `annual-sports-backend/middleware/`
+- `utils/` → `annual-sports-backend/utils/`
+- `constants/` → `annual-sports-backend/constants/`
 
 ### Step 3: Create Backend package.json
 
@@ -100,7 +107,8 @@ Create `annual-sports-backend/package.json`:
     "xlsx": "^0.18.5",
     "jsonwebtoken": "^9.0.2",
     "dotenv": "^16.0.0",
-    "mongoose": "^8.0.0"
+    "mongoose": "^8.0.0",
+    "nodemailer": "^6.9.8"
   },
   "devDependencies": {},
   "engines": {
@@ -124,7 +132,15 @@ MONGODB_URI=mongodb://localhost:27017/annual-sports
 # JWT Configuration
 JWT_SECRET=your-secret-key-change-in-production
 
-# CORS Configuration (if needed)
+# Email Configuration (optional, required for password reset emails)
+EMAIL_PROVIDER=gmail
+GMAIL_USER=your-gmail-address
+GMAIL_APP_PASSWORD=your-gmail-app-password
+EMAIL_FROM=your-gmail-address
+EMAIL_FROM_NAME=Sports Event Management
+APP_NAME=Sports Event Management System
+
+# Optional CORS Configuration (see "Backend CORS Configuration")
 # CORS_ORIGIN=http://localhost:5173
 ```
 
@@ -178,7 +194,7 @@ npm install
 
 ## Configuration
 
-Copy `.env.example` to `.env` and configure:
+Create a `.env` file and configure:
 
 - `PORT` - Server port (default: 3001)
 - `MONGODB_URI` - MongoDB connection string
@@ -221,7 +237,7 @@ mkdir annual-sports-frontend
 cd annual-sports-frontend
 
 # Create directory structure
-mkdir -p src/components src/config src/utils public/images
+mkdir -p src/components src/config src/utils src/hooks src/context src/constants public/images
 ```
 
 ### Step 2: Copy Frontend Files
@@ -239,7 +255,7 @@ cp postcss.config.js annual-sports-frontend/
 ```
 
 **Files to copy:**
-- `src/` → `annual-sports-frontend/src/` (includes all components, utils, config)
+- `src/` → `annual-sports-frontend/src/` (includes components, hooks, context, utils, config, constants)
   - `src/components/ErrorBoundary.jsx` - Error Boundary component
   - `src/utils/logger.js` - Frontend logging utility
   - `src/utils/api.js` - API utility functions
@@ -394,17 +410,22 @@ npm install
 
 ### Backend CORS Configuration
 
-Update `annual-sports-backend/server.js` to allow frontend origin:
+Current `server.js` uses the most permissive CORS configuration:
 
 ```javascript
-// In server.js, update CORS configuration
+app.use(cors())
+```
+
+If you want to restrict origins after the split, update `annual-sports-backend/server.js`:
+
+```javascript
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true
 }))
 ```
 
-Or add to `.env`:
+Then add to `.env`:
 ```env
 CORS_ORIGIN=http://localhost:5173
 ```

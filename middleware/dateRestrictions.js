@@ -3,7 +3,6 @@
  * Enforces date-based restrictions for various API operations
  */
 
-import EventYear from '../models/EventYear.js'
 import { sendErrorResponse } from '../utils/errorHandler.js'
 import { getEventYear } from '../utils/yearHelpers.js'
 
@@ -11,12 +10,11 @@ import { getEventYear } from '../utils/yearHelpers.js'
  * Check if current date is within registration date range
  * @param {Object} params - Optional parameters
  * @param {string|null} params.eventId - Optional event_id (preferred)
- * @param {number|string|null} params.eventYear - Optional event year
  * @returns {Promise<{isWithin: boolean, eventYearDoc: Object|null, message: string}>}
  */
-async function checkRegistrationDateRange({ eventId = null, eventYear = null } = {}) {
+async function checkRegistrationDateRange({ eventId = null } = {}) {
   try {
-    const eventYearDoc = await resolveEventYearDoc({ eventId, eventYear })
+    const eventYearDoc = await resolveEventYearDoc({ eventId })
 
     if (!eventYearDoc) {
       return {
@@ -57,12 +55,11 @@ async function checkRegistrationDateRange({ eventId = null, eventYear = null } =
  * Check if current date is after registration end and before event end
  * @param {Object} params - Optional parameters
  * @param {string|null} params.eventId - Optional event_id (preferred)
- * @param {number|string|null} params.eventYear - Optional event year
  * @returns {Promise<{isWithin: boolean, eventYearDoc: Object|null, message: string}>}
  */
-async function checkEventDateRange({ eventId = null, eventYear = null } = {}) {
+async function checkEventDateRange({ eventId = null } = {}) {
   try {
-    const eventYearDoc = await resolveEventYearDoc({ eventId, eventYear })
+    const eventYearDoc = await resolveEventYearDoc({ eventId })
 
     if (!eventYearDoc) {
       return {
@@ -104,12 +101,11 @@ async function checkEventDateRange({ eventId = null, eventYear = null } = {}) {
  * This allows event scheduling after registration period begins
  * @param {Object} params - Optional parameters
  * @param {string|null} params.eventId - Optional event_id (preferred)
- * @param {number|string|null} params.eventYear - Optional event year
  * @returns {Promise<{isWithin: boolean, eventYearDoc: Object|null, message: string}>}
  */
-async function checkEventSchedulingDateRange({ eventId = null, eventYear = null } = {}) {
+async function checkEventSchedulingDateRange({ eventId = null } = {}) {
   try {
-    const eventYearDoc = await resolveEventYearDoc({ eventId, eventYear })
+    const eventYearDoc = await resolveEventYearDoc({ eventId })
 
     if (!eventYearDoc) {
       return {
@@ -151,12 +147,11 @@ async function checkEventSchedulingDateRange({ eventId = null, eventYear = null 
  * This allows event status updates during the event period
  * @param {Object} params - Optional parameters
  * @param {string|null} params.eventId - Optional event_id (preferred)
- * @param {number|string|null} params.eventYear - Optional event year
  * @returns {Promise<{isWithin: boolean, eventYearDoc: Object|null, message: string}>}
  */
-async function checkEventStatusUpdateDateRange({ eventId = null, eventYear = null } = {}) {
+async function checkEventStatusUpdateDateRange({ eventId = null } = {}) {
   try {
-    const eventYearDoc = await resolveEventYearDoc({ eventId, eventYear })
+    const eventYearDoc = await resolveEventYearDoc({ eventId })
 
     if (!eventYearDoc) {
       return {
@@ -228,9 +223,8 @@ function getOrdinal(day) {
 export const requireRegistrationPeriod = async (req, res, next) => {
   try {
     const eventId = req.query.event_id || req.body.event_id || req.params.event_id || null
-    const eventYear = req.query.event_year || req.body.event_year || req.params.event_year || null
 
-    const check = await checkRegistrationDateRange({ eventId, eventYear })
+    const check = await checkRegistrationDateRange({ eventId })
 
     if (!check.isWithin) {
       return sendErrorResponse(res, 400, check.message)
@@ -251,9 +245,8 @@ export const requireRegistrationPeriod = async (req, res, next) => {
 export const requireEventPeriod = async (req, res, next) => {
   try {
     const eventId = req.query.event_id || req.body.event_id || req.params.event_id || null
-    const eventYear = req.query.event_year || req.body.event_year || req.params.event_year || null
 
-    const check = await checkEventDateRange({ eventId, eventYear })
+    const check = await checkEventDateRange({ eventId })
 
     if (!check.isWithin) {
       return sendErrorResponse(res, 400, check.message)
@@ -274,9 +267,8 @@ export const requireEventPeriod = async (req, res, next) => {
 export const requireEventSchedulingPeriod = async (req, res, next) => {
   try {
     const eventId = req.query.event_id || req.body.event_id || req.params.event_id || null
-    const eventYear = req.query.event_year || req.body.event_year || req.params.event_year || null
 
-    const check = await checkEventSchedulingDateRange({ eventId, eventYear })
+    const check = await checkEventSchedulingDateRange({ eventId })
 
     if (!check.isWithin) {
       return sendErrorResponse(res, 400, check.message)
@@ -297,9 +289,8 @@ export const requireEventSchedulingPeriod = async (req, res, next) => {
 export const requireEventStatusUpdatePeriod = async (req, res, next) => {
   try {
     const eventId = req.query.event_id || req.body.event_id || req.params.event_id || null
-    const eventYear = req.query.event_year || req.body.event_year || req.params.event_year || null
 
-    const check = await checkEventStatusUpdateDateRange({ eventId, eventYear })
+    const check = await checkEventStatusUpdateDateRange({ eventId })
 
     if (!check.isWithin) {
       return sendErrorResponse(res, 400, check.message)
@@ -335,33 +326,15 @@ export function isMatchDateWithinEventRange(matchDate, eventYearDoc) {
 }
 
 /**
- * Resolve EventYear document from event_id or event_year.
- * Prefers event_id to avoid ambiguity when multiple events share a year.
+ * Resolve EventYear document from event_id (or active event if not provided).
  * @param {Object} params
  * @param {string|null} params.eventId
- * @param {number|string|null} params.eventYear
  * @returns {Promise<Object|null>}
  */
-async function resolveEventYearDoc({ eventId = null, eventYear = null } = {}) {
+async function resolveEventYearDoc({ eventId = null } = {}) {
   if (eventId && String(eventId).trim()) {
     const eventYearData = await getEventYear(String(eventId).trim(), { returnDoc: true })
     return eventYearData.doc
-  }
-
-  if (eventYear !== null && eventYear !== undefined && String(eventYear).trim()) {
-    const parsedYear = parseInt(eventYear, 10)
-    if (Number.isNaN(parsedYear)) {
-      throw new Error('Event year must be a valid number')
-    }
-
-    const yearDocs = await EventYear.find({ event_year: parsedYear }).lean()
-    if (!yearDocs || yearDocs.length === 0) {
-      throw new Error('Event year not found')
-    }
-    if (yearDocs.length > 1) {
-      throw new Error('Multiple event years found for that year. Please provide event_id.')
-    }
-    return yearDocs[0]
   }
 
   const eventYearData = await getEventYear(null, { returnDoc: true })

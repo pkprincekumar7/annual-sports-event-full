@@ -423,7 +423,21 @@ function App() {
   return (
     <SelectedEventProvider selectedEventId={selectedEventId}>
       <ErrorBoundary>
-        <Navbar />
+        <Navbar
+          loggedInUser={loggedInUser}
+          selectedEventId={selectedEventId}
+          onRegisterClick={() => setIsModalOpen(true)}
+          onLoginClick={() => setIsLoginModalOpen(true)}
+          onResetPasswordClick={() => setIsResetPasswordModalOpen(true)}
+          onLogout={handleLogout}
+          onChangePasswordClick={() => setIsChangePasswordModalOpen(true)}
+          onCaptainManagementClick={() => setIsCaptainManagementModalOpen(true)}
+          onCoordinatorManagementClick={() => setIsCoordinatorManagementModalOpen(true)}
+          onBatchManagementClick={() => setIsBatchManagementModalOpen(true)}
+          onListPlayersClick={() => setIsPlayerListModalOpen(true)}
+          onExportExcel={handleExportExcel}
+          onAdminDashboardClick={() => setIsAdminDashboardModalOpen(true)}
+        />
         <main id="top" className="max-w-[1300px] mx-auto px-4 py-6 pb-10 grid grid-cols-[minmax(0,1.6fr)] gap-10 max-md:grid-cols-1">
         <section>
           {isLoadingUser ? (

@@ -150,7 +150,7 @@ The application uses environment variables for configuration:
 - `EMAIL_FROM_NAME` - Sender display name (optional, default: `Sports Event Management`)
 - `APP_NAME` - Application name for emails (optional, default: `Sports Event Management System`)
 
-**Note:** For detailed email setup instructions, see **[EMAIL_SETUP.md](./EMAIL_SETUP.md)**.
+**Note:** For detailed email setup instructions, see **[EMAIL_SETUP.md](./docs/markdown/EMAIL_SETUP.md)**.
 
 Create a `.env` file in the root directory to set these values. For production builds, set these variables in your hosting platform's environment settings.
 
@@ -229,7 +229,7 @@ Create a `.env` file in the root directory to set these values. For production b
 
 ### Frontend Features
 - ✅ Responsive design
-- ✅ Countdown timer for event start (shows "Registration closed!" when timer reaches zero)
+- ✅ Countdown timer for event start with status messaging
 - ✅ Dynamic registration form (team/individual events)
 - ✅ Player login and JWT authentication
 - ✅ Password management - Change password (authenticated users) and reset password (public via email)
@@ -239,7 +239,7 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Captain assignment and team management
 - ✅ Batch management - Admin can create and manage batches for organizing players
 - ✅ Team and individual event registration
-- ✅ Participation tracking and limits
+- ✅ Participation tracking
 - ✅ Total teams/participants count display - Shows total teams participated for team events and total players participated for non-team events on sports cards (logged-in users only)
 - ✅ Already participated view - Shows popup with participation status and total count when user has already participated
 - ✅ Unified sport details modal - Single modal with tabs for all sport-related actions (View Teams/Participants, Create Team/Enroll, View Events)
@@ -250,9 +250,9 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Qualifiers system - Admin/coordinators can set qualifiers with positions for multi sports matches
 - ✅ Future date restrictions - Status updates and winner/qualifier selection are blocked for future-dated matches (both frontend and backend validation)
 - ✅ Points table display - View league standings with points, matches played, won, lost, draw, cancelled (dual sports only)
-- ✅ Points table backfill - Admin can recalculate points table entries for existing completed matches
-- ✅ Year selector - Admin can switch between event years for viewing/managing data
-- ✅ Event year management - Admin can create, update, activate, and delete event years (event_id derived from event_year + event_name)
+- ✅ Points table backfill - Admin/coordinator can recalculate points table entries for existing completed matches
+- ✅ Year selector - Authenticated users can switch between events for viewing data
+- ✅ Event year management - Admin can create, update, and delete event years (event_id derived from event_year + event_name)
 - ✅ Sport management - Admin can create, update, and delete sports with sport types and categories
 - ✅ Department management - Admin can create, update, and delete departments (not year-dependent)
 - ✅ Player enrollment viewing - Admin can view all enrollments (non-team events, teams, matches) for any player
@@ -296,7 +296,7 @@ Create a `.env` file in the root directory to set these values. For production b
 - ✅ Qualifiers management - Set qualifiers with positions for multi sports matches
 - ✅ Future date validation - Prevents status updates and winner/qualifier selection for future-dated matches (both frontend and backend)
 - ✅ Points table system - Automatic points calculation and tracking for league matches (dual sports only)
-- ✅ Points table backfill - Recalculate points table entries for existing completed matches
+- ✅ Points table backfill - Recalculate points table entries for existing completed matches (admin/coordinator)
 - ✅ Event year management - Full CRUD operations for event years with registration and event periods (event_id derived from event_year + event_name)
 - ✅ Sport management - Full CRUD operations for sports with sport types (dual_team, multi_team, dual_player, multi_player)
 - ✅ Department management - Full CRUD operations for departments (not year-dependent, no "active" concept)
@@ -348,9 +348,9 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
 
 #### Captain Management
 - `GET /api/sports` - Get sports list (public, supports ?event_id)
-- `GET /api/captains-by-sport` - Get captains grouped by sport (admin only, supports ?event_id)
-- `POST /api/add-captain` - Assign captain role (admin only, requires event_id)
-- `DELETE /api/remove-captain` - Remove captain role (admin only, requires event_id)
+- `GET /api/captains-by-sport` - Get captains grouped by sport (admin/coordinator for assigned sports, supports ?event_id)
+- `POST /api/add-captain` - Assign captain role (admin/coordinator for assigned sports, requires event_id)
+- `DELETE /api/remove-captain` - Remove captain role (admin/coordinator for assigned sports, requires event_id)
 
 #### Coordinator Management
 - `GET /api/coordinators-by-sport` - Get coordinators grouped by sport (admin only, supports ?event_id)
@@ -397,13 +397,12 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
   - Returns points, matches played, won, lost, draw, cancelled
   - Automatically sorted by points (descending), then matches won (descending)
   - Gender parameter required (Male or Female)
-- `POST /api/points-table/backfill/:sport` - Backfill points table for a sport (admin only, supports ?event_id)
+- `POST /api/points-table/backfill/:sport` - Backfill points table for a sport (admin/coordinator for assigned sports, supports ?event_id)
   - Recalculates points table entries for existing completed matches
   - Only processes league matches
-  - Requires event status update period
 
 #### Event Year Management
-- `GET /api/event-years` - Get all event years (admin only)
+- `GET /api/event-years` - Get all event years (authenticated users)
 - `GET /api/event-years/active` - Get active event year (public)
 - `POST /api/event-years` - Create new event year (admin only, requires event_year and event_name)
   - Allowed even when no active event year exists (enables initial setup)
@@ -433,7 +432,7 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
   - Includes all player information and participation status for all sports
   - Shows CAPTAIN, PARTICIPANT, or NA for each sport
   - Includes team names for team sports
-  - Dynamic sport columns based on event year
+  - Dynamic sport columns based on event
 
 ### Authentication
 
@@ -441,7 +440,7 @@ All API calls use relative paths (e.g., `/api/login`) which are automatically pr
 - Token is stored in `localStorage` as `authToken`
 - User data is fetched from the server on app mount and after login (not stored in localStorage)
 - Token is automatically included in all authenticated API requests via `fetchWithAuth` utility
-- On token expiration (401/403), user is automatically logged out and redirected
+- On token expiration (401), user is logged out and redirected; 403 does not clear auth
 - Authentication persistence: User stays logged in after page refresh - token is preserved and user data is automatically fetched on app mount
 - Optimized user fetching: Uses `/api/me` endpoint to fetch only current user data (more efficient than `/api/players`)
 
@@ -919,7 +918,6 @@ Add the following content (replace with your actual values):
 PORT=3001
 MONGODB_URI=mongodb://localhost:27017/annual-sports-event
 JWT_SECRET=your-strong-secret-key-change-in-production
-REGISTRATION_DEADLINE=2026-01-07T00:00:00
 ```
 
 Save and exit (Ctrl+X, then Y, then Enter).
@@ -1480,8 +1478,8 @@ sudo journalctl -u annual-sports-backend -n 50
   - Three tabs: Event Years, Sports, Departments
   - Full CRUD operations for each entity
   - Year selector integration for sports management
-- **EventYearSelector.jsx** - Event year selector component for admin users
-  - Allows switching between event years
+- **EventYearSelector.jsx** - Event selector component for authenticated users
+  - Allows switching between events
   - Shows active year indicator
   - Auto-selects active year on load
 - **PointsTableModal.jsx** - Points table display for dual sports
@@ -1590,13 +1588,13 @@ The application uses React hooks for state management:
 - Winner/Loser Assignment: When a winner is selected in dual sports, the other participant is automatically marked as loser
 - Qualifiers Assignment: When qualifiers are set in multi sports, participants not in qualifiers are marked as knocked out
 - Points Table: Automatically calculated and updated for league matches in dual sports (2 points for win, 1 for draw/cancelled, 0 for loss)
-- Points Table Backfill: Admin can recalculate points table entries for existing completed matches
+- Points Table Backfill: Admin/coordinator can recalculate points table entries for existing completed matches
 - Remove Button: Available for all scheduled matches (including future matches) to allow cancellation/rescheduling
 - Status Dropdown: Only visible for scheduled matches that are not in the future
 - Event Year Management: Registration and event periods are managed per event year with derived event_id
 - Event Filtering: All operations use event_id for proper data isolation
 - Event Year Restrictions: Updates allowed until registration end date; deletes allowed only before registration start date
-- Year Selector: Admin can switch between event years to view/manage data for different years
+- Year Selector: Authenticated users can switch between events to view data for different years
 - Coordinator Role: Coordinators can perform admin operations (except editing/deleting sports) for their assigned sports only
 - Batch Management: Players are organized by batches (year field removed from player registration)
 - Password Management: Change password (authenticated users) and reset password (public via email)

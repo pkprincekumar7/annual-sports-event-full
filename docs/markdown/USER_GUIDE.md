@@ -35,7 +35,7 @@ This guide provides comprehensive documentation for the Annual Sports Event Mana
   - **Team Events**: Sports requiring team registration
   - **Individual Events**: Sports for individual participation
   - **Literary and Cultural Activities**: Cultural and literary events
-- **Dynamic Sports Display**: Sports are fetched dynamically based on the active event year
+- **Dynamic Sports Display**: Sports are fetched dynamically based on the active event (`event_id`)
 - **Participation Counts**: View total teams/participants count for each sport (when logged in)
 
 ### 2. **User Registration**
@@ -50,13 +50,13 @@ This guide provides comprehensive documentation for the Annual Sports Event Mana
   - Password (required)
 - **Batch Assignment**: Players select a batch during registration and are assigned to it
 - **Validation**: All fields are validated before submission
-- **Registration Period**: Registration is only allowed during the registration period defined for the active event year and event name
+- **Registration Period**: Registration is only allowed during the registration period defined for the active event (`event_id`)
 
 ### 3. **User Login**
 - **Authentication**: Login using Registration Number and Password
 - **Session Management**: JWT token-based authentication
 - **Persistent Sessions**: Stay logged in after page refresh
-- **Auto-logout**: Automatic logout on token expiration or invalid credentials
+- **Session Expiry**: When the token expires, users must log in again
 - **Role-Based Access**: System recognizes admin, coordinator, captain, and regular player roles
 
 ### 4. **Password Management**
@@ -67,28 +67,27 @@ This guide provides comprehensive documentation for the Annual Sports Event Mana
   1. Click on profile/account settings
   2. Select "Change Password" option
   3. Enter current password
-  4. Enter new password (minimum 6 characters)
+  4. Enter new password
   5. Confirm new password
   6. Submit to update password
 - **Validation**:
   - Current password must be correct
-  - New password must be at least 6 characters long
   - New password must be different from current password
-  - Confirm password must match new password
-- **Security**: Password is hashed and stored securely
+  - Confirm password must match new password (UI validation)
+- **Security**: Passwords are stored without hashing (see Security Audit)
 
 #### **Reset Password**
 - **Access**: Available to all users (public endpoint)
 - **Process**:
   1. Click "Forgot Password" or "Reset Password" link
-  2. Enter registered email ID
+  2. Enter registration number and registered email ID
   3. Submit request
   4. System sends new password to email (if email exists)
 - **Security**: System always shows success message (doesn't reveal if email exists)
-- **Email Requirement**: Email must be registered in the system
+- **Email Requirement**: Registration number and email must match a player in the system
 
 ### 5. **View Sports Information**
-- **Sports List**: View all available sports for the active event year
+- **Sports List**: View all available sports for the active event (`event_id`)
 - **Sport Categories**: Sports are organized by categories:
   - Team Events
   - Individual Events
@@ -127,7 +126,7 @@ This guide provides comprehensive documentation for the Annual Sports Event Mana
   - Captain Roles: List of sports where user is assigned as captain
   - Coordinator Roles: List of sports where user is assigned as coordinator
   - Participation History: All sports/events registered for with team names (if applicable)
-- **Event Year Filtering**: Profile data can be filtered by event year and event name
+- **Event Filtering**: Profile data reflects the selected event (`event_id`) when available
 
 #### **Edit Profile (Admin Only)**
 - **Editable Fields** (for other users, contact admin):
@@ -142,10 +141,10 @@ This guide provides comprehensive documentation for the Annual Sports Event Mana
   - Password (use Change Password feature)
   - Participation records
 
-### 8. **Year Selector (Admin Only)**
-- **Year Switching**: Admin users can switch between different event years
-- **Active Year Indicator**: Shows which year is currently active
-- **Viewing Mode**: Allows viewing/managing data for past or future years
+### 8. **Year Selector (Authenticated Users)**
+- **Year Switching**: Logged-in users can switch between different events
+- **Active Year Indicator**: Shows which event is currently active
+- **Viewing Mode**: Allows viewing data for past or future events
 - **Auto-Selection**: Automatically selects active year on page load
 - **Event Name Display**: Shows event name along with event year for clarity
 
@@ -169,7 +168,7 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 
 ### 3. **Points Table (Assigned Sports Only)**
 - **View Points Table**: View points table for assigned dual sports
-- **Cannot Backfill**: Points table backfill is admin-only
+- **Backfill**: Coordinators can backfill points tables for their assigned sports
 
 ### 4. **Restrictions**
 - **Cannot**: Edit or delete sports
@@ -182,7 +181,7 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 ### 5. **Regular Player Features**
 - Coordinators retain all regular player features (registration, profile, etc.)
 - Can be assigned as captain for sports
-- Can participate in events (subject to participation limits)
+- Can participate in events (subject to registration rules)
 
 ---
 
@@ -208,12 +207,11 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 2. If not logged in, login prompt appears
 3. After login, appropriate tabs appear based on participation status
 4. Click "Enroll Now" to register
-5. System validates participation limits
+5. System validates participation eligibility and duplicate registrations
 6. Success confirmation displayed
 7. Modal closes automatically after successful registration
 
 #### **Limitations**:
-- Maximum 10 participations (unique sports)
 - Cannot register for same sport twice
 - Cannot register for team events individually
 - Registration must be within registration period
@@ -223,7 +221,6 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 #### **Captain Assignment**
 - **Captain Status**: Can be assigned as captain for team sports by admin
 - **Captain Responsibilities**: Only captains can create teams for their assigned sports
-- **Maximum Captain Roles**: Up to 10 captain assignments per player
 
 #### **Team Creation Process**:
 1. **Prerequisites**:
@@ -240,9 +237,8 @@ Coordinators are players assigned by admin to manage specific sports. They have 
      - All players exist in database
      - Exactly one captain in team (the logged-in user)
      - All players have same gender
-     - All players are in same year
+    - All players are in same batch
      - No player is already in another team for this sport
-     - Participation limits are not exceeded
      - Team size matches sport requirements (if applicable)
    - Submit team
    - Success confirmation displayed
@@ -279,19 +275,12 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   - Matches cancelled
 - **Auto-Refresh**: Points table updates automatically when league match results are updated
 
-### 5. **Participation Limits for Non-Admin Users**
+### 5. **Participation Constraints for Non-Admin Users**
 
 #### **General Rules**:
-- Maximum 10 unique sport participations
-- Cannot participate in same sport twice
+- Cannot participate in the same sport twice
 - Team events require team registration (cannot register individually)
 - Registration must be within registration period
-
-#### **Captain-Specific Rules**:
-- Maximum 10 captain roles
-- For captain sports: Team participations count towards captain limit
-- For non-captain sports: Regular participation limit applies
-- Formula: (Captain roles + Non-team participations) ≤ 10
 
 #### **Team Participation Rules**:
 - Can only be in one team per sport
@@ -319,7 +308,7 @@ Coordinators are players assigned by admin to manage specific sports. They have 
      - Event highlight (optional, defaults to "Community Entertainment Fest")
   3. Submit to create new event year
 - **Validation**:
-  - Year must be unique
+  - Event year + event name combination must be unique
   - Year must be a valid number
   - Event name is required (both year and event name are mandatory together)
   - Event dates must be valid date range
@@ -327,7 +316,6 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   - Registration dates must be before event dates
   - Registration start date cannot be in the past
   - Event start date cannot be in the past
-- **Default Status**: New years are inactive by default
 - **Note**: Event year creation is allowed even when no active event year exists (enables initial setup)
 
 #### **Update Event Year**
@@ -347,13 +335,11 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   - Date fields have restrictions based on whether registration/event has started/ended
   - Non-date fields cannot be updated after event ends
 
-#### **Activate Event Year**
-- **Process**: Select an event year and activate it
-- **Effect**: 
-  - Selected year becomes active
-  - All other years are automatically deactivated
-  - Only one year can be active at a time
-  - Active year is used for default operations
+#### **Active Event**
+- **Selection**: Active event is computed automatically based on dates
+- **Effect**:
+  - Only one event is considered active at a time (based on registration/event dates)
+  - Active event is used for default operations when `event_id` is not provided
 
 #### **Delete Event Year**
 - **Restrictions**:
@@ -368,33 +354,30 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 #### **Create Sport**
 - **Process**:
   1. Navigate to Admin Dashboard → Sports tab
-  2. Select event year (or use active year)
+  2. Select event from the year dropdown (uses `event_id`)
   3. Fill in sport details:
-     - Sport name (required, unique per event year and event name)
-     - Event year (required, must be provided with event name)
-     - Event name (required, must be provided with event year)
+    - Sport name (required, unique per event)
      - Sport type (dual_team, multi_team, dual_player, multi_player)
      - Category (team events, individual events, literary and cultural activities)
      - Team size (required for team sports, optional for others)
      - Image URI (optional, for sport image)
   4. Submit to create sport
 - **Validation**:
-  - Sport name must be unique for the event year and event name (event_id)
-  - Both event year and event name are required together
+  - Sport name must be unique per event (`event_id`)
   - Team size required for dual_team and multi_team types
   - Team size not allowed for dual_player and multi_player types
   - Category must match sport type
 
 #### **Update Sport**
 - **Editable Fields**:
-  - Sport name (must remain unique for event year and event name)
+  - Sport name (must remain unique per event)
   - Sport type (with validation)
   - Category
   - Team size (for team sports)
   - Image URI
 - **Restrictions**:
   - Cannot change event_id
-  - Sport must belong to the specified event year and event name (event_id validation)
+  - Sport must belong to the specified event (`event_id` validation)
   - Cannot update if matches or points entries exist
   - Optional query parameter: `event_id` (defaults to active event)
 
@@ -402,7 +385,7 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 - **Restrictions**:
   - Cannot delete if any matches exist
   - Cannot delete if any points table entries exist
-  - Sport must belong to the specified event year and event name (event_id validation)
+  - Sport must belong to the specified event (`event_id` validation)
   - Optional query parameter: `event_id` (defaults to active event)
 - **Use Cases**: Remove incorrectly created sports
 
@@ -447,14 +430,14 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   - Coordinator assignments
   - Team memberships
 - **Search Functionality**: 
-  - Search players by registration number, name, email, or department
+  - Search players by registration number or full name
   - Real-time search with debouncing
   - Server-side search for performance
 - **Pagination**: 
   - Players displayed in pages (default: 20 per page)
   - Navigate through pages using pagination controls
   - Total count displayed
-- **Event Year Filtering**: Filter players by event year and event name
+- **Event Filtering**: Filter players by `event_id` (or default to active event)
 
 #### **Update Player Information**
 - **Editable Fields**:
@@ -465,7 +448,7 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 - **Non-Editable Fields** (for data integrity):
   - Registration Number
   - Gender
-  - Year
+  - Batch
   - Password
   - Participation records
   - Captain assignments
@@ -476,7 +459,7 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   - Teams: List of teams player is part of (with team names and sports)
   - Matches: List of matches player has participated in (if any)
 - **Access**: Click on player in player list to view enrollments
-- **Event Year Filtering**: Enrollments filtered by event year and event name
+- **Event Filtering**: Enrollments filtered by `event_id` (or default to active event)
 
 #### **Remove Participation**
 - **Individual Events**: Remove player participation from non-team events
@@ -503,15 +486,13 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   1. Navigate to Admin Dashboard → Add/Remove Captain
   2. Select player by registration number
   3. Select team sport
-  4. Select event year and event name (both required together)
+  4. Select event (`event_id`)
   5. Assign captain role
 - **Validation**:
   - Player must exist
   - Sport must be a team sport (dual_team or multi_team)
   - Player cannot already be captain for that sport
-  - Maximum 10 captain roles per player
-  - Player must meet participation limits
-  - Both event year and event name are required together
+  - Event selection uses `event_id`
 - **Team Sports**: Only dual_team and multi_team sports can have captains
 
 #### **Remove Captain Role**
@@ -519,17 +500,17 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   1. Navigate to Admin Dashboard → Add/Remove Captain
   2. Select player by registration number
   3. Select sport
-  4. Select event year and event name (both required together)
+  4. Select event (`event_id`)
   5. Remove captain role
 - **Restrictions**:
   - Cannot remove if player has created a team for that sport
   - Must delete team first before removing captain role
-  - Both event year and event name are required together
+  - Event selection uses `event_id`
 
 #### **View Captains by Sport**
 - **Grouped Display**: See all captains organized by sport
 - **Captain List**: View all players assigned as captains for each team sport
-- **Event Filtering**: Can filter by event year and event name (both or neither)
+- **Event Filtering**: Can filter by `event_id` (or default to active event)
 
 ### 6. **Coordinator Management**
 
@@ -538,13 +519,13 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   1. Navigate to Admin Dashboard → Add/Remove Coordinator
   2. Select player by registration number
   3. Select sport
-  4. Select event year and event name (both required together)
+  4. Select event (`event_id`)
   5. Assign coordinator role
 - **Validation**:
   - Player must exist
-  - Sport must exist for the specified event year and event name
+  - Sport must exist for the specified event (`event_id`)
   - Player cannot already be coordinator for that sport
-  - Both event year and event name are required together
+  - Event selection uses `event_id`
 - **Coordinator Permissions**: 
   - Can perform admin operations for their assigned sports only
   - Can view and manage teams for assigned sports
@@ -563,15 +544,15 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   1. Navigate to Admin Dashboard → Add/Remove Coordinator
   2. Select player by registration number
   3. Select sport
-  4. Select event year and event name (both required together)
+  4. Select event (`event_id`)
   5. Remove coordinator role
 - **Restrictions**:
-  - Both event year and event name are required together
+  - Event selection uses `event_id`
 
 #### **View Coordinators by Sport**
 - **Grouped Display**: See all coordinators organized by sport
 - **Coordinator List**: View all players assigned as coordinators for each sport
-- **Event Filtering**: Can filter by event year and event name (both or neither)
+- **Event Filtering**: Can filter by `event_id` (or default to active event)
 
 ### 7. **Batch Management**
 
@@ -579,28 +560,28 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 - **Process**:
   1. Navigate to Admin Dashboard → Add/Remove Batch
   2. Enter batch name (e.g., "2024-2028", "2025 Batch")
-  3. Select event year and event name (both required together)
+  3. Select event (`event_id`)
   4. Submit to create batch
 - **Validation**:
   - Batch name is required
-  - Batch name must be unique for the event year and event name
-  - Both event year and event name are required together
+  - Batch name must be unique per event (`event_id`)
+  - Event selection uses `event_id`
 - **Use Cases**: Organize players by admission year or batch
 
 #### **Delete Batch**
 - **Process**:
   1. Navigate to Admin Dashboard → Add/Remove Batch
   2. Select batch to delete
-  3. Select event year and event name (both required together)
+  3. Select event (`event_id`)
   4. Confirm deletion
 - **Restrictions**:
-  - Both event year and event name are required together
+  - Event selection uses `event_id`
   - Cannot delete if batch contains players
 
 #### **View Batches**
-- **Batch List**: View all batches for an event year and event name
+- **Batch List**: View all batches for an event (`event_id`)
 - **Player List**: View all players in each batch
-- **Event Filtering**: Can filter by event year and event name (both or neither)
+- **Event Filtering**: Can filter by `event_id` (or default to active event)
 
 ### 8. **Team Management**
 
@@ -620,17 +601,16 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   - New player must have same gender as team
   - New player must be in same batch as team (validated in UI)
   - New player cannot already be in another team for that sport
-  - New player must meet participation limits
   - Cannot add multiple captains to same team
   - Cannot replace captain
 - **Use Cases**: Handle player withdrawals, substitutions
-- **Event Filtering**: Optional event year and event name parameters (both or neither)
+- **Event Filtering**: Optional `event_id` (defaults to active event)
 
 #### **Delete Teams**
 - **Team Deletion**: Remove entire team from a sport
 - **Effect**: All team members' participation records updated
 - **Use Cases**: Handle team withdrawals, correct registration errors
-- **Event Filtering**: Optional event year and event name parameters in request body (both or neither)
+- **Event Filtering**: Optional `event_id` in request body (defaults to active event)
 
 ### 9. **Participant Management**
 
@@ -657,7 +637,7 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   - Sport type (dual_team, multi_team, dual_player, multi_player)
   - Participants (teams or players)
   - Match date (must be today or future)
-  - Event year and event name (optional, both or neither - defaults to active event year)
+  - Event ID (optional; defaults to active event)
 - **Auto-Numbering**: Match numbers auto-generated per sport (1, 2, 3...)
 - **Validation**:
   - Participants must be different
@@ -670,7 +650,6 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   - Cannot schedule league matches if knockout matches exist
   - Knockout matches must be scheduled after all league matches
   - Final match restrictions (see below)
-  - If event year is provided, event name must also be provided (or neither)
 
 #### **Match Type Restrictions**:
 - **League Matches**:
@@ -738,11 +717,11 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 - **Complete View**: See all matches for any sport
 - **Match Details**: Full information including status, winners, qualifiers, dates
 - **Filtering**: Filter by sport, status, date
-- **Event Year Filtering**: Can filter by event year and event name (both or neither)
+- **Event Filtering**: Can filter by `event_id` (or default to active event)
 - **Teams and Players View**: 
   - View all teams and players eligible for a sport
   - Helps in match scheduling by showing available participants
-  - Filtered by event year and event name
+  - Filtered by `event_id`
 
 ### 11. **Points Table Management**
 
@@ -760,7 +739,7 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 - **Gender Filtering**: Points table filtered by gender (Male/Female)
 - **Auto-Update**: Points table updates automatically when league match results change
 - **Not Applicable**: Points table is not available for multi_team and multi_player sports
-- **Event Year Filtering**: Can filter by event year and event name (both or neither)
+- **Event Filtering**: Can filter by `event_id` (or default to active event)
 
 #### **Backfill Points Table**
 - **Purpose**: Recalculate points table entries for existing completed matches
@@ -770,12 +749,12 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   - Recovering from errors
 - **Process**:
   1. Navigate to Points Table for a sport
-  2. Click "Backfill Points Table" button (admin only)
+  2. Click "Backfill Points Table" button (admin/coordinator)
   3. System recalculates all points from completed league matches
   4. Updates points table entries
 - **Restrictions**:
-  - Admin only
-  - Only allowed during event status update period
+  - Admin or coordinator (assigned sport)
+  - Allowed anytime (recalculates from existing completed matches)
   - Only processes league matches (not knockout/final)
 - **Result**: Shows number of entries processed and any errors
 
@@ -796,16 +775,16 @@ Coordinators are players assigned by admin to manage specific sports. They have 
     - Full Name
     - Gender
     - Department/Branch
-    - Year (academic year)
+    - Batch (displayed in the Year column)
     - Mobile Number
     - Email ID
   - Participation Status:
     - For each sport: Shows "CAPTAIN", "PARTICIPANT", or "NA"
     - For team sports: Additional column with team name
     - For individual sports: Shows "PARTICIPANT" or "NA"
-  - Dynamic Sport Columns: All sports for the event year are included as columns
+  - Dynamic Sport Columns: All sports for the event are included as columns
 - **Format**: Standard Excel (.xlsx) format
-- **Event Filtering**: Optional event year and event name query parameters (both or neither, defaults to active event year)
+- **Event Filtering**: Optional `event_id` (defaults to active event)
 - **File Naming**: Automatically named as `Players_Report_{eventYear}_{date}.xlsx`
 - **Use Cases**: 
   - Reporting and analysis
@@ -818,7 +797,7 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 
 #### **Registration Period Management**
 - **Period Enforcement**: System blocks new registrations outside registration period
-- **Configurable**: Registration period set per event year and event name (event_id)
+- **Configurable**: Registration period set per event (`event_id`)
 - **Effect**: After registration period ends, non-GET requests are blocked except event schedule, points table, event year, department, and password operations
 - **Event Year Management**: Event year create/update/delete operations have custom date restrictions:
   - Create: Allowed (no past date restrictions for initial setup)
@@ -827,9 +806,8 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 
 #### **Event Period Management**
 - **Period Enforcement**: System blocks match scheduling outside event period
-- **Configurable**: Event period set per event year and event name (event_id)
+- **Configurable**: Event period set per event (`event_id`)
 - **Effect**: Matches can only be scheduled within event period
-- **Admin Override**: Admin can still manage matches outside event period
 
 #### **Access Control**
 - **Admin-Only Features**: Protected endpoints require admin authentication
@@ -858,7 +836,7 @@ The system uses four sport types:
 - Only assigned captains can create teams
 - Team name must be unique per sport
 - All team members must have same gender
-- All team members must be in same year
+- All team members must be in same batch
 - Players can only be in one team per sport
 - Team size must match sport requirements (if sport has fixed team size)
 
@@ -1028,7 +1006,7 @@ The system supports multiple event years, allowing management of annual sports e
 
 - **Year Selector**: Admin can switch between years using dropdown
 - **Viewing Mode**: Allows viewing/managing data for any year and event name combination
-- **Data Isolation**: Each event year and event name combination's data is isolated (sports, matches, participants)
+- **Data Isolation**: Each event's data is isolated by `event_id` (sports, matches, participants)
 - **Auto-Selection**: Active year is automatically selected on page load
 - **Event Name Display**: Event name is displayed along with event year for clarity
 
@@ -1038,7 +1016,7 @@ The system supports multiple event years, allowing management of annual sports e
 - **Event Period**: Period during which matches can be scheduled
 - **Enforcement**: System enforces these periods based on active year and event name (event_id)
 - **Admin Override**: Admin can manage data outside these periods
-- **Event ID**: Periods are identified by both event year and event name together
+- **Event ID**: Periods are identified by `event_id`
 
 ---
 
@@ -1059,11 +1037,11 @@ The system supports multiple event years, allowing management of annual sports e
 
 ### Team Constraints
 
-1. **One Team Per Sport**: Player can only be in one team per sport (per event year and event name)
+1. **One Team Per Sport**: Player can only be in one team per sport (per event)
 2. **Gender Matching**: All team members must have same gender
 3. **Batch Matching**: All team members must be in same batch (validated in UI)
 4. **One Captain Per Team**: Each team must have exactly one captain
-5. **Unique Team Names**: Team names must be unique within a sport (per event year and event name)
+5. **Unique Team Names**: Team names must be unique within a sport (per event)
 6. **Team Size**: Team size must match sport requirements (if sport has fixed team size)
 
 ### Match Scheduling Constraints
@@ -1147,9 +1125,8 @@ The system supports multiple event years, allowing management of annual sports e
 
 - **JWT Tokens**: Secure token-based authentication
 - **Token Expiration**: Tokens expire after 24 hours
-- **Auto-Logout**: Automatic logout on token expiration
 - **Password Protection**: Passwords never sent in API responses
-- **Secure Storage**: Tokens stored securely in browser
+- **Token Storage**: Tokens stored in browser `localStorage`
 
 ### Authorization
 
@@ -1159,7 +1136,7 @@ The system supports multiple event years, allowing management of annual sports e
 - **Captain Access**: Captains can create teams for sports where they are assigned as captain
 - **User Verification**: User existence verified on each request
 - **Token Validation**: JWT tokens validated on every authenticated request
-- **Event ID Filtering**: All operations use both event year and event name for proper data isolation
+- **Event ID Filtering**: All operations use `event_id` for proper data isolation
 
 ### Data Validation
 
@@ -1172,8 +1149,7 @@ The system supports multiple event years, allowing management of annual sports e
 
 - **Registration Period**: New registrations blocked outside registration period
 - **Event Period**: Match scheduling blocked outside event period
-- **Admin Override**: Admin can manage data outside these periods
-- **Automatic Enforcement**: System automatically enforces periods based on active year and event name (event_id)
+- **Automatic Enforcement**: System automatically enforces periods based on active event (`event_id`)
 - **Event Year Management**: Custom date restrictions for event year operations:
   - Create: Allowed (enables initial setup)
   - Update: Allowed until registration end date
@@ -1183,8 +1159,8 @@ The system supports multiple event years, allowing management of annual sports e
 
 ## Important Notes
 
-1. **Registration Period**: New registrations are blocked outside the registration period defined for the active event year and event name
-2. **Event Period**: Match scheduling is blocked outside the event period defined for the active event year and event name
+1. **Registration Period**: New registrations are blocked outside the registration period defined for the active event (`event_id`)
+2. **Event Period**: Match scheduling is blocked outside the event period defined for the active event (`event_id`)
 3. **Admin Account**: Admin user has registration number "admin"
 4. **Data Integrity**: Gender cannot be modified after registration
 5. **Batch Assignment**: Players select a batch during registration (year field removed from player registration)
@@ -1192,17 +1168,15 @@ The system supports multiple event years, allowing management of annual sports e
 7. **Match Scheduling**: Match dates cannot be in the past and must be within event period
 8. **Future Matches**: Status updates and winner/qualifier selection blocked for future matches
 9. **Knockout Validation**: System automatically validates knockout match eligibility
-10. **Participation Limits**: All limits enforced by system, cannot be bypassed
-11. **Points Table**: Only available for dual_team and dual_player sports
-12. **League Matches**: Only allowed for dual_team and dual_player sports
-13. **Final Matches**: Cannot schedule new matches if final match exists (scheduled or completed)
-14. **Status Changes**: Cannot change status from completed/draw/cancelled to any other status
-15. **Year Management**: Only one year can be active at a time (determined by dates)
-16. **Event Year and Event Name**: Both parameters must be provided together when required, or neither when optional
-17. **Event ID**: System uses both event year and event name to isolate data between different events
-18. **Event Year Updates**: Updates allowed until registration end date; deletes allowed only before registration start date
-19. **Cache Refresh**: UI components refresh immediately after database operations
-20. **Coordinator Role**: Coordinators can perform admin operations for their assigned sports only
+10. **Points Table**: Only available for dual_team and dual_player sports
+11. **League Matches**: Only allowed for dual_team and dual_player sports
+12. **Final Matches**: Cannot schedule new matches if final match exists (scheduled or completed)
+13. **Status Changes**: Cannot change status from completed/draw/cancelled to any other status
+14. **Year Management**: Only one year can be active at a time (determined by dates)
+15. **Event ID**: System uses `event_id` to isolate data between different events
+16. **Event Year Updates**: Updates allowed until registration end date; deletes allowed only before registration start date
+17. **Cache Refresh**: UI components refresh immediately after database operations
+18. **Coordinator Role**: Coordinators can perform admin operations for their assigned sports only
 
 ---
 
@@ -1213,7 +1187,7 @@ The system supports multiple event years, allowing management of annual sports e
 1. **Cannot Register**: 
    - Check if registration period has ended
    - Verify you are logged in
-   - Check participation limits
+   - Check registration eligibility and duplicate participation rules
 
 2. **Cannot Create Team**: 
    - Verify you are assigned as captain for that sport
@@ -1231,7 +1205,7 @@ The system supports multiple event years, allowing management of annual sports e
    - Verify team size matches sport requirements
    - Check if players are already in another team
    - Verify you are included in the team as captain
-   - Check participation limits
+   - Check registration eligibility and duplicate participation rules
 
 5. **Login Issues**: 
    - Verify registration number and password are correct
@@ -1261,7 +1235,7 @@ The system supports multiple event years, allowing management of annual sports e
 
 ## Conclusion
 
-This Annual Sports Event Management System provides comprehensive functionality for regular players, captains, coordinators, and administrators. Regular players can register for events, create teams (if captain), and view schedules and points tables. Captains can create teams for their assigned sports. Coordinators can perform admin operations for their assigned sports. Administrators have full control over event year management, sport management, department management, player management, team management, captain assignments, coordinator assignments, batch management, and event scheduling. The system uses event_id filtering (event year and event name) to ensure proper data isolation between different events. All business rules are enforced automatically to ensure data integrity and fair competition.
+This Annual Sports Event Management System provides comprehensive functionality for regular players, captains, coordinators, and administrators. Regular players can register for events, create teams (if captain), and view schedules and points tables. Captains can create teams for their assigned sports. Coordinators can perform admin operations for their assigned sports. Administrators have full control over event year management, sport management, department management, player management, team management, captain assignments, coordinator assignments, batch management, and event scheduling. The system uses `event_id` filtering to ensure proper data isolation between different events. All business rules are enforced automatically to ensure data integrity and fair competition.
 
 ---
 

@@ -1,19 +1,13 @@
-import { useEffect, useState, useRef } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useState } from 'react'
 import { useEventYear } from '../hooks/useEventYear'
 import { formatDateRange } from '../utils/dateFormatters'
 import { isWithinRegistrationPeriod } from '../utils/yearHelpers'
 import EventYearSelector from './EventYearSelector'
-import ProfileModal from './ProfileModal'
 
 function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCaptainManagementClick, onCoordinatorManagementClick, onBatchManagementClick, onListPlayersClick, onExportExcel, onAdminDashboardClick, onEventYearChange, selectedEventId, loggedInUser, onChangePasswordClick, onResetPasswordClick }) {
   const { eventYearConfig } = useEventYear()
   const eventOrganizer = eventYearConfig?.event_organizer || 'Events Community'
   const [eventCountdown, setEventCountdown] = useState('')
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, maxHeight: 0 })
-  const menuButtonRef = useRef(null)
 
   // Format dates from database
   const eventDateDisplay = eventYearConfig?.event_dates 
@@ -27,10 +21,7 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
   const isRegistrationPeriodActive = eventYearConfig?.registration_dates
     ? isWithinRegistrationPeriod(eventYearConfig.registration_dates)
     : false
-  const isAdmin = loggedInUser?.reg_number === 'admin'
-  const isCoordinator = Array.isArray(loggedInUser?.coordinator_in) && loggedInUser.coordinator_in.length > 0
-  const canManageCaptains = isAdmin || isCoordinator
-  const canListPlayers = isAdmin || isCoordinator
+  const hasTopBar = !!loggedInUser
 
   useEffect(() => {
     // All date fields are required in EventYear model, so they will always be present
@@ -91,200 +82,16 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
     return () => clearInterval(timer)
   }, [eventYearConfig?.event_dates?.start, eventYearConfig?.event_dates?.end, eventYearConfig?.registration_dates?.start, eventYearConfig?.registration_dates?.end])
 
-  // Close menu on Escape key
-  useEffect(() => {
-    const handleEscape = (e) => {
-      if (e.key === 'Escape' && isMenuOpen) {
-        setIsMenuOpen(false)
-      }
-    }
-    window.addEventListener('keydown', handleEscape)
-    return () => window.removeEventListener('keydown', handleEscape)
-  }, [isMenuOpen])
-
   return (
     <div id="home" className="mb-6 text-center">
       <div
-        className={`mx-auto px-[1.4rem] py-[1.8rem] pb-8 rounded-[20px] relative overflow-hidden bg-cover bg-center bg-no-repeat ${loggedInUser ? 'pt-20 sm:pt-20 md:pt-20 lg:pt-[1.8rem]' : ''}`}
+        className={`mx-auto px-[1.4rem] py-[1.8rem] pb-8 rounded-[20px] relative overflow-hidden bg-cover bg-center bg-no-repeat ${hasTopBar ? 'pt-20 sm:pt-20 md:pt-20 lg:pt-[1.8rem]' : ''}`}
         style={{
           backgroundImage: 'linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.75)), url("/images/collge.png")',
         }}
       >
-        {loggedInUser && (
-          <div className="absolute top-4 left-4 right-4 flex items-start justify-between gap-4 z-10">
-            <div className="relative">
-              <button
-                ref={menuButtonRef}
-                onClick={() => {
-                  if (menuButtonRef.current) {
-                    const rect = menuButtonRef.current.getBoundingClientRect()
-                    const isSmallDevice = window.innerWidth < 768
-                    const menuWidth = 224 // w-56 = 14rem = 224px
-                    const scrollX = window.scrollX || window.pageXOffset
-                    const scrollY = window.scrollY || window.pageYOffset
-                    const top = rect.bottom + scrollY + 8
-                    const maxHeight = Math.max(180, window.innerHeight + scrollY - top - 12)
-                    if (isSmallDevice) {
-                      // Center the menu on smaller devices
-                      setMenuPosition({
-                        top,
-                        left: scrollX + (window.innerWidth - menuWidth) / 2,
-                        maxHeight
-                      })
-                    } else {
-                      // Left-align under the menu button on larger devices
-                      const left = Math.min(
-                        Math.max(12 + scrollX, rect.left + scrollX),
-                        scrollX + window.innerWidth - menuWidth - 12
-                      )
-                      setMenuPosition({
-                        top,
-                        left,
-                        maxHeight
-                      })
-                    }
-                  }
-                  setIsMenuOpen(!isMenuOpen)
-                }}
-                className="h-11 w-11 rounded-full border border-[rgba(148,163,184,0.7)] cursor-pointer bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-[#e5e7eb] shadow-[0_10px_24px_rgba(99,102,241,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(99,102,241,0.8)] grid place-items-center"
-                aria-label="Menu"
-                aria-expanded={isMenuOpen}
-              >
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  className="block h-5 w-5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                >
-                  <path d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-
-              {isMenuOpen && typeof document !== 'undefined' && createPortal(
-                <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => setIsMenuOpen(false)}
-                  />
-                  <div
-                    className="absolute w-56 rounded-lg bg-[rgba(15,23,42,0.98)] border border-[rgba(148,163,184,0.5)] shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-20 overflow-y-auto"
-                    style={{
-                      top: `${menuPosition.top}px`,
-                      left: `${menuPosition.left}px`,
-                      maxHeight: `${menuPosition.maxHeight}px`
-                    }}
-                  >
-                    <div className="py-2">
-                      <button
-                        onClick={() => {
-                          setIsMenuOpen(false)
-                          setIsProfileModalOpen(true)
-                        }}
-                        className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
-                      >
-                        <span className="text-[#ffe66d]">●</span> Profile
-                      </button>
-                      {canManageCaptains && onCaptainManagementClick && (
-                        <button
-                          onClick={() => {
-                            setIsMenuOpen(false)
-                            onCaptainManagementClick()
-                          }}
-                          className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
-                        >
-                          <span className="text-[#6366f1]">●</span> Add/Remove Captain
-                        </button>
-                      )}
-                      {loggedInUser?.reg_number === 'admin' && onCoordinatorManagementClick && (
-                        <button
-                          onClick={() => {
-                            setIsMenuOpen(false)
-                            onCoordinatorManagementClick()
-                          }}
-                          className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
-                        >
-                          <span className="text-[#10b981]">●</span> Add/Remove Coordinator
-                        </button>
-                      )}
-                      {loggedInUser?.reg_number === 'admin' && onBatchManagementClick && (
-                        <button
-                          onClick={() => {
-                            setIsMenuOpen(false)
-                            onBatchManagementClick()
-                          }}
-                          className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
-                        >
-                          <span className="text-[#f59e0b]">●</span> Add/Remove Batch
-                        </button>
-                      )}
-                      {canListPlayers && onListPlayersClick && (
-                        <button
-                          onClick={() => {
-                            setIsMenuOpen(false)
-                            onListPlayersClick()
-                          }}
-                          className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
-                        >
-                          <span className="text-[#059669]">●</span> List Players
-                        </button>
-                      )}
-                      {loggedInUser?.reg_number === 'admin' && onExportExcel && (
-                        <button
-                          onClick={() => {
-                            setIsMenuOpen(false)
-                            onExportExcel()
-                          }}
-                          className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
-                        >
-                          <span className="text-[#3b82f6]">●</span> Export Excel
-                        </button>
-                      )}
-                      {loggedInUser?.reg_number === 'admin' && onAdminDashboardClick && (
-                        <button
-                          onClick={() => {
-                            setIsMenuOpen(false)
-                            onAdminDashboardClick()
-                          }}
-                          className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
-                        >
-                          <span className="text-[#f59e0b]">●</span> Admin Dashboard
-                        </button>
-                      )}
-                      {(onChangePasswordClick || onLogout) && (
-                        <div className="border-t border-[rgba(148,163,184,0.3)] mt-2 pt-2">
-                          {onChangePasswordClick && (
-                            <button
-                              onClick={() => {
-                                setIsMenuOpen(false)
-                                onChangePasswordClick()
-                              }}
-                              className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
-                            >
-                              <span className="text-[#8b5cf6]">●</span> Change Password
-                            </button>
-                          )}
-                          {onLogout && (
-                            <button
-                              onClick={() => {
-                                setIsMenuOpen(false)
-                                onLogout()
-                              }}
-                              className="w-full px-4 py-2.5 text-left text-sm font-semibold text-[#e5e7eb] hover:bg-[rgba(148,163,184,0.2)] transition-colors flex items-center gap-2"
-                            >
-                              <span className="text-red-400">●</span> Logout
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </>,
-                document.body
-              )}
-            </div>
+        {hasTopBar && (
+          <div className="absolute top-4 right-4 z-10">
             <EventYearSelector
               selectedEventId={selectedEventId}
               onEventYearChange={onEventYearChange}
@@ -338,45 +145,12 @@ function Hero({ eventDisplayName, onRegisterClick, onLoginClick, onLogout, onCap
               Welcome {loggedInUser.full_name}
             </div>
           </div>
-        ) : (
-          <div className="mt-4 mb-2 text-center flex gap-2 sm:gap-4 justify-center items-center flex-wrap">
-            {onLoginClick && (
-              <button
-                onClick={onLoginClick}
-                className="px-4 py-2 sm:px-8 sm:py-3 rounded-full border border-[rgba(148,163,184,0.7)] text-sm sm:text-base font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] shadow-[0_10px_24px_rgba(0,0,0,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(0,0,0,0.8)]"
-              >
-                Login
-              </button>
-            )}
-            {onRegisterClick && isRegistrationPeriodActive && (
-              <button
-                onClick={onRegisterClick}
-                className="px-4 py-2 sm:px-8 sm:py-3 rounded-full border-none text-sm sm:text-base font-bold uppercase tracking-[0.1em] cursor-pointer bg-gradient-to-r from-[#ffe66d] to-[#ff9f1c] text-[#111827] shadow-[0_10px_24px_rgba(250,204,21,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(250,204,21,0.75)]"
-              >
-                Register
-              </button>
-            )}
-            {onResetPasswordClick && (
-              <button
-                onClick={onResetPasswordClick}
-                className="px-4 py-2 sm:px-8 sm:py-3 rounded-full border border-[rgba(148,163,184,0.7)] text-sm sm:text-base font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] shadow-[0_10px_24px_rgba(0,0,0,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(0,0,0,0.8)]"
-              >
-                Reset Password
-              </button>
-            )}
-          </div>
-        )}
+        ) : null}
       </div>
       <div className="mt-[1.4rem] mx-auto max-w-[1000px] text-center px-4 py-2 rounded-full bg-gradient-to-r from-[rgba(0,0,0,0.7)] to-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.2)] font-bold tracking-[0.08em] uppercase text-[1.5rem]">
         MULTIPLE SPORTS • <span className="text-[#ffe66d]">TROPHIES &amp; PRIZES</span> • JOIN THE GAME
       </div>
       
-      <ProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
-        loggedInUser={loggedInUser}
-        selectedEventId={selectedEventId}
-      />
     </div>
   )
 }

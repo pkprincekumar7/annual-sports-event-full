@@ -5,7 +5,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 ## Validation Types
 
 1. **Field-Level Validations**: Required fields, format validations (email, phone), range validations
-2. **Business Logic Validations**: Gender matching, batch matching, duplicate checks, participation limits
+2. **Business Logic Validations**: Gender matching, batch matching, duplicate checks, team membership constraints
 3. **Role-Based UI**: Show/hide elements based on user roles (admin, coordinator, captain, player)
 4. **Date-Based UI**: Enable/disable based on registration/event periods
 5. **Conditional Rendering**: Show/hide forms, buttons, tabs based on state
@@ -28,9 +28,8 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **No Duplicates**: Validates no duplicate players in team selection
 - ✅ **Gender Match**: All selected players must have same gender as logged-in user
 - ✅ **Batch Match**: All selected players must be in same batch as logged-in user
-- ✅ **Year Match**: All selected players must be in same year (matches backend rule)
 - ✅ **Captain Validation**: Validates user is captain for the sport before allowing team creation
-- ✅ **Participation Limits**: Calls `/api/validate-participations` to check backend limits
+- ✅ **Team Membership Validation**: Calls `/api/validate-participations` to ensure players are not already in a team for the sport
 - ✅ **Event ID Presence**: Guards team/individual submissions when event is not configured
 
 #### Conditional Rendering:
@@ -121,7 +120,6 @@ This document lists all frontend validations, conditional rendering, enable/disa
 #### Business Logic Validations:
 - ✅ **Gender Match**: Validates replacement player has same gender
 - ✅ **Batch Match**: Validates replacement player is in same batch
-- ✅ **Year Match**: Validates replacement player is in same year
 - ✅ **No Duplicates**: Validates replacement player is not already in team
 
 #### Conditional Rendering:
@@ -143,7 +141,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 ### 5. ParticipantDetailsModal.jsx
 
 #### Conditional Rendering:
-- ✅ **Delete Button**: Only shown for admin users
+- ✅ **Delete Button**: Only shown for admin/coordinator users
 - ✅ **Participant List**: Only shown for admin/coordinator users
 
 #### Enable/Disable States:
@@ -194,7 +192,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **Date Fields**: May be disabled based on match status
 - ✅ **Match Type**: May be disabled based on existing matches
 - ✅ **Event Period Gating**: Add/Delete disabled outside backend event period (after registration end, before event end)
-- ✅ **Status Update Period Gating**: Status/winner/qualifier updates disabled outside event period
+- ✅ **Status Update Period Gating**: Status/winner/qualifier updates disabled outside event status update period
 
 ---
 
@@ -218,12 +216,12 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **Sport Type**: Only available for dual_team and dual_player sports
 
 #### Business Logic Validations:
-- ✅ **Event Year/Name**: Optional query parameters. If one is provided, the other is required. If neither is provided, defaults to active event year.
+- ✅ **Event ID**: Optional `event_id` query parameter; defaults to active event if omitted
 - ✅ **Points Calculation**: Points automatically calculated from league matches (2 for win, 1 for draw/cancelled, 0 for loss)
 
 #### Conditional Rendering:
 - ✅ **Points Table**: Only shown for dual_team and dual_player sports
-- ✅ **Backfill Button**: Only shown for admin users
+- ✅ **Backfill Button**: Only shown for admin or coordinator (assigned sport)
 - ✅ **Gender Tabs**: Shows Male/Female tabs
 - ✅ **Empty State**: Shows message when no points table entries exist
 - ✅ **Gender Filtering**: Points table filtered by selected gender
@@ -313,14 +311,14 @@ This document lists all frontend validations, conditional rendering, enable/disa
 ### 13. Hero.jsx
 
 #### Conditional Rendering:
-- ✅ **Menu Items**: Admin-only items only shown for admin users
-  - Add/Remove Captain (admin only)
+- ✅ **Menu Items**:
+  - Add/Remove Captain (admin or coordinator)
   - Add/Remove Coordinator (admin only)
   - Add/Remove Batch (admin only)
-  - List Players (admin only)
+  - List Players (admin or coordinator)
   - Export Excel (admin only)
   - Admin Dashboard (admin only)
-- ✅ **Event Year Selector**: Only shown for admin users
+- ✅ **Event Year Selector**: Shown for any logged-in user
 - ✅ **Login/Register Buttons**: Only shown when not logged in
 - ✅ **Menu Button**: Only shown when logged in
 
@@ -350,7 +348,7 @@ This document lists all frontend validations, conditional rendering, enable/disa
 ### 14. ResetPasswordModal.jsx
 
 #### Field-Level Validations:
-- ✅ **Required Fields**: Email ID is required
+- ✅ **Required Fields**: Registration number and email ID are required
 - ✅ **Email Format**: Validated using regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
 
 #### Business Logic Validations:
@@ -504,7 +502,7 @@ The frontend now ensures that `event_id` is passed in API calls where required:
 ## Sync Status (Frontend vs Backend)
 
 - ✅ Registration period gating covers start/end dates in UI
-- ✅ Team creation/replacement validates year match to mirror backend rules
+- ✅ Team creation/replacement validates batch match to mirror backend rules
 - ✅ Event scheduling and match status updates gated by event period rules
 - ⚠️ Some edge cases still rely on backend errors (e.g., missing event configuration)
 
@@ -514,7 +512,7 @@ The frontend now ensures that `event_id` is passed in API calls where required:
 
 ### ✅ Well-Implemented Validations:
 1. Field-level validations (required, email, phone)
-2. Business logic validations (gender match, batch match, year match, duplicates)
+2. Business logic validations (gender match, batch match, duplicates)
 3. Role-based conditional rendering (admin, captain, coordinator, player)
 4. Form submission disabled states
 5. Date relationship validations
@@ -527,14 +525,15 @@ The frontend now ensures that `event_id` is passed in API calls where required:
 4. Search input length validation
 5. Additional confirmation dialogs
 6. More comprehensive loading states
+7. Disable immutable fields (gender/batch) after creation
 
 ---
 
-## Total Validation Coverage
+## Validation Coverage (Qualitative + Quantitative)
 
-- **Field-Level Validations**: ~85% coverage
-- **Business Logic Validations**: ~92% coverage
-- **Role-Based UI**: ~96% coverage
-- **Date-Based UI**: ~80% coverage
-- **Enable/Disable States**: ~85% coverage
-- **Conditional Rendering**: ~90% coverage
+- **Field-Level Validations**: Solid coverage on required fields and formats (~80–85%)
+- **Business Logic Validations**: Solid coverage for team/batch/gender checks (~75–80%)
+- **Role-Based UI**: Broad coverage of role-driven visibility (~85–90%)
+- **Date-Based UI**: Good coverage for registration/event gating (~70–80%)
+- **Enable/Disable States**: Consistent coverage during loading and restricted ops (~80–85%)
+- **Conditional Rendering**: Broad coverage for state-driven flows (~85–90%)

@@ -25,6 +25,7 @@ import AboutSection from './components/AboutSection'
 import Footer from './components/Footer'
 import StatusPopup from './components/StatusPopup'
 import ErrorBoundary from './components/ErrorBoundary'
+import { SelectedEventProvider } from './context/SelectedEventContext'
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -54,7 +55,7 @@ function App() {
   const [isLoadingUser, setIsLoadingUser] = useState(true)
   
   // Fetch active event year for dynamic event name display
-  const { eventYear, eventYearConfig, loading: eventYearLoading } = useEventYear()
+  const { eventYear, eventYearConfig, loading: eventYearLoading } = useEventYear(selectedEventId)
   const eventDisplayName = eventYearConfig 
     ? `${eventYearConfig.event_name} - ${eventYearConfig.event_year}`
     : 'Championship' // Fallback to default value if no active event year
@@ -420,9 +421,10 @@ function App() {
   }
 
   return (
-    <ErrorBoundary>
-      <Navbar />
-      <main id="top" className="max-w-[1300px] mx-auto px-4 py-6 pb-10 grid grid-cols-[minmax(0,1.6fr)] gap-10 max-md:grid-cols-1">
+    <SelectedEventProvider selectedEventId={selectedEventId}>
+      <ErrorBoundary>
+        <Navbar />
+        <main id="top" className="max-w-[1300px] mx-auto px-4 py-6 pb-10 grid grid-cols-[minmax(0,1.6fr)] gap-10 max-md:grid-cols-1">
         <section>
           {isLoadingUser ? (
             // Show loading state while fetching user data
@@ -620,8 +622,9 @@ function App() {
       />
       <AboutSection />
       <Footer />
-      <StatusPopup popup={statusPopup} />
-    </ErrorBoundary>
+        <StatusPopup popup={statusPopup} />
+      </ErrorBoundary>
+    </SelectedEventProvider>
   )
 }
 

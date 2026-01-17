@@ -5,17 +5,21 @@
  * If no active event year is found and user is logged in, falls back to latest event year
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { fetchWithAuth } from '../utils/api'
 import logger from '../utils/logger'
+import { useEventYears } from './useEventYears'
+import { useSelectedEvent } from '../context/SelectedEventContext'
 
 let hasWarnedNoActiveEvent = false
 
-export function useEventYear() {
+export function useEventYear(selectedEventIdOverride = null) {
   const [eventYear, setEventYear] = useState(null)
   const [eventYearConfig, setEventYearConfig] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const { selectedEventId: contextSelectedEventId } = useSelectedEvent()
+  const { eventYears } = useEventYears()
 
   // Helper function to fetch latest event year from all event years list
   const fetchLatestEventYear = useCallback(async () => {
@@ -161,6 +165,24 @@ export function useEventYear() {
     }
   }, [fetchActiveYear])
 
-  return { eventYear, eventYearConfig, loading, error, refetch: fetchActiveYear }
+  const resolvedSelectedEventId = selectedEventIdOverride ?? contextSelectedEventId
+  const normalizedSelectedEventId = resolvedSelectedEventId ? String(resolvedSelectedEventId) : null
+  const selectedEventData = useMemo(() => {
+    if (!normalizedSelectedEventId || eventYears.length === 0) {
+      return null
+    }
+    return eventYears.find(ey => ey.event_id === normalizedSelectedEventId) || null
+  }, [eventYears, normalizedSelectedEventId])
+
+  const resolvedEventYearConfig = selectedEventData || eventYearConfig
+  const resolvedEventYear = resolvedEventYearConfig?.event_year ?? eventYear
+
+  return {
+    eventYear: resolvedEventYear,
+    eventYearConfig: resolvedEventYearConfig,
+    loading,
+    error,
+    refetch: fetchActiveYear
+  }
 }
 

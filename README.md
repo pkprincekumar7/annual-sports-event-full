@@ -116,6 +116,24 @@ To run in the background (detached):
 docker compose up -d --build
 ```
 
+Rebuild images (without starting):
+
+```bash
+docker compose build --no-cache
+```
+
+Restart running containers:
+
+```bash
+docker compose restart
+```
+
+Rebuild and restart (one-liner):
+
+```bash
+docker compose up -d --build --force-recreate
+```
+
 Stop and remove containers:
 
 ```bash

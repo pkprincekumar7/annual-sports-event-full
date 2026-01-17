@@ -556,10 +556,11 @@ parent-directory/
 ├── annual-sports-backend/
 │   ├── config/
 │   │   └── database.js
-│   ├── models/
-│   │   └── Player.js
-│   ├── utils/
-│   │   └── logger.js
+│   ├── models/             # All Mongoose schemas
+│   ├── routes/             # Express route handlers
+│   ├── middleware/         # Auth, date restrictions, etc.
+│   ├── utils/              # Logger, cache, email, helpers
+│   ├── constants/          # Backend constants
 │   ├── server.js
 │   ├── package.json
 │   ├── .env
@@ -568,14 +569,13 @@ parent-directory/
 │
 └── annual-sports-frontend/
     ├── src/
-    │   ├── components/
-    │   │   ├── ErrorBoundary.jsx
-    │   │   └── (other components)
+    │   ├── components/      # All React components
+    │   ├── hooks/           # Custom hooks
+    │   ├── context/         # Context providers
+    │   ├── constants/       # Frontend constants
     │   ├── config/
     │   │   └── api.js
-    │   ├── utils/
-    │   │   ├── api.js
-    │   │   └── logger.js
+    │   ├── utils/           # API helpers, logging, etc.
     │   ├── App.jsx
     │   ├── main.jsx
     │   └── index.css

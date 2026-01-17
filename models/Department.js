@@ -32,7 +32,7 @@ const departmentSchema = new mongoose.Schema({
 })
 
 // Create indexes for faster lookups
-departmentSchema.index({ name: 1 }, { unique: true })
+// name already has a unique index via schema definition
 departmentSchema.index({ display_order: 1 }) // For efficient queries sorted by display_order
 
 // Pre-validate hook to normalize department fields

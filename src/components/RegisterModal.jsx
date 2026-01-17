@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input } from './ui'
 import { useApi, useEventYear, useEventYearWithFallback } from '../hooks'
-import { fetchWithAuth, API_URL, clearCache, clearCachePattern } from '../utils/api'
+import { fetchWithAuth, buildApiUrl, clearCache, clearCachePattern } from '../utils/api'
 import { clearTeamParticipationCaches, clearIndividualParticipationCaches } from '../utils/cacheHelpers'
 import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
@@ -61,7 +61,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       setLoadingDepartments(true)
       try {
         // Use regular fetch (not fetchWithAuth) since departments endpoint is public
-        const res = await fetch(`${API_URL}/api/departments`, { signal: abortController.signal })
+        const res = await fetch(buildApiUrl('/api/departments'), { signal: abortController.signal })
         if (!isMounted) return
         
         if (res.ok) {
@@ -111,7 +111,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       try {
         // Use regular fetch (not fetchWithAuth) since batches endpoint is now public
         const url = buildApiUrlWithYear('/api/batches', eventId)
-        const res = await fetch(`${API_URL}${url}`, { signal: abortController.signal })
+        const res = await fetch(buildApiUrl(url), { signal: abortController.signal })
         if (!isMounted) return
         
         if (res.ok) {
@@ -386,7 +386,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
     try {
       await executeGeneral(
-        () => fetch(`${API_URL}/api/save-player`, {
+        () => fetch(buildApiUrl('/api/save-player'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

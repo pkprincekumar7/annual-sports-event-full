@@ -62,7 +62,7 @@ const playerSchema = new mongoose.Schema({
 })
 
 // Create indexes for faster lookups
-playerSchema.index({ reg_number: 1 }) // Already unique, but explicit index for performance
+// reg_number already has a unique index via schema definition
 playerSchema.index({ department_branch: 1 }) // For queries filtering by department
 // year index removed - batch filtering now handled by Batch collection
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Input, LoadingSpinner, EmptyState, ConfirmationDialog } from './ui'
 import { useApi, useEventYearWithFallback, useEventYear } from '../hooks'
-import { fetchWithAuth, API_URL, clearCache, clearCachePattern } from '../utils/api'
+import { fetchWithAuth, buildApiUrl, clearCache, clearCachePattern } from '../utils/api'
 import { buildApiUrlWithYear } from '../utils/apiHelpers'
 import { GENDER_OPTIONS, DEFAULT_PLAYERS_PAGE_SIZE } from '../constants/app'
 import logger from '../utils/logger'
@@ -71,7 +71,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
       setLoadingDepartments(true)
       try {
         // Use regular fetch (not fetchWithAuth) since departments endpoint is public
-        const res = await fetch(`${API_URL}/api/departments`, { signal: abortController.signal })
+        const res = await fetch(buildApiUrl('/api/departments'), { signal: abortController.signal })
         if (!isMounted) return
         
         if (res.ok) {

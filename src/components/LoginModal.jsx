@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Modal, Button, Input } from './ui'
 import { useApi } from '../hooks'
-import { API_URL, clearCachePattern } from '../utils/api'
+import { buildApiUrl, clearCachePattern } from '../utils/api'
 import logger from '../utils/logger'
 
 function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup, onResetPasswordClick }) {
@@ -27,7 +27,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup, onResetPas
 
     try {
       await execute(
-        () => fetch(`${API_URL}/api/login`, {
+        () => fetch(buildApiUrl('/api/login'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

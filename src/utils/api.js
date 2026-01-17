@@ -36,13 +36,20 @@ export const decodeJWT = (token) => {
 }
 
 // Helper function to build full API URL
-const buildApiUrl = (endpoint) => {
+export const buildApiUrl = (endpoint) => {
   // If endpoint already starts with http, use it as-is
   if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
     return endpoint
   }
-  // Otherwise, prepend API_URL
-  return `${API_URL}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`
+  // Otherwise, prepend API_URL, avoiding duplicate /api when API_URL already ends with /api
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+  const normalizedApiUrl = API_URL.endsWith('/')
+    ? API_URL.slice(0, -1)
+    : API_URL
+  if (normalizedApiUrl.endsWith('/api') && normalizedEndpoint.startsWith('/api/')) {
+    return `${normalizedApiUrl}${normalizedEndpoint.slice(4)}`
+  }
+  return `${normalizedApiUrl}${normalizedEndpoint}`
 }
 
 // Get cache key from URL and options

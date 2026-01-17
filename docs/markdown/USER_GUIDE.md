@@ -141,11 +141,11 @@ This guide provides comprehensive documentation for the Annual Sports Event Mana
   - Password (use Change Password feature)
   - Participation records
 
-### 8. **Year Selector (Authenticated Users)**
-- **Year Switching**: Logged-in users can switch between different events
-- **Active Year Indicator**: Shows which event is currently active
+### 8. **Event Selector (Authenticated Users)**
+- **Event Switching**: Logged-in users can switch between different events
+- **Active Indicator**: Active status is shown inside the dropdown options (e.g., `(Active)`)
 - **Viewing Mode**: Allows viewing data for past or future events
-- **Auto-Selection**: Automatically selects active year on page load
+- **Auto-Selection**: Automatically selects the active event on page load
 - **Event Name Display**: Shows event name along with event year for clarity
 
 ---

@@ -87,13 +87,11 @@ function Navbar({
                   if (menuButtonRef.current) {
                     const rect = menuButtonRef.current.getBoundingClientRect()
                     const menuWidth = 224
-                    const scrollX = window.scrollX || window.pageXOffset
-                    const scrollY = window.scrollY || window.pageYOffset
-                    const top = rect.bottom + scrollY + 8
-                    const maxHeight = Math.max(180, window.innerHeight + scrollY - top - 12)
+                    const top = rect.bottom + 8
+                    const maxHeight = Math.max(180, window.innerHeight - top - 12)
                     const left = Math.min(
-                      Math.max(12 + scrollX, rect.left + scrollX),
-                      scrollX + window.innerWidth - menuWidth - 12
+                      Math.max(12, rect.left),
+                      window.innerWidth - menuWidth - 12
                     )
                     setMenuPosition({ top, left, maxHeight })
                   }
@@ -121,7 +119,7 @@ function Navbar({
                     onClick={() => setIsMenuOpen(false)}
                   />
                   <div
-                    className="absolute w-56 rounded-lg bg-[rgba(15,23,42,0.98)] border border-[rgba(148,163,184,0.5)] shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-20 overflow-y-auto"
+                    className="fixed w-56 rounded-lg bg-[rgba(15,23,42,0.98)] border border-[rgba(148,163,184,0.5)] shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-[100] overflow-y-auto"
                     style={{
                       top: `${menuPosition.top}px`,
                       left: `${menuPosition.left}px`,

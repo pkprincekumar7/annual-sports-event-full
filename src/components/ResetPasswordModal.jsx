@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Modal, Button, Input } from './ui'
 import { useApi } from '../hooks'
-import { API_URL } from '../utils/api'
+import { buildApiUrl } from '../utils/api'
 import { validateEmail } from '../utils/formValidation'
 import logger from '../utils/logger'
 
@@ -39,7 +39,7 @@ function ResetPasswordModal({ isOpen, onClose, onStatusPopup }) {
 
     try {
       await execute(
-        () => fetch(`${API_URL}/api/reset-password`, {
+        () => fetch(buildApiUrl('/api/reset-password'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

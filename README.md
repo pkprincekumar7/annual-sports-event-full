@@ -38,6 +38,41 @@ cd annual-sports-event-full
 npm install
 ```
 
+## Docker Compose (Frontend + Backend)
+
+Run both services in separate containers:
+
+```bash
+docker compose up --build
+```
+
+To run in the background (detached):
+
+```bash
+docker compose up -d --build
+```
+
+Stop and remove containers:
+
+```bash
+docker compose down
+```
+
+Follow logs:
+
+```bash
+docker compose logs -f
+```
+
+### Ports
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3001`
+
+### Environment
+- Copy `.env.example` to `.env` and update values for your environment.
+- `.env` is gitignored, so it won't be committed; commit only `.env.example`.
+- The frontend build uses `VITE_API_URL=/api` and Nginx proxies `/api` to the backend container (`backend:3001`).
+
 ## Available Scripts
 
 ### Frontend Scripts
@@ -55,7 +90,12 @@ For full-stack development, run both servers:
 1. Terminal 1: `npm run dev:server` (backend)
 2. Terminal 2: `npm run dev` (frontend)
 
-3. Create a `.env` file in the root directory:
+3. Create a `.env` file in the root directory by copying the template:
+```bash
+cp .env.example .env
+```
+
+   Update `.env` values for your environment (do not commit `.env`):
 ```env
 # Frontend Configuration
 VITE_API_URL=http://localhost:3001
@@ -1132,6 +1172,35 @@ sudo ln -s /etc/nginx/sites-available/annual-sports-backend /etc/nginx/sites-ena
 sudo nginx -t  # Test configuration
 sudo systemctl reload nginx
 ```
+
+### Other Deployment Options
+
+If you prefer managed hosting or containers, use one of the options below.
+
+#### Frontend: Static Hosting (Vercel/Netlify/S3 + CloudFront)
+1. Build the frontend:
+   ```bash
+   npm run build
+   ```
+2. Set `VITE_API_URL` at build time to your backend URL.
+3. Upload the `dist/` folder to your hosting provider and configure SPA routing.
+
+#### Backend: PaaS (Render/Railway/Heroku)
+1. Set environment variables in the platform settings (`PORT`, `MONGODB_URI`, `JWT_SECRET`, email vars).
+2. Set the start command to `node server.js`.
+3. Ensure the platform exposes the port defined by `PORT`.
+
+#### Docker (Without Compose)
+1. Build images:
+   ```bash
+   docker build -f Dockerfile.backend -t annual-sports-backend .
+   docker build -f Dockerfile.frontend -t annual-sports-frontend .
+   ```
+2. Run containers with the required environment variables and port mappings.
+
+#### Kubernetes (Optional)
+Deploy using separate Deployments/Services for frontend and backend, plus a MongoDB StatefulSet.
+Set the same environment variables used in `.env.example`.
 
 ### Troubleshooting
 

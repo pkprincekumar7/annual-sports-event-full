@@ -69,7 +69,7 @@ const eventYearSchema = new mongoose.Schema({
 })
 
 // Create indexes for faster lookups
-eventYearSchema.index({ event_id: 1 }, { unique: true }) // Unique event identifier
+// event_id already has a unique index via schema definition
 eventYearSchema.index({ event_year: 1 }) // For efficient event year queries
 // Note: Active status is now determined automatically based on dates, not stored in database
 

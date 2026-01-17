@@ -1,8 +1,17 @@
-import { useState, useEffect } from 'react'
-import { fetchWithAuth } from '../utils/api'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { Modal, Button, Input, ConfirmationDialog, LoadingSpinner, ErrorMessage, EmptyState } from './ui'
+import { useApi, useModal, useEventYearWithFallback, useEventYear } from '../hooks'
+import { fetchWithAuth, clearCache, clearCachePattern } from '../utils/api'
+import { clearSportCaches } from '../utils/cacheHelpers'
+import { isCoordinatorForSportScope } from '../utils/sportHelpers'
+import { buildSportApiUrl, buildApiUrlWithYear } from '../utils/apiHelpers'
 import logger from '../utils/logger'
+import { validateGenderMatch, validateBatchMatch, validateNoDuplicates } from '../utils/participantValidation'
+import { shouldDisableDatabaseOperations } from '../utils/yearHelpers'
 
-function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup }) {
+function TeamDetailsModal({ isOpen, onClose, sport, sportDetails = null, loggedInUser, onStatusPopup, embedded = false, selectedEventId }) {
+  const { eventYearConfig } = useEventYear()
+  const eventHighlight = eventYearConfig?.event_highlight || 'Community Entertainment Fest'
   const [teams, setTeams] = useState([])
   const [totalTeams, setTotalTeams] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -11,17 +20,49 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
   const [players, setPlayers] = useState([])
   const [editingPlayer, setEditingPlayer] = useState(null) // { team_name, old_reg_number }
   const [selectedReplacementPlayer, setSelectedReplacementPlayer] = useState('')
-  const [updating, setUpdating] = useState(false)
   const [deletingTeam, setDeletingTeam] = useState(null) // team_name being deleted
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const currentSportRef = useRef(null)
+  const abortControllerRef = useRef(null)
+  const { loading: updating, execute: executeUpdate } = useApi()
+  const { loading: deleting, execute: executeDelete } = useApi()
+  const { eventYear, eventId } = useEventYearWithFallback(selectedEventId)
+  const deleteConfirmModal = useModal(false)
+  
+  // Check if database operations should be disabled
+  const operationStatus = shouldDisableDatabaseOperations(eventYearConfig)
+  const isOperationDisabled = operationStatus.disabled
   
   const isAdmin = loggedInUser?.reg_number === 'admin'
-  const isCaptain = !isAdmin && loggedInUser?.captain_in && 
+  const isCoordinator = !isAdmin && isCoordinatorForSportScope(loggedInUser, sport, sportDetails)
+  const canManageSport = isAdmin || isCoordinator
+  const isCaptain = !canManageSport && loggedInUser?.captain_in && 
     Array.isArray(loggedInUser.captain_in) && 
     loggedInUser.captain_in.includes(sport)
+
+  const hasTeamMatchHistory = useCallback(async (teamName) => {
+    if (!teamName || !sport || !eventId) {
+      return false
+    }
+
+    try {
+      const encodedSport = encodeURIComponent(sport)
+      const url = buildApiUrlWithYear(`/api/event-schedule/${encodedSport}`, eventId)
+      const response = await fetchWithAuth(url)
+      if (!response.ok) {
+        return true
+      }
+
+      const data = await response.json()
+      const matches = Array.isArray(data?.matches) ? data.matches : []
+      return matches.some(match => Array.isArray(match.teams) && match.teams.includes(teamName))
+    } catch (error) {
+      logger.error('Failed to check team match history:', error)
+      return true
+    }
+  }, [eventId, sport])
   
   // Check if user is enrolled in this team event (non-captain participant)
-  const isEnrolledInTeam = !isAdmin && !isCaptain && loggedInUser?.participated_in && 
+  const isEnrolledInTeam = !canManageSport && !isCaptain && loggedInUser?.participated_in && 
     Array.isArray(loggedInUser.participated_in) &&
     loggedInUser.participated_in.some(p => 
       p.sport === sport && p.team_name
@@ -40,16 +81,35 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
       setEditingPlayer(null)
       setSelectedReplacementPlayer('')
       setDeletingTeam(null)
-      setShowDeleteConfirm(false)
+      deleteConfirmModal.close()
+      currentSportRef.current = null
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
       return
+    }
+
+    // Only fetch if sport or eventYear changed or we haven't fetched yet
+    const currentKey = `${sport}-${eventYear}`
+    if (currentSportRef.current === currentKey) {
+      return
+    }
+
+    currentSportRef.current = currentKey
+
+    // Abort previous request if it exists
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
     }
 
     let isMounted = true
     const abortController = new AbortController()
+    abortControllerRef.current = abortController
 
     const loadData = async () => {
       await fetchTeamDetails(abortController.signal)
-      if (isAdmin && isMounted) {
+      if (canManageSport && isMounted && !abortController.signal.aborted) {
         await fetchPlayers(abortController.signal)
       }
     }
@@ -58,25 +118,43 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
 
     return () => {
       isMounted = false
-      abortController.abort()
+      // Only abort if sport or eventYear changed
+      const currentKey = `${sport}-${eventYear}`
+      if (currentSportRef.current !== currentKey) {
+        abortController.abort()
+      }
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, sport, isCaptain, loggedInUser])
+  }, [isOpen, sport, eventYear])
 
   const fetchPlayers = async (signal) => {
     try {
-      const response = await fetchWithAuth('/api/players', { signal })
+      // Don't pass page parameter to get all players (needed for team member replacement)
+      const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventId), signal ? { signal } : {})
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
-      if (data.success) {
-        // Filter out admin user
-        const filteredPlayers = (data.players || []).filter(
-          p => p.reg_number !== 'admin'
-        )
-        setPlayers(filteredPlayers)
+        if (data.success) {
+          // Server-side filtering: admin user already filtered out on server
+          const playersList = data.players || []
+          const filteredPlayers = sport
+            ? playersList.filter(player => !isCoordinatorForSport(player, sport))
+            : playersList
+          setPlayers(filteredPlayers)
+      } else {
+        logger.warn('Failed to fetch players:', data.error)
+        setPlayers([])
       }
     } catch (err) {
       if (err.name === 'AbortError') return
       logger.error('Error fetching players:', err)
+      setPlayers([])
     }
   }
 
@@ -89,96 +167,135 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
 
     setLoading(true)
     setError(null)
+    let isMounted = true
+    
     try {
       // URL encode the sport name to handle special characters like ×
-      const encodedSport = encodeURIComponent(sport)
-      const url = `/api/teams/${encodedSport}`
-      logger.api('Fetching teams for sport:', sport, 'URL:', url)
+      const url = buildSportApiUrl('teams', sport, eventId)
+      // Fetching teams for sport
       
       const response = await fetchWithAuth(url, signal ? { signal } : {})
       
-      if (signal?.aborted) return
+      if (signal?.aborted) {
+        isMounted = false
+        return
+      }
       
       if (!response.ok) {
         // Try to get error message from response
         let errorMessage = 'Failed to fetch team details'
         try {
-          const errorData = await response.json()
+          // Clone response to read error without consuming the original
+          const clonedResponse = response.clone()
+          const errorData = await clonedResponse.json()
           errorMessage = errorData.error || errorData.details || errorMessage
           logger.error('API Error:', errorData)
         } catch (e) {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`
           logger.error('Response parse error:', e)
         }
-        setError(errorMessage)
-        setLoading(false)
+        if (isMounted) {
+          setError(errorMessage)
+          setLoading(false)
+        }
         return
       }
 
       const data = await response.json()
-      logger.api('Team data received:', data)
+        // Team data received
 
-      if (data.success) {
-        // Store total teams count from API response
-        setTotalTeams(data.total_teams || 0)
-        
-        let teamsToShow = data.teams || []
-        
-        // If captain or enrolled participant, filter to show only their team
-        if (shouldShowOnlyUserTeam && loggedInUser && teamsToShow.length > 0) {
-          // Find the team that the user belongs to
-          const userTeam = teamsToShow.find(team => 
-            team.players.some(player => player.reg_number === loggedInUser.reg_number)
-          )
+      if (isMounted) {
+        if (data.success) {
+          // Store total teams count from API response
+          setTotalTeams(data.total_teams || 0)
           
-          if (userTeam) {
-            // Show only the user's team
-            teamsToShow = [userTeam]
-            // Auto-expand the user's team
-            setExpandedTeams(new Set([userTeam.team_name]))
-          } else {
-            // User is not in any team (shouldn't happen, but handle gracefully)
-            teamsToShow = []
+          let teamsToShow = data.teams || []
+          
+          // If captain or enrolled participant, filter to show only their team
+          if (shouldShowOnlyUserTeam && loggedInUser && teamsToShow.length > 0) {
+            // Find the team that the user belongs to
+            const userTeam = teamsToShow.find(team => 
+              team.players.some(player => player.reg_number === loggedInUser.reg_number)
+            )
+            
+            if (userTeam) {
+              // Show only the user's team
+              teamsToShow = [userTeam]
+              // Auto-expand the user's team
+              setExpandedTeams(new Set([userTeam.team_name]))
+            } else {
+              // User is not in any team (shouldn't happen, but handle gracefully)
+              teamsToShow = []
+            }
           }
+          
+          setTeams(teamsToShow)
+        } else {
+          setError(data.error || 'Failed to fetch team details')
         }
-        
-        setTeams(teamsToShow)
-      } else {
-        setError(data.error || 'Failed to fetch team details')
       }
     } catch (err) {
-      if (err.name === 'AbortError') return
+      if (err.name === 'AbortError') {
+        isMounted = false
+        return
+      }
       logger.error('Error fetching team details:', err)
-      setError(`Error while fetching team details: ${err.message || 'Please check your connection and try again.'}`)
+      if (isMounted) {
+        setError(`Error while fetching team details: ${err.message || 'Please check your connection and try again.'}`)
+      }
     } finally {
-      setLoading(false)
+      if (isMounted) {
+        setLoading(false)
+      }
     }
   }
 
-  const toggleTeam = (teamName) => {
-    const newExpanded = new Set(expandedTeams)
-    if (newExpanded.has(teamName)) {
-      newExpanded.delete(teamName)
-    } else {
-      newExpanded.add(teamName)
-    }
-    setExpandedTeams(newExpanded)
-  }
+  const toggleTeam = useCallback((teamName) => {
+    setExpandedTeams(prev => {
+      // If clicking on an already expanded team, collapse it
+      if (prev.has(teamName)) {
+        const newExpanded = new Set(prev)
+        newExpanded.delete(teamName)
+        return newExpanded
+      }
+      // Otherwise, expand this team and collapse all others
+      return new Set([teamName])
+    })
+  }, [])
 
-  const handleEditPlayer = (teamName, regNumber) => {
+  const handleEditPlayer = useCallback(async (teamName, regNumber) => {
     setEditingPlayer({ team_name: teamName, old_reg_number: regNumber })
     setSelectedReplacementPlayer('')
-  }
+    
+    // Ensure players are loaded when opening edit mode
+    if (canManageSport && players.length === 0) {
+      try {
+        await fetchPlayers(null)
+      } catch (err) {
+        logger.error('Error fetching players for replacement:', err)
+        if (onStatusPopup) {
+          onStatusPopup('❌ Error loading players list. Please try again.', 'error', 3000)
+        }
+      }
+    }
+  }, [canManageSport, players.length, fetchPlayers, onStatusPopup])
 
-  const handleCancelEdit = () => {
+  const handleCancelEdit = useCallback(() => {
     setEditingPlayer(null)
     setSelectedReplacementPlayer('')
-  }
+  }, [])
 
   const handleUpdatePlayer = async () => {
     if (!selectedReplacementPlayer) {
       if (onStatusPopup) {
         onStatusPopup('❌ Please select a replacement player.', 'error', 2500)
+      }
+      return
+    }
+
+    if (!eventId) {
+      if (onStatusPopup) {
+        onStatusPopup('❌ Event is not configured. Please try again later.', 'error', 3000)
       }
       return
     }
@@ -211,154 +328,158 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
     // Validate gender match
     if (currentTeam.players.length > 0) {
       const teamGender = currentTeam.players[0].gender
-      if (newPlayer.gender !== teamGender) {
+      const genderValidation = validateGenderMatch([newPlayer], teamGender)
+      if (!genderValidation.isValid) {
         if (onStatusPopup) {
-          onStatusPopup(`❌ Gender mismatch: New player must have the same gender (${teamGender}) as other team members.`, 'error', 4000)
+          onStatusPopup(`❌ ${genderValidation.error}`, 'error', 4000)
         }
         return
       }
 
-      // Validate year match
-      const teamYear = currentTeam.players[0].year
-      if (newPlayer.year !== teamYear) {
+      // CRITICAL: Validate batch match
+      const teamBatch = currentTeam.players[0].batch_name
+      const batchValidation = validateBatchMatch([newPlayer], teamBatch)
+      if (!batchValidation.isValid) {
         if (onStatusPopup) {
-          onStatusPopup(`❌ Year mismatch: New player must be in the same year (${teamYear}) as other team members.`, 'error', 4000)
+          onStatusPopup(`❌ ${batchValidation.error}`, 'error', 4000)
         }
         return
       }
+
     }
 
     // Check for duplicate (new player already in team)
-    const isDuplicate = currentTeam.players.some(p => p.reg_number === selectedReplacementPlayer)
-    if (isDuplicate) {
+    const teamPlayerIds = currentTeam.players.map(p => p.reg_number)
+    const duplicateValidation = validateNoDuplicates([...teamPlayerIds, selectedReplacementPlayer])
+    if (!duplicateValidation.isValid) {
       if (onStatusPopup) {
         onStatusPopup('❌ This player is already in the team.', 'error', 2500)
       }
       return
     }
 
-    setUpdating(true)
     try {
-      const response = await fetchWithAuth('/api/update-team-player', {
-        method: 'POST',
-        body: JSON.stringify({
-          team_name: editingPlayer.team_name,
-          sport: sport,
-          old_reg_number: editingPlayer.old_reg_number,
-          new_reg_number: selectedReplacementPlayer,
+      await executeUpdate(
+        () => fetchWithAuth('/api/update-team-player', {
+          method: 'POST',
+          body: JSON.stringify({
+            team_name: editingPlayer.team_name,
+            sport: sport,
+            old_reg_number: editingPlayer.old_reg_number,
+            new_reg_number: selectedReplacementPlayer,
+            event_id: eventId,
+          }),
         }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.success) {
-        if (onStatusPopup) {
-          onStatusPopup(`✅ Player updated successfully!`, 'success', 2500)
+        {
+          onSuccess: (data) => {
+            if (onStatusPopup) {
+              onStatusPopup(`✅ Player updated successfully!`, 'success', 2500)
+            }
+            // Clear cache before refreshing to ensure we get fresh data
+            clearSportCaches(sport, eventId)
+            clearCachePattern('/api/me') // Current user's data may have changed (clear all variations)
+            clearCachePattern('/api/players')
+            // Refresh team data (no signal needed for manual refresh)
+            fetchTeamDetails(null)
+            setEditingPlayer(null)
+            setSelectedReplacementPlayer('')
+          },
+          onError: (err) => {
+            // The useApi hook extracts the error message from the API response
+            const errorMessage = err?.message || err?.error || 'Failed to update player. Please try again.'
+            if (onStatusPopup) {
+              onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
+            }
+          },
         }
-        // Refresh team data
-        await fetchTeamDetails()
-        setEditingPlayer(null)
-        setSelectedReplacementPlayer('')
-      } else {
-        const errorMessage = data.error || 'Failed to update player. Please try again.'
-        if (onStatusPopup) {
-          onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
-        }
-      }
+      )
     } catch (err) {
+      // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
       logger.error('Error updating player:', err)
-      if (onStatusPopup) {
-        onStatusPopup('❌ Error updating player. Please try again.', 'error', 3000)
-      }
-    } finally {
-      setUpdating(false)
     }
   }
 
   const handleDeleteTeam = async (teamName) => {
-    setUpdating(true)
-    try {
-      const response = await fetchWithAuth('/api/delete-team', {
-        method: 'DELETE',
-        body: JSON.stringify({
-          team_name: teamName,
-          sport: sport,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.success) {
-        if (onStatusPopup) {
-          onStatusPopup(`✅ Team "${teamName}" deleted successfully! ${data.deleted_count} player(s) removed.`, 'success', 3000)
-        }
-        // Refresh team data
-        await fetchTeamDetails()
-        setShowDeleteConfirm(false)
-        setDeletingTeam(null)
-      } else {
-        const errorMessage = data.error || 'Failed to delete team. Please try again.'
-        if (onStatusPopup) {
-          onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
-        }
-        setShowDeleteConfirm(false)
-        setDeletingTeam(null)
-      }
-    } catch (err) {
-      logger.error('Error deleting team:', err)
+    deleteConfirmModal.close()
+    if (!eventId) {
       if (onStatusPopup) {
-        onStatusPopup('❌ Error deleting team. Please try again.', 'error', 3000)
+        onStatusPopup('❌ Event is not configured. Please try again later.', 'error', 3000)
       }
-      setShowDeleteConfirm(false)
+      return
+    }
+
+    const hasMatchHistory = await hasTeamMatchHistory(teamName)
+    if (hasMatchHistory) {
+      if (onStatusPopup) {
+        onStatusPopup('❌ Cannot delete team with match history. Please remove matches first.', 'error', 4000)
+      }
+      return
+    }
+
+    try {
+      await executeDelete(
+        () => fetchWithAuth('/api/delete-team', {
+          method: 'DELETE',
+          body: JSON.stringify({
+            team_name: teamName,
+            sport: sport,
+            event_id: eventId,
+          }),
+        }),
+        {
+          onSuccess: (data) => {
+            if (onStatusPopup) {
+              onStatusPopup(`✅ Team "${teamName}" deleted successfully! ${data.deleted_count || 0} player(s) removed.`, 'success', 3000)
+            }
+            // Clear cache before refreshing to ensure we get fresh data
+            clearSportCaches(sport, eventId)
+            clearCachePattern('/api/me') // If any logged-in user was in this team (clear all variations)
+            clearCachePattern('/api/players')
+            // Remove deleted team from expanded teams if it was expanded
+            setExpandedTeams(prev => {
+              const newSet = new Set(prev)
+              newSet.delete(teamName)
+              return newSet
+            })
+            // Refresh team data (no signal needed for manual refresh)
+            fetchTeamDetails(null)
+            setDeletingTeam(null)
+          },
+          onError: (err) => {
+            // The useApi hook extracts the error message from the API response
+            const errorMessage = err?.message || err?.error || 'Failed to delete team. Please try again.'
+            if (onStatusPopup) {
+              onStatusPopup(`❌ ${errorMessage}`, 'error', 4000)
+            }
+            setDeletingTeam(null)
+          },
+        }
+      )
+    } catch (err) {
+      // This catch handles cases where execute throws before onError is called
+      // Don't show duplicate error message - onError should have handled it
+      logger.error('Error deleting team:', err)
       setDeletingTeam(null)
-    } finally {
-      setUpdating(false)
     }
   }
 
-  if (!isOpen) return null
-
   return (
-    <div
-      className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4"
-    >
-      <aside className="max-w-[700px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] pb-[1.5rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative max-h-[90vh] overflow-y-auto">
-        <button
-          type="button"
-          className="absolute top-[10px] right-3 bg-transparent border-none text-[#e5e7eb] text-base cursor-pointer hover:text-[#ffe66d] transition-colors"
-          onClick={onClose}
-        >
-          ✕
-        </button>
-
-        <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">
-          {isAdmin ? 'Admin Panel' : shouldShowOnlyUserTeam ? (isCaptain ? 'Captain View' : 'Team Details') : 'Team Details'}
-        </div>
-        <div className="text-[1.25rem] font-extrabold text-center uppercase tracking-[0.14em] text-[#ffe66d] mb-[0.7rem]">
-          Team Details
-        </div>
-        <div className="text-[0.85rem] text-center text-[#e5e7eb] mb-4">
-          {sport ? sport.toUpperCase() : 'Sport'} • PCE, Purnea • Umang – 2026 Sports Fest
-        </div>
-
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="Team Details"
+        subtitle={eventHighlight}
+        embedded={embedded}
+        maxWidth="max-w-[700px]"
+      >
         {loading && (
-          <div className="text-center py-8 text-[#a5b4fc]">
-            Loading team details...
-          </div>
+          <LoadingSpinner message="Loading team details..." />
         )}
 
         {error && (
-          <div className="text-center py-8 text-red-400">
-            {error}
-          </div>
+          <ErrorMessage message={error} />
         )}
 
         {!loading && !error && (
@@ -367,14 +488,16 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
               Total Teams Participated: <span className="text-[#ffe66d] font-bold">{totalTeams}</span>
             </div>
             {teams.length === 0 && (
-              <div className="text-center py-8 text-[#a5b4fc]">
-                {shouldShowOnlyUserTeam 
-                  ? (isCaptain 
-                      ? "You haven't created a team for this sport yet. Please register a team first."
-                      : "You are not enrolled in any team for this sport yet.")
-                  : "No teams registered for this sport yet."
+              <EmptyState
+                message={
+                  shouldShowOnlyUserTeam 
+                    ? (isCaptain 
+                        ? "You haven't created a team for this sport yet. Please register a team first."
+                        : "You are not enrolled in any team for this sport yet.")
+                    : "No teams registered for this sport yet."
                 }
-              </div>
+                className="py-8"
+              />
             )}
           </>
         )}
@@ -395,13 +518,13 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
                       : 'border-[rgba(148,163,184,0.3)] bg-[rgba(15,23,42,0.6)]'
                   }`}
                 >
-                  <div className="flex items-center">
+                  <div className="flex flex-col md:flex-row md:items-center">
                     <button
                       type="button"
                       onClick={() => toggleTeam(team.team_name)}
                       className="flex-1 px-4 py-3 flex items-center justify-between hover:bg-[rgba(255,230,109,0.1)] transition-colors"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <span className="text-[#ffe66d] text-lg">
                           {isExpanded ? '▼' : '▶'}
                         </span>
@@ -418,23 +541,25 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
                         </span>
                       </div>
                     </button>
-                    {isAdmin && (
-                      <button
+                    {canManageSport && (
+                      <Button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
+                          if (isOperationDisabled) {
+                            onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+                            return
+                          }
                           setDeletingTeam(team.team_name)
-                          setShowDeleteConfirm(true)
+                          deleteConfirmModal.open()
                         }}
-                        disabled={(updating && deletingTeam === team.team_name) || (showDeleteConfirm && deletingTeam === team.team_name)}
-                        className={`ml-2 mr-2 px-4 py-1.5 rounded-[8px] text-[0.8rem] font-semibold uppercase tracking-[0.05em] transition-all ${
-                          (updating && deletingTeam === team.team_name) || (showDeleteConfirm && deletingTeam === team.team_name)
-                            ? 'bg-[rgba(239,68,68,0.3)] text-[rgba(239,68,68,0.6)] cursor-not-allowed'
-                            : 'bg-gradient-to-r from-[#ef4444] to-[#dc2626] text-white cursor-pointer hover:shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:-translate-y-0.5'
-                        }`}
+                        disabled={isOperationDisabled || (updating && deletingTeam === team.team_name) || (deleting && deletingTeam === team.team_name)}
+                        title={isOperationDisabled ? operationStatus.reason : ''}
+                        variant="danger"
+                        className="self-start mt-2 mb-2 ml-4 md:mt-0 md:mb-0 md:ml-2 md:mr-2 md:self-auto px-4 py-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.05em] rounded-[8px]"
                       >
-                        {updating && deletingTeam === team.team_name ? 'Deleting...' : 'Delete'}
-                      </button>
+                        {(updating && deletingTeam === team.team_name) || (deleting && deletingTeam === team.team_name) ? 'Deleting...' : 'Delete'}
+                      </Button>
                     )}
                   </div>
 
@@ -442,18 +567,21 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
                     <div className="px-4 pb-4 pt-2 border-t border-[rgba(148,163,184,0.2)]">
                       <div className="space-y-2">
                         {team.players.map((player, index) => {
-                          const isEditing = isAdmin && editingPlayer && 
+                          const isEditing = canManageSport && editingPlayer && 
                             editingPlayer.team_name === team.team_name && 
                             editingPlayer.old_reg_number === player.reg_number
+                          
+                          // Check if this player is the captain (use team.captain field which is more reliable)
+                          const isCaptain = team.captain === player.reg_number
                           
                           // Get other selected reg_numbers in the team (for filtering dropdown)
                           const otherSelectedRegNumbers = team.players
                             .filter(p => p.reg_number !== player.reg_number)
                             .map(p => p.reg_number)
                           
-                          // Get team gender and year for filtering
+                          // Get team gender and batch for filtering
                           const teamGender = team.players.length > 0 ? team.players[0].gender : null
-                          const teamYear = team.players.length > 0 ? team.players[0].year : null
+                          const teamBatch = team.players.length > 0 ? team.players[0].batch_name : null
 
                           return (
                             <div
@@ -470,7 +598,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
                                       <span className="text-[#e5e7eb] font-semibold text-[0.9rem]">
                                         {player.full_name}
                                       </span>
-                                      {player.captain_in && Array.isArray(player.captain_in) && player.captain_in.includes(sport) && (
+                                      {isCaptain && (
                                         <span className="px-2 py-0.5 rounded text-[0.7rem] font-bold bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.4)]">
                                           CAPTAIN
                                         </span>
@@ -479,18 +607,19 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
                                     <div className="text-[#cbd5ff] text-[0.8rem] ml-6 space-y-0.5">
                                       <div>Reg. No: <span className="text-[#e5e7eb]">{player.reg_number}</span></div>
                                       <div>Department: <span className="text-[#e5e7eb]">{player.department_branch}</span></div>
-                                      <div>Year: <span className="text-[#e5e7eb]">{player.year}</span></div>
+                                      <div>Batch: <span className="text-[#e5e7eb]">{player.batch_name || ''}</span></div>
                                       <div>Gender: <span className="text-[#e5e7eb]">{player.gender}</span></div>
                                     </div>
                                   </div>
-                                  {isAdmin && !(player.captain_in && Array.isArray(player.captain_in) && player.captain_in.includes(sport)) && (
-                                    <button
+                                  {canManageSport && !isCaptain && (
+                                    <Button
                                       type="button"
                                       onClick={() => handleEditPlayer(team.team_name, player.reg_number)}
-                                      className="ml-3 px-3 py-1.5 rounded-[6px] text-[0.8rem] font-semibold bg-[rgba(255,230,109,0.2)] text-[#ffe66d] border border-[rgba(255,230,109,0.4)] hover:bg-[rgba(255,230,109,0.3)] transition-colors"
+                                      variant="ghost"
+                                      className="ml-3 px-3 py-1.5 text-[0.8rem] font-semibold rounded-[6px]"
                                     >
                                       Edit
-                                    </button>
+                                    </Button>
                                   )}
                                 </div>
                               ) : (
@@ -498,47 +627,53 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
                                   <div className="text-[#cbd5ff] text-[0.85rem] mb-2">
                                     Replace <span className="text-[#ffe66d] font-semibold">{player.full_name} ({player.reg_number})</span> with:
                                   </div>
-                                  <div className="flex flex-col">
-                                    <label className="text-[0.75rem] uppercase text-[#cbd5ff] mb-1 tracking-[0.06em]">
-                                      Select Replacement Player *
-                                    </label>
-                                    <select
-                                      value={selectedReplacementPlayer}
-                                      onChange={(e) => setSelectedReplacementPlayer(e.target.value)}
-                                      className="px-[10px] py-2 rounded-[10px] border border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.9)] text-[#e2e8f0] text-[0.9rem] outline-none transition-all duration-[0.15s] ease-in-out focus:border-[#ffe66d] focus:shadow-[0_0_0_1px_rgba(255,230,109,0.55),0_0_16px_rgba(248,250,252,0.2)] focus:-translate-y-[1px]"
-                                    >
-                                      <option value="">Select Player</option>
-                                      {players
+                                  <Input
+                                    label="Select Replacement Player"
+                                    type="select"
+                                    value={selectedReplacementPlayer}
+                                    onChange={(e) => setSelectedReplacementPlayer(e.target.value)}
+                                    required
+                                    options={players.length === 0 
+                                      ? [{ value: '', label: 'Loading players...' }]
+                                      : players
                                         .filter((player) => 
                                           player.reg_number !== 'admin' && 
                                           player.gender === teamGender &&
-                                          player.year === teamYear &&
+                                          player.batch_name === teamBatch &&
                                           (player.reg_number === selectedReplacementPlayer || !otherSelectedRegNumbers.includes(player.reg_number))
                                         )
-                                        .map((player) => (
-                                          <option key={player.reg_number} value={player.reg_number}>
-                                            {player.full_name} ({player.reg_number})
-                                          </option>
-                                        ))}
-                                    </select>
-                                  </div>
+                                        .map((player) => ({
+                                          value: player.reg_number,
+                                          label: `${player.full_name} (${player.reg_number})`
+                                        }))
+                                    }
+                                  />
                                   <div className="flex gap-2">
-                                    <button
+                                    <Button
                                       type="button"
-                                      onClick={handleUpdatePlayer}
-                                      disabled={updating || !selectedReplacementPlayer}
-                                      className="flex-1 px-4 py-2 rounded-[8px] text-[0.85rem] font-semibold bg-gradient-to-r from-[#ffe66d] to-[#ff9f1c] text-[#111827] border-none disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-[0_4px_12px_rgba(250,204,21,0.4)] transition-all"
+                                      onClick={() => {
+                                        if (isOperationDisabled) {
+                                          onStatusPopup(`❌ ${operationStatus.reason}`, 'error', 4000)
+                                          return
+                                        }
+                                        handleUpdatePlayer()
+                                      }}
+                                      disabled={isOperationDisabled || updating || !selectedReplacementPlayer}
+                                      loading={updating}
+                                      title={isOperationDisabled ? operationStatus.reason : ''}
+                                      className="flex-1 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-[0.85rem] font-semibold rounded-[8px]"
                                     >
                                       {updating ? 'Updating...' : 'Update'}
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
                                       type="button"
                                       onClick={handleCancelEdit}
                                       disabled={updating}
-                                      className="flex-1 px-4 py-2 rounded-[8px] text-[0.85rem] font-semibold bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] border border-[rgba(148,163,184,0.7)] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[rgba(15,23,42,1)] transition-all"
+                                      variant="secondary"
+                                      className="flex-1 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-[0.85rem] font-semibold rounded-[8px]"
                                     >
                                       Cancel
-                                    </button>
+                                    </Button>
                                   </div>
                                 </div>
                               )}
@@ -553,58 +688,33 @@ function TeamDetailsModal({ isOpen, onClose, sport, loggedInUser, onStatusPopup 
             })}
           </div>
         )}
+      </Modal>
 
-        <div className="flex justify-center mt-6">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-6 py-2 rounded-full border border-[rgba(148,163,184,0.7)] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_10px_26px_rgba(15,23,42,0.9)]"
-          >
-            Close
-          </button>
-        </div>
-      </aside>
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && deletingTeam && (
-        <div className="fixed inset-0 bg-[rgba(0,0,0,0.75)] flex items-center justify-center z-[300]">
-          <div className="max-w-[420px] w-full bg-gradient-to-br from-[rgba(12,16,40,0.98)] to-[rgba(9,9,26,0.94)] rounded-[20px] px-[1.4rem] py-[1.6rem] border border-[rgba(255,255,255,0.12)] shadow-[0_22px_55px_rgba(0,0,0,0.8)] backdrop-blur-[20px] relative">
-            <div className="text-[0.78rem] uppercase tracking-[0.16em] text-[#a5b4fc] mb-1 text-center">
-              Confirm Deletion
-            </div>
-            <div className="text-[1.1rem] font-extrabold text-center text-[#ffe66d] mb-4">
-              Delete Team
-            </div>
-            <div className="text-center text-[#e5e7eb] mb-6">
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={deleteConfirmModal.isOpen && deletingTeam !== null}
+        onClose={() => {
+          deleteConfirmModal.close()
+          setDeletingTeam(null)
+        }}
+        onConfirm={() => handleDeleteTeam(deletingTeam)}
+        title="Delete Team"
+        message={
+          deletingTeam ? (
+            <>
               Are you sure you want to delete team <span className="font-semibold text-[#ffe66d]">"{deletingTeam}"</span>?
               <br />
               <span className="text-[0.9rem] text-red-400 mt-2 block">This will remove all players from this team. This action cannot be undone.</span>
-            </div>
-            <div className="flex gap-[0.6rem] mt-[0.8rem]">
-              <button
-                type="button"
-                onClick={() => handleDeleteTeam(deletingTeam)}
-                disabled={updating}
-                className="flex-1 rounded-full border-none py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-gradient-to-r from-red-600 to-red-700 text-white shadow-[0_10px_24px_rgba(239,68,68,0.6)] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(239,68,68,0.75)] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {updating ? 'Deleting...' : 'Delete'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDeleteConfirm(false)
-                  setDeletingTeam(null)
-                }}
-                disabled={updating}
-                className="flex-1 rounded-full border border-[rgba(148,163,184,0.7)] py-[9px] text-[0.9rem] font-bold uppercase tracking-[0.1em] cursor-pointer bg-[rgba(15,23,42,0.95)] text-[#e5e7eb] transition-all duration-[0.12s] ease-in-out hover:-translate-y-0.5 hover:shadow-[0_10px_26px_rgba(15,23,42,0.9)] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+            </>
+          ) : ''
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        loading={deleting}
+        embedded={embedded}
+      />
+    </>
   )
 }
 

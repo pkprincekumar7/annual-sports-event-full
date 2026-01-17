@@ -1,30 +1,49 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchWithAuth, fetchCurrentUser, decodeJWT, clearCache } from './utils/api'
+import { buildApiUrlWithYear } from './utils/apiHelpers'
 import logger from './utils/logger'
+import { useEventYear } from './hooks/useEventYear'
+import { resetEventYearsCache } from './hooks/useEventYears'
+import { formatDateRange } from './utils/dateFormatters'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
 import SportsSection from './components/SportsSection'
 import RegisterModal from './components/RegisterModal'
 import LoginModal from './components/LoginModal'
-import AddCaptainModal from './components/AddCaptainModal'
-import RemoveCaptainModal from './components/RemoveCaptainModal'
+import ChangePasswordModal from './components/ChangePasswordModal'
+import ResetPasswordModal from './components/ResetPasswordModal'
+import CaptainManagementModal from './components/CaptainManagementModal'
+import CoordinatorManagementModal from './components/CoordinatorManagementModal'
+import BatchManagementModal from './components/BatchManagementModal'
 import TeamDetailsModal from './components/TeamDetailsModal'
 import ParticipantDetailsModal from './components/ParticipantDetailsModal'
 import PlayerListModal from './components/PlayerListModal'
+import EventScheduleModal from './components/EventScheduleModal'
+import SportDetailsModal from './components/SportDetailsModal'
+import AdminDashboardModal from './components/AdminDashboardModal'
 import AboutSection from './components/AboutSection'
 import Footer from './components/Footer'
 import StatusPopup from './components/StatusPopup'
 import ErrorBoundary from './components/ErrorBoundary'
+import { SelectedEventProvider } from './context/SelectedEventContext'
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
-  const [isAddCaptainModalOpen, setIsAddCaptainModalOpen] = useState(false)
-  const [isRemoveCaptainModalOpen, setIsRemoveCaptainModalOpen] = useState(false)
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false)
+  const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false)
+  const [isCaptainManagementModalOpen, setIsCaptainManagementModalOpen] = useState(false)
+  const [isCoordinatorManagementModalOpen, setIsCoordinatorManagementModalOpen] = useState(false)
+  const [isBatchManagementModalOpen, setIsBatchManagementModalOpen] = useState(false)
   const [isTeamDetailsModalOpen, setIsTeamDetailsModalOpen] = useState(false)
   const [isParticipantDetailsModalOpen, setIsParticipantDetailsModalOpen] = useState(false)
   const [isPlayerListModalOpen, setIsPlayerListModalOpen] = useState(false)
+  const [isEventScheduleModalOpen, setIsEventScheduleModalOpen] = useState(false)
+  const [isSportDetailsModalOpen, setIsSportDetailsModalOpen] = useState(false)
+  const [isAdminDashboardModalOpen, setIsAdminDashboardModalOpen] = useState(false)
+  const [selectedEventId, setSelectedEventId] = useState(null) // Admin can select an event to view (event_id)
   const [selectedSport, setSelectedSport] = useState(null)
+  const [selectedEventSport, setSelectedEventSport] = useState(null)
   const [statusPopup, setStatusPopup] = useState({ show: false, message: '', type: 'success' })
   const loginSuccessRef = useRef(false) // Track if login was successful to preserve selectedSport
   
@@ -34,6 +53,13 @@ function App() {
   })
   const [loggedInUser, setLoggedInUser] = useState(null)
   const [isLoadingUser, setIsLoadingUser] = useState(true)
+  
+  // Fetch active event year for dynamic event name display
+  const { eventYear, eventYearConfig, loading: eventYearLoading } = useEventYear(selectedEventId)
+  const eventDisplayName = eventYearConfig 
+    ? `${eventYearConfig.event_name} - ${eventYearConfig.event_year}`
+    : 'Championship' // Fallback to default value if no active event year
+  const eventOrganizer = eventYearConfig?.event_organizer || 'Events Community'
 
   // Fetch user data from server on mount if token exists
   useEffect(() => {
@@ -79,15 +105,35 @@ function App() {
             localStorage.setItem('authToken', tokenBeforeFetch)
           }
         } else if (result.authError || tokenWasCleared) {
-          // Authentication error - token is invalid or expired
-          // Token may have already been cleared by fetchWithAuth
-          logger.info('Authentication error detected, clearing token')
-          if (localStorage.getItem('authToken')) {
-            localStorage.removeItem('authToken')
+          // Authentication error - but be VERY conservative on rapid refresh
+          // If token exists in localStorage, don't clear it immediately
+          // This prevents false logouts on rapid page refreshes
+          const currentToken = localStorage.getItem('authToken')
+          
+          if (tokenWasCleared && !currentToken) {
+            // Token was actually cleared - this is a real auth error
+            logger.info('Authentication error detected, token was cleared')
+            setAuthToken(null)
+            setLoggedInUser(null)
+            setIsLoadingUser(false)
+          } else if (result.authError && currentToken) {
+            // We got an auth error, but token still exists
+            // On rapid refresh, this might be a false positive
+            // Don't clear the token or user state - just stop loading
+            // The user stays logged in with the token
+            logger.warn('Auth error but token exists - preserving login state (might be false positive on rapid refresh)')
+            setIsLoadingUser(false)
+            // Keep the user logged in - don't clear state
+            // If the token is really invalid, it will fail on the next real API call
+          } else if (result.authError && !currentToken) {
+            // Auth error and no token - clear state
+            logger.info('Authentication error detected, no token found')
+            setAuthToken(null)
+            setLoggedInUser(null)
+            setIsLoadingUser(false)
+          } else {
+            setIsLoadingUser(false)
           }
-          setAuthToken(null)
-          setLoggedInUser(null)
-          setIsLoadingUser(false) // Stop loading
         } else {
           // If result.user is null but authError is false and token wasn't cleared,
           // it means a temporary error (network issue, server error, etc.)
@@ -183,53 +229,38 @@ function App() {
     }
   }, [])
 
+  // Reset event years cache when user logs in (authToken changes from null to a value)
+  const prevAuthTokenRef = useRef(authToken)
+  useEffect(() => {
+    // Only reset if authToken changed from null/undefined to a value (user logged in)
+    // Don't reset on every authToken change to avoid infinite loops
+    if (authToken && !prevAuthTokenRef.current) {
+      resetEventYearsCache()
+    }
+    prevAuthTokenRef.current = authToken
+  }, [authToken])
+
+  const handleEventScheduleClick = (sport) => {
+    // Determine sport_type: check if it's a cultural event
+    const culturalSports = [
+      'Essay Writing', 'Story Writing', 'Group Discussion', 'Debate',
+      'Extempore', 'Quiz', 'Dumb Charades', 'Painting', 'Singing'
+    ]
+    const isCultural = culturalSports.includes(sport.name)
+    
+    setSelectedEventSport({
+      ...sport,
+      sportType: sport.type === 'team' ? 'team' : (isCultural ? 'cultural' : 'individual')
+    })
+    setIsEventScheduleModalOpen(true)
+  }
+
   const handleSportClick = (sport) => {
     // Prevent actions while user data is loading
     if (isLoadingUser) {
       return
     }
 
-    // If admin is logged in and it's a team event, open team details modal
-    if (loggedInUser?.reg_number === 'admin' && sport.type === 'team') {
-      setSelectedSport(sport)
-      setIsTeamDetailsModalOpen(true)
-      return
-    }
-    // If admin is logged in and it's not a team event, show participant details
-    if (loggedInUser?.reg_number === 'admin' && sport.type === 'individual') {
-      setSelectedSport(sport)
-      setIsParticipantDetailsModalOpen(true)
-      return
-    }
-    
-    // Check if user is a captain for this sport
-    const isCaptainForSport = loggedInUser?.captain_in && 
-      Array.isArray(loggedInUser.captain_in) && 
-      loggedInUser.captain_in.includes(sport.name)
-    
-    // Check if user is enrolled in this team event (has team_name in participated_in)
-    const isEnrolledInTeamEvent = loggedInUser?.participated_in && 
-      Array.isArray(loggedInUser.participated_in) &&
-      loggedInUser.participated_in.some(p => 
-        p.sport === sport.name && p.team_name
-      )
-    
-    // If user is enrolled in this team event (as participant, regardless of captain status for other sports)
-    // Show team details first - this handles both captains enrolled as participants and regular participants
-    if (sport.type === 'team' && isEnrolledInTeamEvent) {
-      setSelectedSport(sport)
-      setIsTeamDetailsModalOpen(true)
-      return
-    }
-    
-    // If captain clicks on their team event sport (but not enrolled yet)
-    if (isCaptainForSport && sport.type === 'team') {
-      // Captain hasn't created a team yet - show registration form
-      setSelectedSport(sport)
-      setIsModalOpen(true)
-      return
-    }
-    
     // If user is not logged in, open login modal and store the selected sport
     if (!loggedInUser) {
       setSelectedSport(sport)
@@ -237,25 +268,9 @@ function App() {
       return
     }
     
-    // For individual/cultural events, check if user has already participated
-    // Skip this check for admin users
-    const isAdmin = loggedInUser?.reg_number === 'admin'
-    if (sport.type === 'individual' && !isAdmin) {
-      const hasParticipated = loggedInUser?.participated_in && 
-        Array.isArray(loggedInUser.participated_in) &&
-        loggedInUser.participated_in.some(p => p.sport === sport.name)
-      
-      if (hasParticipated) {
-        // User has already participated - show popup with total participants count
-        setSelectedSport(sport)
-        setIsModalOpen(true)
-        return
-      }
-    }
-    
-    // If user is logged in, open registration modal
+    // For logged-in users, open the unified sport details modal
     setSelectedSport(sport)
-    setIsModalOpen(true)
+    setIsSportDetailsModalOpen(true)
   }
 
   const handleCloseModal = () => {
@@ -265,15 +280,12 @@ function App() {
 
   const handleCloseLoginModal = () => {
     setIsLoginModalOpen(false)
-    // Clear selected sport if user closes login modal without logging in
-    // (selectedSport will be preserved if login is successful)
-    if (!loginSuccessRef.current) {
-      setSelectedSport(null)
-    }
+    // Clear selected sport when login modal is closed
+    setSelectedSport(null)
     loginSuccessRef.current = false // Reset the flag
   }
 
-  const handleLoginSuccess = (player, token) => {
+  const handleLoginSuccess = (player, token, changePasswordRequired = false) => {
     // Store player data in memory only (excluding password)
     // Do NOT store in localStorage - only token is stored
     setLoggedInUser(player)
@@ -284,12 +296,20 @@ function App() {
     }
     // Set flag to indicate login was successful
     loginSuccessRef.current = true
-    // If there was a selected sport before login, open registration modal after login
-    if (selectedSport) {
-      setIsLoginModalOpen(false)
+    // Close login modal - user can click on sport again if they want to view it
+    setIsLoginModalOpen(false)
+    // Clear selected sport - let user choose what to do after login
+    setSelectedSport(null)
+    
+    // Dispatch event to notify hooks that user has logged in
+    // This allows useEventYear hook to refetch and use latest event year if no active event year
+    window.dispatchEvent(new Event('userLoggedIn'))
+    
+    // If password change is required, show change password modal
+    if (changePasswordRequired) {
       setTimeout(() => {
-        setIsModalOpen(true)
-      }, 100)
+        setIsChangePasswordModalOpen(true)
+      }, 300)
     }
   }
 
@@ -347,7 +367,17 @@ function App() {
 
   const handleExportExcel = async () => {
     try {
-      const response = await fetchWithAuth('/api/export-excel')
+      // Wait for event year list to load if selection isn't available yet
+      if (eventYearLoading && !selectedEventId) {
+        showStatusPopup('⏳ Please wait while event year is being loaded...', 'info', 2000)
+        return
+      }
+
+      // Always use the selected event_id; if none is selected, export with empty event data
+      const eventId = selectedEventId || null
+      
+      const exportUrl = buildApiUrlWithYear('/api/export-excel', eventId)
+      const response = await fetchWithAuth(exportUrl)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -391,9 +421,24 @@ function App() {
   }
 
   return (
-    <ErrorBoundary>
-      <Navbar />
-      <main id="top" className="max-w-[1300px] mx-auto px-4 py-6 pb-10 grid grid-cols-[minmax(0,1.6fr)] gap-10 max-md:grid-cols-1">
+    <SelectedEventProvider selectedEventId={selectedEventId}>
+      <ErrorBoundary>
+        <Navbar
+          loggedInUser={loggedInUser}
+          selectedEventId={selectedEventId}
+          onRegisterClick={() => setIsModalOpen(true)}
+          onLoginClick={() => setIsLoginModalOpen(true)}
+          onResetPasswordClick={() => setIsResetPasswordModalOpen(true)}
+          onLogout={handleLogout}
+          onChangePasswordClick={() => setIsChangePasswordModalOpen(true)}
+          onCaptainManagementClick={() => setIsCaptainManagementModalOpen(true)}
+          onCoordinatorManagementClick={() => setIsCoordinatorManagementModalOpen(true)}
+          onBatchManagementClick={() => setIsBatchManagementModalOpen(true)}
+          onListPlayersClick={() => setIsPlayerListModalOpen(true)}
+          onExportExcel={handleExportExcel}
+          onAdminDashboardClick={() => setIsAdminDashboardModalOpen(true)}
+        />
+        <main id="top" className="max-w-[1300px] mx-auto px-4 py-6 pb-10 grid grid-cols-[minmax(0,1.6fr)] gap-10 max-md:grid-cols-1">
         <section>
           {isLoadingUser ? (
             // Show loading state while fetching user data
@@ -405,7 +450,7 @@ function App() {
                 }}
               >
                 <div className="text-center text-[1.7rem] font-semibold text-white drop-shadow-[0_0_8px_rgba(0,0,0,0.7)]">
-                  Purnea College of Engineering, Purnea
+                  {eventOrganizer}
                 </div>
                 <div
                   className="mt-[1.2rem] mb-[0.6rem] mx-auto text-center w-fit px-[1.6rem] py-2 bg-gradient-to-b from-[#ff3434] to-[#b70000] rounded-full shadow-[0_14px_30px_rgba(0,0,0,0.6),0_0_0_3px_rgba(255,255,255,0.15)] relative overflow-visible"
@@ -426,7 +471,7 @@ function App() {
                     }}
                   />
                   <div className="text-[2.2rem] font-bold tracking-[0.18em] text-white uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.7),0_0_12px_rgba(0,0,0,0.8)] max-md:text-[1.7rem]">
-                    UMANG – 2026
+                    {eventDisplayName}
                   </div>
                 </div>
                 <div className="mt-4 mb-2 text-center">
@@ -439,16 +484,34 @@ function App() {
           ) : (
             <>
               <Hero 
+                eventDisplayName={eventDisplayName}
                 onRegisterClick={() => setIsModalOpen(true)} 
                 onLoginClick={() => setIsLoginModalOpen(true)}
                 onLogout={handleLogout}
-                onAddCaptainClick={() => setIsAddCaptainModalOpen(true)}
-                onRemoveCaptainClick={() => setIsRemoveCaptainModalOpen(true)}
+                onCaptainManagementClick={() => setIsCaptainManagementModalOpen(true)}
+                onCoordinatorManagementClick={() => setIsCoordinatorManagementModalOpen(true)}
+                onBatchManagementClick={() => setIsBatchManagementModalOpen(true)}
                 onListPlayersClick={() => setIsPlayerListModalOpen(true)}
                 onExportExcel={handleExportExcel}
+                onAdminDashboardClick={() => setIsAdminDashboardModalOpen(true)}
+                onChangePasswordClick={() => setIsChangePasswordModalOpen(true)}
+                onResetPasswordClick={() => setIsResetPasswordModalOpen(true)}
+                onEventYearChange={(eventId) => {
+                  setSelectedEventId(eventId)
+                  // Clear caches when event year changes
+                  clearCache('/api/sports')
+                  clearCache('/api/sports-counts')
+                  clearCache('/api/event-schedule')
+                }}
+                selectedEventId={selectedEventId}
                 loggedInUser={loggedInUser}
               />
-              <SportsSection onSportClick={handleSportClick} loggedInUser={loggedInUser} />
+              <SportsSection 
+                onSportClick={handleSportClick} 
+                onEventScheduleClick={handleEventScheduleClick}
+                loggedInUser={loggedInUser} 
+                selectedEventId={selectedEventId}
+              />
             </>
           )}
         </section>
@@ -460,6 +523,7 @@ function App() {
         onStatusPopup={showStatusPopup}
         loggedInUser={loggedInUser}
         onUserUpdate={handleUserUpdate}
+        selectedEventId={selectedEventId}
       />
       <LoginModal
         isOpen={isLoginModalOpen}
@@ -467,15 +531,38 @@ function App() {
         onLoginSuccess={handleLoginSuccess}
         onStatusPopup={showStatusPopup}
       />
-      <AddCaptainModal
-        isOpen={isAddCaptainModalOpen}
-        onClose={() => setIsAddCaptainModalOpen(false)}
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onClose={() => setIsChangePasswordModalOpen(false)}
+        onStatusPopup={showStatusPopup}
+        onPasswordChanged={async () => {
+          // Refresh user data after password change
+          await refreshUserData()
+        }}
+      />
+      <ResetPasswordModal
+        isOpen={isResetPasswordModalOpen}
+        onClose={() => setIsResetPasswordModalOpen(false)}
         onStatusPopup={showStatusPopup}
       />
-      <RemoveCaptainModal
-        isOpen={isRemoveCaptainModalOpen}
-        onClose={() => setIsRemoveCaptainModalOpen(false)}
+      <CaptainManagementModal
+        isOpen={isCaptainManagementModalOpen}
+        onClose={() => setIsCaptainManagementModalOpen(false)}
         onStatusPopup={showStatusPopup}
+        selectedEventId={selectedEventId}
+        loggedInUser={loggedInUser}
+      />
+      <CoordinatorManagementModal
+        isOpen={isCoordinatorManagementModalOpen}
+        onClose={() => setIsCoordinatorManagementModalOpen(false)}
+        onStatusPopup={showStatusPopup}
+        selectedEventId={selectedEventId}
+      />
+      <BatchManagementModal
+        isOpen={isBatchManagementModalOpen}
+        onClose={() => setIsBatchManagementModalOpen(false)}
+        onStatusPopup={showStatusPopup}
+        selectedEventId={selectedEventId}
       />
       <TeamDetailsModal
         isOpen={isTeamDetailsModalOpen}
@@ -484,8 +571,10 @@ function App() {
           setSelectedSport(null)
         }}
         sport={selectedSport?.name}
+        sportDetails={selectedSport}
         loggedInUser={loggedInUser}
         onStatusPopup={showStatusPopup}
+        selectedEventId={selectedEventId}
       />
       <ParticipantDetailsModal
         isOpen={isParticipantDetailsModalOpen}
@@ -494,18 +583,62 @@ function App() {
           setSelectedSport(null)
         }}
         sport={selectedSport?.name}
+        sportDetails={selectedSport}
         loggedInUser={loggedInUser}
         onStatusPopup={showStatusPopup}
+        selectedEventId={selectedEventId}
       />
       <PlayerListModal
         isOpen={isPlayerListModalOpen}
         onClose={() => setIsPlayerListModalOpen(false)}
         onStatusPopup={showStatusPopup}
+        selectedEventId={selectedEventId}
+      />
+      <EventScheduleModal
+        isOpen={isEventScheduleModalOpen}
+        onClose={() => {
+          setIsEventScheduleModalOpen(false)
+          setSelectedEventSport(null)
+        }}
+        sport={selectedEventSport?.name}
+        sportType={selectedEventSport?.sportType || (selectedEventSport?.type === 'team' ? 'team' : 'individual')}
+        sportDetails={selectedEventSport}
+        loggedInUser={loggedInUser}
+        onStatusPopup={showStatusPopup}
+        selectedEventId={selectedEventId}
+      />
+      <SportDetailsModal
+        isOpen={isSportDetailsModalOpen}
+        onClose={() => {
+          setIsSportDetailsModalOpen(false)
+          setSelectedSport(null)
+        }}
+        selectedSport={selectedSport}
+        loggedInUser={loggedInUser}
+        onStatusPopup={showStatusPopup}
+        onUserUpdate={handleUserUpdate}
+        onEventScheduleClick={handleEventScheduleClick}
+        selectedEventId={selectedEventId}
+      />
+      <AdminDashboardModal
+        isOpen={isAdminDashboardModalOpen}
+        onClose={() => setIsAdminDashboardModalOpen(false)}
+        onStatusPopup={showStatusPopup}
+        selectedEventId={selectedEventId}
+        onEventYearChange={(eventId) => {
+          setSelectedEventId(eventId)
+          // Clear caches when event year changes
+          clearCache('/api/sports')
+          clearCache('/api/sports-counts')
+          clearCache('/api/event-schedule')
+        }}
+        loggedInUser={loggedInUser}
       />
       <AboutSection />
       <Footer />
-      <StatusPopup popup={statusPopup} />
-    </ErrorBoundary>
+        <StatusPopup popup={statusPopup} />
+      </ErrorBoundary>
+    </SelectedEventProvider>
   )
 }
 

@@ -1,75 +1,83 @@
 import { useState, useEffect, useRef } from 'react'
-import { fetchWithAuth, clearCache } from '../utils/api'
+import { fetchWithAuth } from '../utils/api'
+import { clearSportManagementCaches } from '../utils/cacheHelpers'
+import { buildApiUrlWithYear } from '../utils/apiHelpers'
+import { useEventYearWithFallback } from '../hooks'
 import logger from '../utils/logger'
+import { LoadingSpinner, EmptyState } from './ui'
+import { formatSportName } from '../utils/stringHelpers'
+import { isCoordinatorForSportScope } from '../utils/sportHelpers'
 
-const sportsData = {
-  team: [
-    { name: 'Cricket', image: '/images/Cricket.jpg', text: 'College teams clash for the trophy.', players: 15 },
-    { name: 'Volleyball', image: '/images/Vollyball.jpg', text: 'Smash, block and dominate the court.', players: 9 },
-    { name: 'Badminton', image: '/images/Badminton.jpeg', text: "Men's & women's doubles and team events.", players: 4 },
-    { name: 'Table Tennis', image: '/images/Tabletennis.jpeg', text: 'Fast rallies and sharp reflexes.', players: 4 },
-    { name: 'Kabaddi', image: '/images/Kabbadi.png', text: 'Raid, tackle and roar with your squad.', players: 10 },
-    { name: 'Relay 4×100 m', image: '/images/Relay1.o.jpg', text: 'High-speed baton relay on the track.', players: 4 },
-    { name: 'Relay 4×400 m', image: '/images/Relay.jpg', text: 'Ultimate test of stamina and teamwork.', players: 4 },
-  ],
-  individual: [
-    { name: 'Carrom', image: '/images/Carrom.jpg', text: 'Strike and pocket with precision.' },
-    { name: 'Chess', image: '/images/Chess.jpeg', text: 'Outplay your opponent on the board.' },
-    { name: 'Sprint 100 m', image: '/images/Sprint1.jpg', text: 'Pure explosive speed on track.' },
-    { name: 'Sprint 200 m', image: '/images/Sprint2.jpg', text: 'Power and pace around the bend.' },
-    { name: 'Sprint 400 m', image: '/images/Sprint3.jpg', text: 'One full lap of endurance sprint.' },
-    { name: 'Long Jump', image: '/images/Longjump.jpeg', text: 'Fly the farthest into the sand pit.' },
-    { name: 'High Jump', image: '/images/Highjump.jpeg', text: 'Clear the bar and set new heights.' },
-    { name: 'Javelin', image: '/images/javelin.jpeg', text: 'Throw for maximum distance.' },
-    { name: 'Shot Put', image: '/images/Shotput.jpeg', text: 'Show your strength in the circle.' },
-    { name: 'Discus Throw', image: '/images/Discussthrow.jpeg', text: 'Perfect spin and powerful release.' },
-  ],
-  cultural: [
-    { name: 'Essay Writing', image: '/images/Essay Writing.jpg', text: 'Express your thoughts powerfully.' },
-    { name: 'Story Writing', image: '/images/Story Writing.jpg', text: 'Craft compelling narratives.' },
-    { name: 'Group Discussion', image: '/images/gd.png', text: 'Showcase leadership & ideas.' },
-    { name: 'Debate', image: '/images/Debate.jpg', text: 'Argue, persuade, win.' },
-    { name: 'Extempore', image: '/images/Extempore.jpeg', text: 'Think fast, speak boldly.' },
-    { name: 'Quiz', image: '/images/Quiz.jpg', text: 'Test your knowledge.' },
-    { name: 'Dumb Charades', image: '/images/Dumb_Charades.jpg', text: 'Act it out, guess it right.' },
-    { name: 'Painting', image: '/images/painting.png', text: 'Unleash your creativity.' },
-    { name: 'Singing', image: '/images/Singing.jpg', text: 'Voice your passion.' },
-  ],
-}
 
-function SportCard({ sport, type, onSportClick, loggedInUser, isEnrolled, teamsCount, participantsCount }) {
+function SportCard({ sport, type, onSportClick, onEventScheduleClick, loggedInUser, isEnrolled, isCaptain, isCoordinator, canCreateOrViewTeam, teamsCount, participantsCount }) {
   const isAdmin = loggedInUser?.reg_number === 'admin'
-  const showEnrolled = !isAdmin && isEnrolled
   
   // Use props if provided, otherwise default to -1 (loading state)
   const displayTeamsCount = teamsCount !== undefined ? teamsCount : -1
   const displayParticipantsCount = participantsCount !== undefined ? participantsCount : -1
 
-  // Debug: Log render state
-  if (loggedInUser) {
-    logger.api(`Rendering SportCard ${sport.name} (${type}) - teamsCount: ${teamsCount}, participantsCount: ${participantsCount}`)
+  // Check if user is enrolled (as individual, team member, or captain) - for non-admin users only
+  const isUserEnrolled = !isAdmin && isEnrolled === true
+
+  // Check if user can create team (for team events only)
+  const canCreateTeam = !isAdmin && type === 'team' && isCaptain === true && !isEnrolled
+
+  const handleCardClick = () => {
+    // Map sport type to expected format
+    const sportType = (sport.type === 'dual_team' || sport.type === 'multi_team') ? 'team' : 'individual'
+    onSportClick({ 
+      name: sport.name, 
+      type: sportType, 
+      players: sport.team_size || 0,
+      sportType: sport.type // Pass original type for backend compatibility
+    })
   }
+
+  const handleEventScheduleClick = (e) => {
+    e.stopPropagation()
+    if (onEventScheduleClick) {
+      const sportType = (sport.type === 'dual_team' || sport.type === 'multi_team') ? 'team' : 'individual'
+      onEventScheduleClick({ name: sport.name, type: sportType })
+    }
+  }
+
+  const cardClasses = "relative min-h-[170px] rounded-[18px] overflow-hidden shadow-[0_18px_40px_rgba(0,0,0,0.75)] cursor-pointer translate-y-0 transition-all duration-[0.25s] ease-in-out hover:-translate-y-2 hover:shadow-[0_26px_55px_rgba(0,0,0,0.9)]"
+  const imageUrl = sport.imageUri || '/images/default-sport.jpg'
 
   return (
     <div
-      className="relative min-h-[170px] rounded-[18px] overflow-hidden shadow-[0_18px_40px_rgba(0,0,0,0.75)] cursor-pointer translate-y-0 transition-all duration-[0.25s] ease-in-out hover:-translate-y-2 hover:shadow-[0_26px_55px_rgba(0,0,0,0.9)]"
+      className={cardClasses}
       style={{
         background: 'radial-gradient(circle at 0 0, #ffe66d 0, #7f1d1d 50%, #020617 100%)',
       }}
-      onClick={() => onSportClick({ name: sport.name, type, players: sport.players })}
+      onClick={handleCardClick}
     >
       <div
         className="absolute inset-0 bg-cover bg-center opacity-90"
-        style={{ backgroundImage: `url('${sport.image}')` }}
+        style={{ backgroundImage: `url('${imageUrl}')` }}
       />
-      {showEnrolled && (
-        <div className="absolute top-2 right-2 px-3 py-1 rounded-full bg-[rgba(34,197,94,0.9)] text-white text-[0.75rem] font-bold uppercase tracking-[0.1em] shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-10">
-          You are enrolled!
+      {/* Badges */}
+      {(isCoordinator || isUserEnrolled || canCreateTeam) && (
+        <div className="absolute top-3 right-3 z-20 flex flex-col gap-1 items-end">
+          {isCoordinator && (
+            <div className="px-2 py-0.5 rounded-md bg-gradient-to-r from-[#14b8a6] to-[#0f766e] text-white text-[0.7rem] font-bold uppercase tracking-[0.1em] shadow-[0_2px_8px_rgba(20,184,166,0.5)]">
+              Coordinator
+            </div>
+          )}
+          {isUserEnrolled && (
+            <div className="px-2 py-0.5 rounded-md bg-gradient-to-r from-[#22c55e] to-[#16a34a] text-white text-[0.7rem] font-bold uppercase tracking-[0.1em] shadow-[0_2px_8px_rgba(34,197,94,0.5)] animate-pulse">
+              Enrolled!
+            </div>
+          )}
+          {canCreateTeam && (
+            <div className="px-2 py-0.5 rounded-md bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-white text-[0.7rem] font-bold uppercase tracking-[0.1em] shadow-[0_2px_8px_rgba(59,130,246,0.5)] animate-pulse">
+              Create Team
+            </div>
+          )}
         </div>
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-[rgba(0,0,0,0.9)] to-[rgba(0,0,0,0.2)] flex flex-col justify-end p-[0.9rem] px-[1.1rem] text-[#f9fafb] drop-shadow-[0_3px_12px_rgba(0,0,0,0.9)] z-10">
-        <div className="text-[1.1rem] font-extrabold text-[#ffe66d] uppercase">{sport.name}</div>
-        <div className="text-[0.85rem] mt-[0.15rem]">{sport.text}</div>
+        <div className="text-[1.1rem] font-extrabold text-[#ffe66d] uppercase">{formatSportName(sport.name)}</div>
         {loggedInUser && (
           <div className="text-[0.8rem] mt-2 font-bold text-[#06b6d4] drop-shadow-[0_2px_8px_rgba(0,0,0,1)]" style={{ zIndex: 20 }}>
             {type === 'team' ? (
@@ -84,22 +92,94 @@ function SportCard({ sport, type, onSportClick, loggedInUser, isEnrolled, teamsC
   )
 }
 
-function SportsSection({ onSportClick, loggedInUser }) {
-  // State for all sports counts
+function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selectedEventId }) {
+  const [sports, setSports] = useState([])
   const [sportsCounts, setSportsCounts] = useState({
     teams_counts: {},
     participants_counts: {}
   })
+  const [loadingSports, setLoadingSports] = useState(false)
   const [loadingCounts, setLoadingCounts] = useState(false)
+  const [error, setError] = useState(null)
+  const { eventYear, eventId } = useEventYearWithFallback(selectedEventId)
   const prevLoggedInUserRef = useRef(null)
   const hasFetchedRef = useRef(false)
+
+  // Fetch sports from API
+  useEffect(() => {
+    // Wait for eventId before making API call
+    if (!eventId) return
+
+    let isMounted = true
+    const abortController = new AbortController()
+
+    const fetchSports = async () => {
+      setLoadingSports(true)
+      setError(null)
+      try {
+        const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports', eventId), {
+          signal: abortController.signal,
+        })
+
+        if (!isMounted) return
+
+        if (response.ok) {
+          const data = await response.json()
+          if (isMounted) {
+            setSports(data || [])
+          }
+        } else if (response.status === 404) {
+          // 404 means no sports found for this year - treat as empty, not an error
+          if (isMounted) {
+            setSports([])
+            setError(null) // Clear any previous error
+          }
+        } else if (response.status >= 500) {
+          // Only show error for server errors (5xx)
+          throw new Error(`Failed to fetch sports: ${response.status}`)
+        } else {
+          // For other status codes (like 401, 403), treat as empty data
+          if (isMounted) {
+            setSports([])
+            setError(null)
+          }
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') return
+        if (isMounted) {
+          // Only show error for actual network errors or server errors
+          if (err.name === 'TypeError' || err.message?.includes('fetch') || err.message?.includes('500')) {
+            logger.error('Error fetching sports:', err)
+            setError(err.message || 'Failed to fetch sports')
+          } else {
+            // For other errors, just log and treat as empty
+            logger.warn('Error fetching sports (treating as empty):', err)
+            setError(null)
+          }
+          setSports([])
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingSports(false)
+        }
+      }
+    }
+
+    fetchSports()
+
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
+  }, [eventId])
 
   // Fetch all sports counts once when user logs in
   useEffect(() => {
     const prevUser = prevLoggedInUserRef.current
     const justLoggedIn = prevUser === null && loggedInUser !== null
     
-    if (!loggedInUser) {
+    // Wait for eventId before making API call
+    if (!loggedInUser || !eventId) {
       setSportsCounts({ teams_counts: {}, participants_counts: {} })
       hasFetchedRef.current = false
       prevLoggedInUserRef.current = null
@@ -114,8 +194,7 @@ function SportsSection({ onSportClick, loggedInUser }) {
       return
     }
 
-    // Clear any cached API responses to ensure fresh data
-    clearCache('/api/sports-counts')
+    clearSportManagementCaches(eventId)
 
     let isMounted = true
     const abortController = new AbortController()
@@ -123,23 +202,14 @@ function SportsSection({ onSportClick, loggedInUser }) {
     const fetchAllCounts = async () => {
       setLoadingCounts(true)
       try {
-        logger.api('Fetching all sports counts from /api/sports-counts...')
-        const response = await fetchWithAuth('/api/sports-counts', {
+        const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports-counts', eventId), {
           signal: abortController.signal,
         })
 
-        if (!isMounted) {
-          logger.api('Component unmounted, aborting fetch')
-          return
-        }
+        if (!isMounted) return
 
-        logger.api('Response status:', response.status, response.statusText)
-        
         if (response.ok) {
           const data = await response.json()
-          logger.api('All sports counts received:', data)
-          logger.api('Teams counts:', data.teams_counts)
-          logger.api('Participants counts:', data.participants_counts)
           if (isMounted) {
             setSportsCounts({
               teams_counts: data.teams_counts || {},
@@ -147,23 +217,16 @@ function SportsSection({ onSportClick, loggedInUser }) {
             })
             hasFetchedRef.current = true
             prevLoggedInUserRef.current = loggedInUser
-            logger.api('State updated with sports counts')
           }
         } else {
-          const errorText = await response.text()
-          logger.warn('Failed to fetch all sports counts:', response.status, errorText)
+          logger.warn('Failed to fetch all sports counts:', response.status)
           if (isMounted) {
             setSportsCounts({ teams_counts: {}, participants_counts: {} })
           }
         }
       } catch (err) {
-        if (err.name === 'AbortError') {
-          logger.api('Request for all sports counts aborted')
-          return
-        }
-        if (!isMounted) {
-          return
-        }
+        if (err.name === 'AbortError') return
+        if (!isMounted) return
         logger.error('Error fetching all sports counts:', err)
         if (isMounted) {
           setSportsCounts({ teams_counts: {}, participants_counts: {} })
@@ -179,62 +242,15 @@ function SportsSection({ onSportClick, loggedInUser }) {
 
     return () => {
       isMounted = false
-      // Don't abort on loggedInUser change - let the request complete
-      // The isMounted check will prevent state updates if component unmounts
-      // Only abort if we're sure the component is unmounting (which we can't detect here)
-      // So we'll just let requests complete naturally
-      logger.api('Cleanup: marking as unmounted, but not aborting request to allow completion')
     }
-  }, [loggedInUser])
+  }, [loggedInUser, eventId])
 
-  // Show Team Events if:
-  // - User is not logged in (show all events)
-  // - OR logged in user's reg_number is "admin" (admin - show all)
-  // - OR logged in user has non-empty captain_in array (show only sports in captain_in)
-  // - OR logged in user is enrolled in team events (has participated_in with team_name)
+  // Group sports by category
+  const teamSports = sports.filter(s => s.category === 'team events')
+  const individualSports = sports.filter(s => s.category === 'individual events')
+  const culturalSports = sports.filter(s => s.category === 'literary and cultural activities')
+
   const isAdmin = loggedInUser?.reg_number === 'admin'
-  const hasCaptainRole = loggedInUser?.captain_in && Array.isArray(loggedInUser.captain_in) && loggedInUser.captain_in.length > 0
-  
-  // Check if user is enrolled in any team events
-  const hasTeamParticipations = loggedInUser?.participated_in && 
-    Array.isArray(loggedInUser.participated_in) &&
-    loggedInUser.participated_in.some(p => p.team_name)
-  
-  const showTeamEvents = !loggedInUser || isAdmin || hasCaptainRole || hasTeamParticipations
-
-  // Filter team sports based on captain_in or enrolled participations for non-admin users
-  const getTeamSportsToShow = () => {
-    if (!loggedInUser || isAdmin) {
-      // Show all team sports for non-logged-in users or admin
-      return sportsData.team
-    }
-    
-    // Collect all sports the user should see:
-    // 1. Sports where user is a captain (from captain_in)
-    // 2. Sports where user is enrolled as a participant (from participated_in with team_name)
-    const sportsToShow = new Set()
-    
-    // Add sports from captain_in
-    if (hasCaptainRole && Array.isArray(loggedInUser.captain_in)) {
-      loggedInUser.captain_in.forEach(sportName => {
-        sportsToShow.add(sportName)
-      })
-    }
-    
-    // Add sports from participated_in where user is enrolled (has team_name)
-    if (hasTeamParticipations && Array.isArray(loggedInUser.participated_in)) {
-      loggedInUser.participated_in.forEach(participation => {
-        if (participation.team_name) {
-          sportsToShow.add(participation.sport)
-        }
-      })
-    }
-    
-    // Filter team sports to only include those in the set
-    return sportsData.team.filter(sport => sportsToShow.has(sport.name))
-  }
-
-  const teamSportsToShow = getTeamSportsToShow()
 
   // Helper function to check if user is enrolled in a sport
   const isEnrolledInSport = (sportName, sportType) => {
@@ -261,23 +277,86 @@ function SportsSection({ onSportClick, loggedInUser }) {
     return !participation.team_name
   }
 
+  // Helper function to check if user is a captain for a sport
+  const isCaptainForSport = (sportName) => {
+    if (!loggedInUser || isAdmin) {
+      return false
+    }
+
+    if (!loggedInUser.captain_in || !Array.isArray(loggedInUser.captain_in)) {
+      return false
+    }
+
+    return loggedInUser.captain_in.includes(sportName)
+  }
+
+  // Helper function to check if user is coordinator for a sport
+  const isCoordinatorForSportCard = (sport) => {
+    if (!loggedInUser || isAdmin) {
+      return false
+    }
+    return isCoordinatorForSportScope(loggedInUser, sport?.name, sport)
+  }
+
+  // Helper function to check if user can create or view a team for a sport
+  const canCreateOrViewTeam = (sportName) => {
+    if (isAdmin) {
+      return true // Admin can always view teams
+    }
+    
+    // User can create team if they are a captain and not enrolled
+    const isCaptain = isCaptainForSport(sportName)
+    const isEnrolled = isEnrolledInSport(sportName, 'team')
+    
+    // Can create if captain and not enrolled, or can view if enrolled
+    return (isCaptain && !isEnrolled) || isEnrolled
+  }
+
+  if (loadingSports) {
+    return (
+      <section id="sports" className="mt-[2.2rem]">
+        <LoadingSpinner message="Loading sports..." />
+      </section>
+    )
+  }
+
+  if (error) {
+    return (
+      <section id="sports" className="mt-[2.2rem]">
+        <EmptyState message="Unable to load sports. Please try again later." />
+      </section>
+    )
+  }
+
+  if (sports.length === 0) {
+    return (
+      <section id="sports" className="mt-[2.2rem]">
+        <EmptyState message="No sports available for this event year." />
+      </section>
+    )
+  }
+
   return (
     <section id="sports" className="mt-[2.2rem]">
-      {showTeamEvents && teamSportsToShow.length > 0 && (
+      {teamSports.length > 0 && (
         <>
           <h3 className="text-center mt-14 mb-[1.4rem] text-[1.4rem] tracking-[0.16em] uppercase text-[#ffe66d]">
             Team Events
           </h3>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-[1.2rem]">
-            {teamSportsToShow.map((sport) => (
+            {teamSports.map((sport) => (
               <SportCard 
                 key={sport.name} 
                 sport={sport} 
                 type="team" 
                 onSportClick={onSportClick}
+                onEventScheduleClick={onEventScheduleClick}
                 loggedInUser={loggedInUser}
                 isEnrolled={isEnrolledInSport(sport.name, 'team')}
-                teamsCount={sportsCounts.teams_counts[sport.name]}
+                isCaptain={isCaptainForSport(sport.name)}
+                isCoordinator={isCoordinatorForSportCard(sport)}
+                canCreateOrViewTeam={canCreateOrViewTeam(sport.name)}
+                teamsCount={sportsCounts.teams_counts[sport.name?.toLowerCase()]}
                 participantsCount={undefined}
               />
             ))}
@@ -285,41 +364,55 @@ function SportsSection({ onSportClick, loggedInUser }) {
         </>
       )}
 
-      <h3 className="text-center mt-14 mb-[1.4rem] text-[1.4rem] tracking-[0.16em] uppercase text-[#ffe66d]">
-        Individual Events
-      </h3>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-[1.2rem]">
-        {sportsData.individual.map((sport) => (
-          <SportCard 
-            key={sport.name} 
-            sport={sport} 
-            type="individual" 
-            onSportClick={onSportClick}
-            loggedInUser={loggedInUser}
-            isEnrolled={isEnrolledInSport(sport.name, 'individual')}
-            teamsCount={undefined}
-            participantsCount={sportsCounts.participants_counts[sport.name]}
-          />
-        ))}
-      </div>
+      {individualSports.length > 0 && (
+        <>
+          <h3 className="text-center mt-14 mb-[1.4rem] text-[1.4rem] tracking-[0.16em] uppercase text-[#ffe66d]">
+            Individual Events
+          </h3>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-[1.2rem]">
+            {individualSports.map((sport) => (
+              <SportCard 
+                key={sport.name} 
+                sport={sport} 
+                type="individual" 
+                onSportClick={onSportClick}
+                onEventScheduleClick={onEventScheduleClick}
+                loggedInUser={loggedInUser}
+                isEnrolled={isEnrolledInSport(sport.name, 'individual')}
+                isCaptain={false}
+                isCoordinator={isCoordinatorForSportCard(sport)}
+                teamsCount={undefined}
+                participantsCount={sportsCounts.participants_counts[sport.name?.toLowerCase()]}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
-      <h3 className="text-center mt-14 mb-[1.4rem] text-[1.4rem] tracking-[0.16em] uppercase text-[#ffe88d]">
-        Literary & Cultural Activities
-      </h3>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-[1.2rem]">
-        {sportsData.cultural.map((sport) => (
-          <SportCard 
-            key={sport.name} 
-            sport={sport} 
-            type="individual" 
-            onSportClick={onSportClick}
-            loggedInUser={loggedInUser}
-            isEnrolled={isEnrolledInSport(sport.name, 'individual')}
-            teamsCount={undefined}
-            participantsCount={sportsCounts.participants_counts[sport.name]}
-          />
-        ))}
-      </div>
+      {culturalSports.length > 0 && (
+        <>
+          <h3 className="text-center mt-14 mb-[1.4rem] text-[1.4rem] tracking-[0.16em] uppercase text-[#ffe88d]">
+            Literary & Cultural Activities
+          </h3>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-[1.2rem]">
+            {culturalSports.map((sport) => (
+              <SportCard 
+                key={sport.name} 
+                sport={sport} 
+                type="individual" 
+                onSportClick={onSportClick}
+                onEventScheduleClick={onEventScheduleClick}
+                loggedInUser={loggedInUser}
+                isEnrolled={isEnrolledInSport(sport.name, 'individual')}
+                isCaptain={false}
+                isCoordinator={isCoordinatorForSportCard(sport)}
+                teamsCount={undefined}
+                participantsCount={sportsCounts.participants_counts[sport.name?.toLowerCase()]}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </section>
   )
 }

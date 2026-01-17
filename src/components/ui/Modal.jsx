@@ -3,6 +3,7 @@
  * Eliminates code duplication across all modals
  */
 
+import { createPortal } from 'react-dom'
 import { useEventYear } from '../../hooks/useEventYear'
 
 function Modal({ 
@@ -75,10 +76,11 @@ function Modal({
     return modalContent
   }
 
-  return (
-    <div className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-center justify-center z-[200] p-4">
+  return createPortal(
+    <div className="fixed inset-0 bg-[rgba(0,0,0,0.65)] flex items-start justify-center z-[200] p-4 pt-6 pb-6 overflow-y-auto">
       {modalContent}
-    </div>
+    </div>,
+    document.body
   )
 }
 

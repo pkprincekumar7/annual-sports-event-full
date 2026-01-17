@@ -1,8 +1,8 @@
-# PCE Annual Sports - UMANG 2026
+# Event Management
 
-Annual Sports Events Registration Portal for Purnea College of Engineering, Purnea.
+Event Management For An Sports Event Organizer
 
-A full-stack application for managing annual sports event registrations with React frontend and Express.js backend.
+A full-stack application for managing sports event management with React frontend and Express.js backend.
 
 ## Tech Stack
 
@@ -38,7 +38,71 @@ cd annual-sports-event-full
 npm install
 ```
 
+## Quick Start (Local)
+
+Use this when you want to run the app locally and execute commands directly.
+
+1. Ensure MongoDB is running (local or remote).
+2. Create your environment file:
+```bash
+cp .env.example .env
+```
+3. Update values in `.env` (at minimum: `MONGODB_URI`, `JWT_SECRET`, `VITE_API_URL`).
+4. Start the backend:
+```bash
+npm run dev:server
+```
+5. Start the frontend in a second terminal:
+```bash
+npm run dev
+```
+6. Open `http://localhost:5173` in the browser.
+
 ## Docker Compose (Frontend + Backend)
+
+### Prerequisites (Docker)
+- Install Docker Desktop (includes Docker Compose): https://www.docker.com/products/docker-desktop/
+- Verify installation:
+```bash
+docker --version
+docker compose version
+```
+
+### Linux Installation (Docker + Compose)
+
+The steps below cover Docker Engine, Compose, and permissions on Ubuntu/Debian.
+
+1. Install Docker Engine:
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl gnupg lsb-release
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+2. Start and enable Docker:
+```bash
+sudo systemctl enable docker
+sudo systemctl start docker
+```
+
+3. Allow non-root access to Docker socket:
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+4. Verify Docker and Compose:
+```bash
+docker --version
+docker compose version
+docker run --rm hello-world
+```
 
 Run both services in separate containers:
 

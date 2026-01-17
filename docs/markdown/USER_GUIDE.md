@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide provides comprehensive documentation for the Annual Sports Event Management System (UMANG). The system supports multiple event years, various sport types, and comprehensive match management for both **Admin Users** and **Regular Players**.
+This guide provides comprehensive documentation for the Annual Sports Event Management System. The system supports multiple event years, various sport types, and comprehensive match management for both **Admin Users** and **Regular Players**.
 
 ---
 
@@ -1241,4 +1241,4 @@ This Annual Sports Event Management System provides comprehensive functionality 
 
 **Document Version**: 2.1  
 **Last Updated**: January 2026  
-**System**: UMANG - Annual Sports Event Management
+**System**: Annual Sports Event Management

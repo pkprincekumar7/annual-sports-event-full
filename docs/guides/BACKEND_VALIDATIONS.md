@@ -425,7 +425,7 @@ This document lists all backend validations, security checks, authentication/aut
 **Validations:**
 - ✅ **Required Fields**: Validates `match_type`, `sports_name`, `match_date` are provided
 - ✅ **Event ID Validation**: Requires `event_id` in request body.
-- ✅ **Admin/Coordinator Check**: Validates user is admin or coordinator for sport
+- ✅ **Role Check**: Allows self-registration; admin/coordinator required to register other users
 - ✅ **Match Date Range**: Validates match date is within event date range
 - ✅ **Sport Existence**: Validates sport exists (using `event_id`)
 - ✅ **Sport Type Validation**: Validates teams/players arrays based on sport type
@@ -442,7 +442,7 @@ This document lists all backend validations, security checks, authentication/aut
 
 **Error Responses:**
 - `400`: Validation errors, match date out of range, teams/players not found, gender mismatch, match type restrictions, league matches not completed, event_id required
-- `403`: Not admin or coordinator
+- `403`: Not admin or coordinator for registering other users
 
 #### `PUT /api/event-schedule/:id`
 **Middleware:** `authenticateToken`, `requireEventStatusUpdatePeriod`

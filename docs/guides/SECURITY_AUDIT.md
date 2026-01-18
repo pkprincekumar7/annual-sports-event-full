@@ -121,7 +121,7 @@ This document provides a comprehensive security audit of the Annual Sports Event
 
 #### Participant Management
 21. `DELETE /api/remove-participation` - ✅ `authenticateToken, requireRegistrationPeriod` (admin or coordinator for assigned sports)
-22. `POST /api/update-participation` - ✅ `authenticateToken, requireRegistrationPeriod` (admin or coordinator for assigned sports)
+22. `POST /api/update-participation` - ✅ `authenticateToken, requireRegistrationPeriod` (self-registration allowed; admin/coordinator required to register other users)
 
 #### Player Management
 23. `PUT /api/update-player` - ✅ `authenticateToken, requireAdmin, requireRegistrationPeriod`

@@ -139,16 +139,20 @@ router.post(
     const eventYearData = await getEventYear(String(event_id).trim(), { returnDoc: true })
     const eventId = eventYearData.doc.event_id
 
-    // Check if user is admin or coordinator for this sport
-    try {
-      await requireAdminOrCoordinator(req.user.reg_number, sport, eventId)
-    } catch (error) {
-      return sendErrorResponse(res, 403, error.message)
-    }
-
     // Validate required fields
     if (!reg_number || !sport) {
       return sendErrorResponse(res, 400, 'Registration number and sport are required')
+    }
+
+    const isSelfRegistration = req.user?.reg_number === reg_number
+
+    // Only admins/coordinators can register other users
+    if (!isSelfRegistration) {
+      try {
+        await requireAdminOrCoordinator(req.user.reg_number, sport, eventId)
+      } catch (error) {
+        return sendErrorResponse(res, 403, error.message)
+      }
     }
 
     // Validate player exists

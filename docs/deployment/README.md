@@ -2,6 +2,8 @@
 
 This folder splits deployment instructions by operating system so you can follow a focused, beginner-friendly guide.
 
+For general product and API documentation, see `docs/guides`.
+
 ## Ubuntu (Linux)
 - `ubuntu/quick-start.md` - Local setup and running the app
 - `ubuntu/docker-engine-install.md` - Install Docker Engine + Compose

@@ -185,7 +185,7 @@ The application uses environment variables for configuration:
 - `EMAIL_FROM_NAME` - Sender display name (optional, default: `Sports Event Management`)
 - `APP_NAME` - Application name for emails (optional, default: `Sports Event Management System`)
 
-**Note:** For detailed email setup instructions, see **[EMAIL_SETUP.md](./docs/markdown/EMAIL_SETUP.md)**.
+**Note:** For detailed email setup instructions, see **[EMAIL_SETUP.md](./docs/guides/EMAIL_SETUP.md)**.
 
 Create a `.env` file in the root directory to set these values. For production builds, set these variables in your hosting platform's environment settings.
 

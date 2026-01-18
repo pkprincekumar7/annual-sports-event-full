@@ -308,7 +308,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Date Validation**: None (GET requests are exempt from registration deadline check)
 
 ### POST `/api/update-participation`
-- **Access**: Admin or Coordinator (assigned sport)
+- **Access**: Authenticated (self); Admin/Coordinator (assigned sport) for other users
 - **Description**: Update individual/cultural event participation
 - **Auth**: `authenticateToken`, `requireRegistrationPeriod`
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.

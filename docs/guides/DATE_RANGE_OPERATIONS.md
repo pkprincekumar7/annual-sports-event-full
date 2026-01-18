@@ -122,7 +122,7 @@ All `/api` routes pass through `checkRegistrationDeadline`:
 | --- | --- | --- | --- | --- |
 | `GET /api/participants/:sport` | Read | Any time | Admin/Coordinator | Per-sport access |
 | `GET /api/participants-count/:sport` | Read | Any time | Authenticated | Count only |
-| `POST /api/update-participation` | Create participation | Registration period | Admin/Coordinator | Individual sports only |
+| `POST /api/update-participation` | Create participation | Registration period | Authenticated (self); Admin/Coordinator (others) | Individual sports only |
 | `DELETE /api/remove-participation` | Delete participation | Registration period | Admin/Coordinator | Team/individual removal |
 
 ### Event Schedule (Matches)

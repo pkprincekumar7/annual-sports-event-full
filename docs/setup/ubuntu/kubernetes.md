@@ -7,7 +7,7 @@ This guide deploys the frontend and backend as separate services on a Kubernetes
 - `kubectl` installed and connected to your cluster
 - Container registry access (Docker Hub, GHCR, ECR, etc.)
 
-If you are new to Kubernetes, follow `docs/deployment/ubuntu/kubernetes-prereqs.md` first.
+If you are new to Kubernetes, follow `docs/setup/ubuntu/kubernetes-prereqs.md` first.
 
 ## 1) Build and Push Images
 

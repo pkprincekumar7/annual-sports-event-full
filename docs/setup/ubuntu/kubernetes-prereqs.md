@@ -7,7 +7,7 @@ This guide helps you set up the tools needed before deploying the app to Kuberne
 ### 1) Install Docker Engine
 
 If Docker is not installed yet, follow:
-- `docs/deployment/ubuntu/docker-engine-install.md`
+- `docs/setup/ubuntu/docker-engine-install.md`
 
 ### 2) Install kubectl
 
@@ -84,4 +84,4 @@ kubectl get nodes
 - Container registry access (Docker Hub/GHCR/ECR)
 - For local clusters: Docker + Minikube or k3s
 
-Once these are ready, continue with `docs/deployment/ubuntu/kubernetes.md`.
+Once these are ready, continue with `docs/setup/ubuntu/kubernetes.md`.

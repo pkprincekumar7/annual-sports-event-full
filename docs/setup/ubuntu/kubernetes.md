@@ -207,63 +207,8 @@ Then visit:
 http://<PUBLIC_IP>:8080
 ```
 
-To keep the port-forward running after you close your SSH session, create a systemd service on the VM:
-
-```bash
-sudo tee /etc/systemd/system/annual-sports-frontend-forward.service >/dev/null <<'EOF'
-[Unit]
-Description=Port forward annual-sports frontend
-After=network.target minikube.service
-Wants=minikube.service
-
-[Service]
-Type=simple
-User=ubuntu
-Environment=KUBECONFIG=/home/ubuntu/.kube/config
-ExecStart=/usr/local/bin/kubectl -n annual-sports port-forward svc/annual-sports-frontend 8080:80 --address 0.0.0.0
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now annual-sports-frontend-forward
-sudo systemctl status annual-sports-frontend-forward
-```
-
-If you want this to survive a VM reboot, ensure minikube starts on boot and is ready before the port-forward:
-
-```bash
-sudo tee /etc/systemd/system/minikube.service >/dev/null <<'EOF'
-[Unit]
-Description=Minikube
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/local/bin/minikube start --driver=docker
-ExecStop=/usr/local/bin/minikube stop
-User=ubuntu
-Environment=KUBECONFIG=/home/ubuntu/.kube/config
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now minikube
-```
-
-Then update the port-forward unit to wait for minikube:
-
-```bash
-sudo systemctl stop annual-sports-frontend-forward
-sudo systemctl enable --now annual-sports-frontend-forward
-```
+For a systemd-based port-forward that survives SSH disconnects and VM reboots, see:
+`docs/setup/ubuntu/kubectl-port-forward-systemd.md`.
 
 If `minikube service` says "no node port", patch the service:
 

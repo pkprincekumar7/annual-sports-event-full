@@ -536,6 +536,8 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
+**Note:** `nginx.conf` proxies `/api` to `annual-sports-backend:3001`. If your backend service name is different, update `nginx.conf` accordingly. When using this proxy setup, build the frontend with `VITE_API_URL=/api`.
+
 ### Environment Variables in Production
 
 **Backend (.env):**

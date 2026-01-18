@@ -308,6 +308,7 @@ This document lists all backend validations, security checks, authentication/aut
 
 **Validations:**
 - ✅ **Input Trimming**: All fields trimmed using `trimObjectFields`
+- ✅ **Protected Fields**: Rejects `createdBy` and `updatedBy` in request body
 - ✅ **Field Validation**: Uses `validatePlayerData` (required fields, email, phone, gender, department)
 - ✅ **Duplicate Check**: Validates `reg_number` doesn't already exist
 - ✅ **Department Existence**: Validates department exists in Department collection
@@ -387,7 +388,7 @@ This document lists all backend validations, security checks, authentication/aut
 - ✅ **Array Validation**: Validates `reg_numbers` is a non-empty array
 - ✅ **Event ID Validation**: Requires `event_id` in request body.
 - ✅ **Duplicate Check**: Validates no duplicate players in team
- - ✅ **Sport Lookup (Best Effort)**: Attempts to load sport for gender derivation; no hard failure if missing
+- ✅ **Sport Existence**: Validates sport exists (using `event_id`)
 - ✅ **Sport Type**: Validates sport is team sport (`dual_team` or `multi_team`)
 - ✅ **Team Name Uniqueness**: Validates team name doesn't already exist for sport
 - ✅ **Player Existence**: Validates all players exist
@@ -425,7 +426,7 @@ This document lists all backend validations, security checks, authentication/aut
 **Validations:**
 - ✅ **Required Fields**: Validates `match_type`, `sports_name`, `match_date` are provided
 - ✅ **Event ID Validation**: Requires `event_id` in request body.
-- ✅ **Role Check**: Allows self-registration; admin/coordinator required to register other users
+- ✅ **Role Check**: Requires admin or coordinator for the sport
 - ✅ **Match Date Range**: Validates match date is within event date range
 - ✅ **Sport Existence**: Validates sport exists (using `event_id`)
 - ✅ **Sport Type Validation**: Validates teams/players arrays based on sport type

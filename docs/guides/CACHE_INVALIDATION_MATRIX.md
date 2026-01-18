@@ -13,7 +13,10 @@ This document summarizes cache invalidation coverage for both backend
   - `DELETE /api/delete-player/:reg_number`
   - `POST /api/bulk-delete-players`
 - Clears:
-  - `/api/players*`, `/api/me*`, `/api/batches?event_id=...`, `/api/teams*`
+  - `POST /api/save-player`: `/api/players*`, `/api/batches?event_id=...`
+  - `PUT /api/update-player`: `/api/players*`, `/api/me*`, `/api/teams*`, player gender cache
+  - `DELETE /api/delete-player/:reg_number`: `/api/players*`, `/api/me?event_id=...`, `/api/batches?event_id=...`, player gender cache
+  - `POST /api/bulk-delete-players`: `/api/players*`, `/api/me?event_id=...`, `/api/batches?event_id=...`, player gender cache
   - For delete flows: `/api/sports`, `/api/sports/:sport`,
     `/api/participants/:sport`, `/api/participants-count/:sport`,
     `/api/sports-counts` (per affected sport)
@@ -39,7 +42,7 @@ This document summarizes cache invalidation coverage for both backend
   - `DELETE /api/remove-participation`
 - Clears:
   - `/api/sports?event_id=...`, `/api/sports/:sport?event_id=...`
-  - `/api/teams/:sport?event_id=...`
+  - `DELETE /api/remove-participation` also clears `/api/teams/:sport?event_id=...`
   - `/api/participants/:sport?event_id=...`,
     `/api/participants-count/:sport?event_id=...`
   - `/api/sports-counts?event_id=...`
@@ -131,8 +134,7 @@ This document summarizes cache invalidation coverage for both backend
 ### Player Updates (`PlayerListModal`)
 - Writes: `PUT /api/update-player`
 - Clears:
-  - `/api/players*`, `/api/teams*`, `/api/participants*`,
-    `/api/sports-counts*`, `/api/event-schedule*`
+  - `/api/players*`
 
 ### Team Updates / Deletes (`TeamDetailsModal`)
 - Writes:
@@ -152,5 +154,7 @@ This document summarizes cache invalidation coverage for both backend
 ### Batch / Captain / Coordinator Management
 - Writes: batch add/remove, captain/coordinator add/remove
 - Clears:
-  - `/api/batches`, `/api/players*`, `/api/me*`, `/api/sports`
+  - Batch: `/api/batches`, `/api/players*`
+  - Captain: `/api/captains-by-sport`, `/api/players`, `/api/me`, `/api/sports`
+  - Coordinator: `/api/coordinators-by-sport`, `/api/players`, `/api/me`, `/api/sports`
 

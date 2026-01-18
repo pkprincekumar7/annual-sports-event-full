@@ -93,13 +93,16 @@ This document lists all backend endpoints and the roles that can access them, al
   - Optional `page` query parameter (default: 1)
   - Optional `limit` query parameter (default: 20)
   - Optional `search` query parameter (searches by reg_number or full_name)
-- **Response**: Returns paginated players array with pagination metadata (currentPage, totalPages, totalCount, hasNextPage, hasPreviousPage)
+- **Response**: If `page` is provided, returns pagination metadata. If `page` is omitted, returns all matching records (no pagination).
 
 ### POST `/api/save-player`
 - **Access**: Public (during registration period)
 - **Description**: Register a new player (general registration)
 - **Auth**: None (but requires registration period)
 - **Date Validation**: **Registration Period** - Current date must be within `registration_dates.start` and `registration_dates.end`. Also subject to global registration deadline check.
+- **Notes**:
+  - `batch_name` is required in the request body.
+  - Active event must be configured with a valid `event_id`.
 
 ### PUT `/api/update-player`
 - **Access**: Admin
@@ -337,6 +340,7 @@ This document lists all backend endpoints and the roles that can access them, al
 - **Description**: Get teams/players list for a sport (for dropdown in form)
 - **Auth**: `authenticateToken`, `requireAdminOrCoordinator`
 - **Date Validation**: None (GET requests are exempt from registration deadline check, and event-schedule endpoints are exempt from global deadline check)
+- **Parameters**: `gender` query parameter is required (`Male` or `Female`)
 
 ### POST `/api/event-schedule`
 - **Access**: Admin or Coordinator (assigned sport)

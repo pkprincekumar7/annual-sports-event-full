@@ -3,6 +3,7 @@
 This folder splits deployment instructions by operating system so you can follow a focused, beginner-friendly guide.
 
 For general product and API documentation, see `docs/guides`.
+For environment variable setup, see `docs/deployment/env-setup.md`.
 
 ## Ubuntu (Linux)
 - `ubuntu/quick-start.md` - Local setup and running the app

@@ -86,7 +86,7 @@ This document provides a comprehensive security audit of the Annual Sports Event
 6. `GET /api/participants-count/:sport` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
 7. `GET /api/sports-counts` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
 8. `GET /api/event-schedule/:sport` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
-9. `GET /api/points-table/:sport` - ✅ `authenticateToken` only (supports optional `event_id` query parameters)
+9. `GET /api/points-table/:sport` - ✅ `authenticateToken` only (supports optional `event_id`; `gender` query required)
 10. `GET /api/event-years` - ✅ `authenticateToken` only (list)
 
 ### Privileged Endpoints (Admin/Coordinator as noted)
@@ -131,8 +131,8 @@ This document provides a comprehensive security audit of the Annual Sports Event
 27. `POST /api/bulk-delete-players` - ✅ `authenticateToken, requireAdmin, requireRegistrationPeriod`
 
 #### Event Schedule Management
-28. `GET /api/event-schedule/:sport/teams-players` - ✅ `authenticateToken, requireAdminOrCoordinator` (supports optional `event_id` query parameters)
-29. `POST /api/event-schedule` - ✅ `authenticateToken, requireAdminOrCoordinator, requireEventPeriod` (supports optional `event_id` in request body)
+28. `GET /api/event-schedule/:sport/teams-players` - ✅ `authenticateToken, requireAdminOrCoordinator` (supports optional `event_id`; `gender` query required)
+29. `POST /api/event-schedule` - ✅ `authenticateToken, requireAdminOrCoordinator, requireEventPeriod` (`event_id` required in request body)
 30. `PUT /api/event-schedule/:id` - ✅ `authenticateToken, requireAdminOrCoordinator, requireEventStatusUpdatePeriod`
 31. `DELETE /api/event-schedule/:id` - ✅ `authenticateToken, requireAdminOrCoordinator, requireEventPeriod`
 
@@ -248,7 +248,7 @@ Admin-only endpoints enforce `requireAdmin` consistently. Some endpoints additio
 ### Event Period Middleware (`requireEventPeriod`)
 
 - **Purpose**: Restricts match scheduling to event date range
-- **Allowed Operations**: Match creation, update, deletion
+- **Allowed Operations**: Match creation and deletion
 - **Period Source**: Event year's `event_dates.start` and `event_dates.end` (filtered by `event_id`)
 - **Year Support**: Accepts optional `event_id` parameters (defaults to active year if not provided)
 - **Event ID**: Uses `event_id` to identify the correct event year document

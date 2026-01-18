@@ -1,0 +1,76 @@
+# Ubuntu - Nginx Reverse Proxy
+
+Use Nginx to serve the frontend and proxy API requests.
+
+## Install Nginx
+
+```bash
+sudo apt update
+sudo apt install nginx -y
+```
+
+## Frontend Reverse Proxy (port 5173)
+
+```bash
+sudo nano /etc/nginx/sites-available/annual-sports-frontend
+```
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:5173;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+Enable the site:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/annual-sports-frontend /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+## Backend Reverse Proxy (port 3001)
+
+```bash
+sudo nano /etc/nginx/sites-available/annual-sports-backend
+```
+
+```nginx
+server {
+    listen 80;
+    server_name api.your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+Enable the site:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/annual-sports-backend /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```

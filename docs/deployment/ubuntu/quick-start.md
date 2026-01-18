@@ -46,10 +46,15 @@ npm install
 cp .env.example .env
 ```
 
-Update `.env` with at least:
+Update `.env` with required values:
+- `PORT`
 - `MONGODB_URI`
 - `JWT_SECRET`
 - `VITE_API_URL`
+- `GMAIL_USER`
+- `GMAIL_APP_PASSWORD`
+
+See `docs/deployment/env-setup.md` for details.
 
 ## 5) Run Backend + Frontend
 

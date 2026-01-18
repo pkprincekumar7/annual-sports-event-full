@@ -122,15 +122,15 @@ All `/api` routes pass through `checkRegistrationDeadline`:
 | --- | --- | --- | --- | --- |
 | `GET /api/participants/:sport` | Read | Any time | Admin/Coordinator | Per-sport access |
 | `GET /api/participants-count/:sport` | Read | Any time | Authenticated | Count only |
-| `POST /api/update-participation` | Create participation | Registration period | Admin/Coordinator | Individual sports only |
+| `POST /api/update-participation` | Create participation | Registration period | Authenticated (self); Admin/Coordinator (others) | Individual sports only |
 | `DELETE /api/remove-participation` | Delete participation | Registration period | Admin/Coordinator | Team/individual removal |
 
 ### Event Schedule (Matches)
 
 | Endpoint | Operation | Date Range | Allowed Users | Notes |
 | --- | --- | --- | --- | --- |
-| `GET /api/event-schedule/:sport` | Read | Any time | Authenticated | Event scoped |
-| `GET /api/event-schedule/:sport/teams-players` | Read | Any time | Admin/Coordinator | Eligible list for scheduling |
+| `GET /api/event-schedule/:sport` | Read | Any time | Authenticated | Event scoped; optional `gender` filter |
+| `GET /api/event-schedule/:sport/teams-players` | Read | Any time | Admin/Coordinator | Eligible list for scheduling; `gender` query is required |
 | `POST /api/event-schedule` | Create match | **Event period** | Admin/Coordinator | After reg end, before event end |
 | `PUT /api/event-schedule/:id` | Update result | **Event status update period** | Admin/Coordinator | Event start through event end |
 | `DELETE /api/event-schedule/:id` | Delete match | **Event period** | Admin/Coordinator | Only scheduled matches |

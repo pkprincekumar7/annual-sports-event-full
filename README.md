@@ -19,45 +19,6 @@ A full-stack application for managing sports event management with React fronten
 - **XLSX** - Excel file generation
 - **CORS** - Cross-origin resource sharing
 
-## Prerequisites
-
-- Node.js (v16 or higher)
-- npm or yarn
-- MongoDB (local or remote instance)
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/pkprincekumar7/annual-sports-event-full.git
-cd annual-sports-event-full
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-## Quick Start (Local)
-
-Use this when you want to run the app locally and execute commands directly.
-
-1. Ensure MongoDB is running (local or remote).
-2. Create your environment file:
-```bash
-cp .env.example .env
-```
-3. Update values in `.env` (at minimum: `MONGODB_URI`, `JWT_SECRET`, `VITE_API_URL`).
-4. Start the backend:
-```bash
-npm run dev:server
-```
-5. Start the frontend in a second terminal:
-```bash
-npm run dev
-```
-6. Open `http://localhost:5173` in the browser.
-
 ## Deployment Guides
 
 The deployment steps are now split by OS and topic for easier navigation:
@@ -79,84 +40,6 @@ The deployment steps are now split by OS and topic for easier navigation:
 - `npm start` - Start backend server (production mode)
 - `npm run server` - Start backend server (alias for `npm start`)
 - `npm run dev:server` - Start backend server with auto-reload (development mode)
-
-### Combined Development
-For full-stack development, run both servers:
-1. Terminal 1: `npm run dev:server` (backend)
-2. Terminal 2: `npm run dev` (frontend)
-
-3. Create a `.env` file in the root directory by copying the template:
-```bash
-cp .env.example .env
-```
-
-   Update `.env` values for your environment (do not commit `.env`):
-```env
-# Frontend Configuration
-VITE_API_URL=http://localhost:3001
-
-# Backend Configuration
-PORT=3001
-MONGODB_URI=mongodb://localhost:27017/annual-sports-event
-JWT_SECRET=your-secret-key-change-in-production
-
-# Email Configuration (for password reset)
-# Option 1: Gmail SMTP (Free - recommended)
-EMAIL_PROVIDER=gmail
-GMAIL_USER=your-email@gmail.com
-GMAIL_APP_PASSWORD=your-16-char-app-password
-EMAIL_FROM=your-email@gmail.com
-EMAIL_FROM_NAME=Sports Event Management
-APP_NAME=Sports Event Management System
-
-# Option 2: SendGrid (Free tier: 100 emails/day)
-# EMAIL_PROVIDER=sendgrid
-# SENDGRID_USER=apikey
-# SENDGRID_API_KEY=your-sendgrid-api-key
-# EMAIL_FROM=your-verified-sender@yourdomain.com
-
-# Option 3: Resend (Free tier: 3,000 emails/month)
-# EMAIL_PROVIDER=resend
-# RESEND_API_KEY=your-resend-api-key
-# EMAIL_FROM=noreply@yourdomain.com
-```
-
-For production, update these values accordingly:
-```env
-VITE_API_URL=https://your-api-server.com
-MONGODB_URI=mongodb://your-mongodb-connection-string
-JWT_SECRET=your-strong-secret-key
-```
-
-4. Start the backend server:
-```bash
-# Development mode with auto-reload
-npm run dev:server
-
-# Or production mode
-npm run server
-# or
-npm start
-```
-
-   The backend server will run on `http://localhost:3001` (or the port specified in `.env`)
-
-5. Start the frontend development server (in a separate terminal):
-```bash
-npm run dev
-```
-
-   The frontend application will run on `http://localhost:5173` (Vite default port)
-
-6. Build for production:
-```bash
-npm run build
-```
-
-7. Preview production build:
-```bash
-npm run preview
-```
 
 ## Environment Variables
 
@@ -185,7 +68,7 @@ The application uses environment variables for configuration:
 - `EMAIL_FROM_NAME` - Sender display name (optional, default: `Sports Event Management`)
 - `APP_NAME` - Application name for emails (optional, default: `Sports Event Management System`)
 
-**Note:** For detailed email setup instructions, see **[EMAIL_SETUP.md](./docs/markdown/EMAIL_SETUP.md)**.
+**Note:** For detailed email setup instructions, see **[EMAIL_SETUP.md](./docs/guides/EMAIL_SETUP.md)**.
 
 Create a `.env` file in the root directory to set these values. For production builds, set these variables in your hosting platform's environment settings.
 

@@ -123,12 +123,12 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **No Duplicates**: Validates replacement player is not already in team
 
 #### Conditional Rendering:
-- ✅ **Admin View**: Shows all teams for admin
+- ✅ **Admin/Coordinator View**: Shows all teams for admin or coordinator
 - ✅ **Captain/Participant View**: Shows only user's team for captain or enrolled participant (`shouldShowOnlyUserTeam`)
-- ✅ **Edit Player Button**: Only shown for admin users
-- ✅ **Delete Team Button**: Only shown for admin users
+- ✅ **Edit Player Button**: Only shown for admin/coordinator users (`canManageSport`)
+- ✅ **Delete Team Button**: Only shown for admin/coordinator users (`canManageSport`)
 - ✅ **Captain Badge**: Shows "Captain" badge for team captain
-- ✅ **Player List**: Only fetched for admin users
+- ✅ **Player List**: Fetched for admin/coordinator users when editing
 
 #### Enable/Disable States:
 - ✅ **Delete Button**: Disabled during deletion (`deleting && deletingTeam === team.team_name`)
@@ -159,15 +159,14 @@ This document lists all frontend validations, conditional rendering, enable/disa
 - ✅ **Gender**: Required for match creation
 - ✅ **Teams/Players**: Required based on sport type
 - ✅ **Number of Participants**: Required for multi sports, must be between 3 and 100
-- ✅ **Winner**: Required for dual sports when match is completed
-- ✅ **Qualifiers**: Required for multi sports when match is completed
+- ✅ **Winner/Qualifiers**: Set via separate actions after completion (UI enforces before freezing/displaying results)
 
 #### Business Logic Validations:
 - ✅ **Match Date Validation**: Match date must be within event date range (validated in route handler, but UI shows error)
 - ✅ **Match Date Future Check**: Match date must be today or future (`isMatchInFuture`)
 - ✅ **League Match Completion**: All league matches must be completed before scheduling knockout
 - ✅ **Knockout Match Completion**: All knockout matches must be completed before scheduling final
-- ✅ **Winner/Qualifiers Required**: Completed matches must have winner (dual) or qualifiers (multi)
+- ✅ **Winner/Qualifiers Flow**: Winner/qualifiers are collected via dedicated actions after a match is set to completed
 - ✅ **Match Date Ordering**: Knockout date cannot be before latest league match date
 - ✅ **Final Date Ordering**: Final date cannot be before latest knockout match date
 - ✅ **Participant Count**: Validates exact number of participants for multi sports
@@ -308,19 +307,24 @@ This document lists all frontend validations, conditional rendering, enable/disa
 
 ---
 
-### 13. Hero.jsx
+### 13. Navbar.jsx
 
 #### Conditional Rendering:
-- ✅ **Menu Items**:
+- ✅ **Menu Items (Logged In)**:
+  - Profile
   - Add/Remove Captain (admin or coordinator)
   - Add/Remove Coordinator (admin only)
   - Add/Remove Batch (admin only)
   - List Players (admin or coordinator)
   - Export Excel (admin only)
   - Admin Dashboard (admin only)
+  - Change Password, Logout
+- ✅ **Menu Items (Logged Out)**:
+  - Login
+  - Register (only during registration period)
+  - Reset Password
 - ✅ **Event Year Selector**: Shown for any logged-in user
-- ✅ **Login/Register Buttons**: Only shown when not logged in
-- ✅ **Menu Button**: Only shown when logged in
+- ✅ **Menu Button**: Shown for logged-in users and guests (if menu actions are available)
 
 ---
 

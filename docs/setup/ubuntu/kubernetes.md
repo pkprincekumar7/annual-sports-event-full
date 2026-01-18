@@ -17,7 +17,7 @@ From the repo root:
 ```bash
 docker login
 docker build -f Dockerfile.backend -t pkprincekumar7/annual-sports-backend:latest .
-docker build -f Dockerfile.frontend -t pkprincekumar7/annual-sports-frontend:latest .
+docker build -f Dockerfile.frontend --build-arg VITE_API_URL=/api -t pkprincekumar7/annual-sports-frontend:latest .
 
 docker push pkprincekumar7/annual-sports-backend:latest
 docker push pkprincekumar7/annual-sports-frontend:latest
@@ -183,10 +183,86 @@ If you are using minikube:
 minikube service -n annual-sports annual-sports-frontend
 ```
 
+If you get `xdg-open` / browser errors on a server VM, use the URL directly:
+
+```bash
+minikube service -n annual-sports annual-sports-frontend --url
+```
+
 If you kept the service as `ClusterIP`, use port-forwarding instead:
 
 ```bash
 kubectl -n annual-sports port-forward svc/annual-sports-frontend 8080:80
+```
+
+If you are running on a remote Ubuntu instance and want to access from a local browser, bind the forward to all interfaces and open the port in your firewall/security group:
+
+```bash
+kubectl -n annual-sports port-forward svc/annual-sports-frontend 8080:80 --address 0.0.0.0
+```
+
+Then visit:
+
+```
+http://<PUBLIC_IP>:8080
+```
+
+To keep the port-forward running after you close your SSH session, create a systemd service on the VM:
+
+```bash
+sudo tee /etc/systemd/system/annual-sports-frontend-forward.service >/dev/null <<'EOF'
+[Unit]
+Description=Port forward annual-sports frontend
+After=network.target minikube.service
+Wants=minikube.service
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=KUBECONFIG=/home/ubuntu/.kube/config
+ExecStart=/usr/local/bin/kubectl -n annual-sports port-forward svc/annual-sports-frontend 8080:80 --address 0.0.0.0
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now annual-sports-frontend-forward
+sudo systemctl status annual-sports-frontend-forward
+```
+
+If you want this to survive a VM reboot, ensure minikube starts on boot and is ready before the port-forward:
+
+```bash
+sudo tee /etc/systemd/system/minikube.service >/dev/null <<'EOF'
+[Unit]
+Description=Minikube
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/minikube start --driver=docker
+ExecStop=/usr/local/bin/minikube stop
+User=ubuntu
+Environment=KUBECONFIG=/home/ubuntu/.kube/config
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now minikube
+```
+
+Then update the port-forward unit to wait for minikube:
+
+```bash
+sudo systemctl stop annual-sports-frontend-forward
+sudo systemctl enable --now annual-sports-frontend-forward
 ```
 
 If `minikube service` says "no node port", patch the service:

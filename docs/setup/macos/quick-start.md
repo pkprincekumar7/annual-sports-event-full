@@ -53,7 +53,7 @@ Update `.env` with required values:
 - `GMAIL_USER`
 - `GMAIL_APP_PASSWORD`
 
-See `docs/deployment/env-setup.md` for details.
+See `docs/setup/env-setup.md` for details.
 
 ## 6) Run Backend + Frontend
 

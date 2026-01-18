@@ -75,6 +75,8 @@ This application uses **Nodemailer** for sending emails. Multiple email provider
    - Create new API key
    - Copy the API key
 
+**Note:** Resend uses SMTP host `smtp.resend.com` with a fixed username `resend` (no SMTP user env var needed).
+
 3. **Add to `.env` file**:
    ```env
    EMAIL_PROVIDER=resend

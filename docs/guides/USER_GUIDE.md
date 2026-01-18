@@ -176,7 +176,7 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 - **Cannot**: Assign/remove captains or coordinators
 - **Cannot**: Export data or perform bulk operations
 - **Cannot**: Access admin dashboard for non-assigned sports
-- **Cannot**: View or manage players outside their assigned sports
+- **Cannot**: Update/delete players (view/list access is available)
 
 ### 5. **Regular Player Features**
 - Coordinators retain all regular player features (registration, profile, etc.)
@@ -434,7 +434,7 @@ Coordinators are players assigned by admin to manage specific sports. They have 
   - Real-time search with debouncing
   - Server-side search for performance
 - **Pagination**: 
-  - Players displayed in pages (default: 20 per page)
+  - Players displayed in pages (default: 25 per page)
   - Navigate through pages using pagination controls
   - Total count displayed
 - **Event Filtering**: Filter players by `event_id` (or default to active event)
@@ -463,15 +463,10 @@ Coordinators are players assigned by admin to manage specific sports. They have 
 
 #### **Remove Participation**
 - **Individual Events**: Remove player participation from non-team events
+- **Team Events**: Non-captain members can be removed; captains require team deletion or captain change
 - **Use Cases**: Correct registration errors, handle withdrawals
-- **Restrictions**: Cannot remove team participations (must delete team first)
 
 #### **Bulk Player Operations**
-- **Bulk Enroll Players**: 
-  - Enroll multiple players to a sport at once
-  - Select players from list or enter registration numbers
-  - Validates all players before enrollment
-  - Shows success/error for each player
 - **Bulk Delete Players**:
   - Remove multiple players from a sport at once
   - Shows enrollment details before deletion
@@ -1002,10 +997,10 @@ The system supports multiple event years, allowing management of annual sports e
 - **Default Operations**: Active year is used for default operations when year is not specified
 - **Display**: Active year is highlighted in the year selector
 
-### Year Switching (Admin Only)
+### Year Switching (Authenticated Users)
 
-- **Year Selector**: Admin can switch between years using dropdown
-- **Viewing Mode**: Allows viewing/managing data for any year and event name combination
+- **Year Selector**: Any logged-in user can switch between years using the dropdown
+- **Viewing Mode**: Allows viewing data for any year and event name combination
 - **Data Isolation**: Each event's data is isolated by `event_id` (sports, matches, participants)
 - **Auto-Selection**: Active year is automatically selected on page load
 - **Event Name Display**: Event name is displayed along with event year for clarity
@@ -1015,7 +1010,7 @@ The system supports multiple event years, allowing management of annual sports e
 - **Registration Period**: Period during which players can register
 - **Event Period**: Period during which matches can be scheduled
 - **Enforcement**: System enforces these periods based on active year and event name (event_id)
-- **Admin Override**: Admin can manage data outside these periods
+- **No Admin Override**: Date restrictions are enforced for all users, including admin
 - **Event ID**: Periods are identified by `event_id`
 
 ---
@@ -1024,16 +1019,13 @@ The system supports multiple event years, allowing management of annual sports e
 
 ### General Participation Limits
 
-1. **Maximum Participations**: 10 unique sports per player
-2. **No Duplicates**: Cannot participate in same sport twice
-3. **Registration Period**: Registration only allowed during registration period
-4. **Event Period**: Match scheduling only allowed during event period
+1. **No Duplicates**: Cannot participate in same sport twice
+2. **Registration Period**: Registration only allowed during registration period
+3. **Event Period**: Match scheduling allowed after registration ends and before event ends
 
 ### Captain-Specific Limits
 
-1. **Maximum Captain Roles**: 10 captain assignments per player
-2. **Team Participation Limit**: For captain sports, team participations count towards captain limit
-3. **Formula**: (Captain roles + Non-team participations) ≤ 10
+- **Current Behavior**: No max captain/participation cap is enforced by the API
 
 ### Team Constraints
 

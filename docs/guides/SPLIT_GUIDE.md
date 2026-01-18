@@ -252,6 +252,7 @@ cp index.html annual-sports-frontend/
 cp vite.config.js annual-sports-frontend/
 cp tailwind.config.js annual-sports-frontend/
 cp postcss.config.js annual-sports-frontend/
+cp nginx.conf annual-sports-frontend/
 ```
 
 **Files to copy:**
@@ -264,6 +265,7 @@ cp postcss.config.js annual-sports-frontend/
 - `vite.config.js` → `annual-sports-frontend/vite.config.js`
 - `tailwind.config.js` → `annual-sports-frontend/tailwind.config.js`
 - `postcss.config.js` → `annual-sports-frontend/postcss.config.js`
+- `nginx.conf` → `annual-sports-frontend/nginx.conf` (needed for Docker/Nginx)
 
 ### Step 3: Create Frontend package.json
 
@@ -479,7 +481,7 @@ npm run dev
 ### Backend Deployment
 
 **Option 1: Traditional Server (systemd)**
-- Follow the deployment steps in main README.md
+- Follow the deployment steps in `docs/setup/README.md`
 - Update service file to point to backend directory
 - Service name: `annual-sports-backend`
 

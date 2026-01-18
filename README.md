@@ -23,7 +23,7 @@ A full-stack application for managing sports event management with React fronten
 
 The deployment steps are now split by OS and topic for easier navigation:
 
-- `docs/deployment/README.md` (index of all guides)
+- `docs/setup/README.md` (index of all guides)
 - Ubuntu: systemd, Docker Engine, Docker Compose, Nginx
 - Windows: Docker Desktop, Docker Compose, services (NSSM)
 - macOS: Docker Desktop, Docker Compose, launchd services
@@ -453,7 +453,7 @@ The application uses utility functions in `src/utils/api.js`:
 
 ## Production Deployment
 
-Production instructions are split by OS and topic in `docs/deployment/README.md`.
+Production instructions are split by OS and topic in `docs/setup/README.md`.
 Use those guides for Ubuntu systemd + Nginx, Windows services, macOS launchd, Docker, and Docker Compose.
 
 ## Component Overview
@@ -624,7 +624,7 @@ The application uses React hooks for state management:
 ## Documentation
 
 ### Deployment Guides
-For OS-specific setup and deployment instructions, see **[docs/deployment/README.md](./docs/deployment/README.md)**.
+For OS-specific setup and deployment instructions, see **[docs/setup/README.md](./docs/setup/README.md)**.
 
 ### User Guide
 For comprehensive user documentation covering all features, functionality, and usage instructions, see **[USER_GUIDE.md](./USER_GUIDE.md)**.

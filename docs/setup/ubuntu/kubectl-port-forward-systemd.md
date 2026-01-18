@@ -15,7 +15,7 @@ Wants=minikube.service
 Type=simple
 User=ubuntu
 Environment=KUBECONFIG=/home/ubuntu/.kube/config
-ExecStart=/usr/local/bin/kubectl -n annual-sports port-forward svc/annual-sports-frontend 8080:80 --address 0.0.0.0
+ExecStart=/usr/local/bin/kubectl -n annual-sports port-forward svc/annual-sports-frontend 5173:80 --address 0.0.0.0
 Restart=always
 RestartSec=3
 

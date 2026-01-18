@@ -192,19 +192,19 @@ minikube service -n annual-sports annual-sports-frontend --url
 If you kept the service as `ClusterIP`, use port-forwarding instead:
 
 ```bash
-kubectl -n annual-sports port-forward svc/annual-sports-frontend 8080:80
+kubectl -n annual-sports port-forward svc/annual-sports-frontend 5173:80
 ```
 
 If you are running on a remote Ubuntu instance and want to access from a local browser, bind the forward to all interfaces and open the port in your firewall/security group:
 
 ```bash
-kubectl -n annual-sports port-forward svc/annual-sports-frontend 8080:80 --address 0.0.0.0
+kubectl -n annual-sports port-forward svc/annual-sports-frontend 5173:80 --address 0.0.0.0
 ```
 
 Then visit:
 
 ```
-http://<PUBLIC_IP>:8080
+http://<PUBLIC_IP>:5173
 ```
 
 For a systemd-based port-forward that survives SSH disconnects and VM reboots, see:

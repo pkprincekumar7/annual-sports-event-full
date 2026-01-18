@@ -36,7 +36,7 @@ function Modal({
         relative 
         ${embedded ? '' : 'max-h-[90vh]'} 
         ${embedded ? '' : 'overflow-y-auto'}
-        ${embedded ? '' : 'mt-32 sm:mt-14'}
+        ${embedded ? '' : 'mt-10 sm:mt-14'}
         ${className}
       `}
     >

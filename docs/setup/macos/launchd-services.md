@@ -2,7 +2,16 @@
 
 This uses launchd to run the frontend preview server and backend API as services.
 
-## 1) Build the Frontend
+## 1) Configure Environment
+
+```bash
+cd ~/projects/annual-sports-event-full
+cp .env.example .env
+```
+
+Set `VITE_API_URL` to your backend URL before building.
+
+## 2) Build the Frontend
 
 ```bash
 cd ~/projects/annual-sports-event-full
@@ -10,7 +19,7 @@ npm install
 npm run build
 ```
 
-## 2) Frontend launchd Service
+## 3) Frontend launchd Service
 
 Create `~/Library/LaunchAgents/com.annualsports.frontend.plist`:
 
@@ -55,7 +64,7 @@ Load the service:
 launchctl load ~/Library/LaunchAgents/com.annualsports.frontend.plist
 ```
 
-## 3) Backend launchd Service
+## 4) Backend launchd Service
 
 Create `~/Library/LaunchAgents/com.annualsports.backend.plist`:
 
@@ -93,7 +102,7 @@ Load the service:
 launchctl load ~/Library/LaunchAgents/com.annualsports.backend.plist
 ```
 
-## 4) Manage Services
+## 5) Manage Services
 
 ```bash
 launchctl list | grep annualsports

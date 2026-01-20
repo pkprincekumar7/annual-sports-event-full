@@ -23,6 +23,14 @@ docker push pkprincekumar7/annual-sports-backend:latest
 docker push pkprincekumar7/annual-sports-frontend:latest
 ```
 
+`VITE_API_URL` is a build-time value for the frontend image, so changing it requires a rebuild and redeploy.
+
+## 2) Create Namespace
+
+```bash
+kubectl create namespace annual-sports
+```
+
 If your registry is private, create an image pull secret:
 
 ```bash
@@ -38,12 +46,6 @@ Attach it to the default service account:
 ```bash
 kubectl -n annual-sports patch serviceaccount default \
   -p '{"imagePullSecrets":[{"name":"regcred"}]}'
-```
-
-## 2) Create Namespace
-
-```bash
-kubectl create namespace annual-sports
 ```
 
 ## 3) Create Secrets and Config
@@ -177,6 +179,8 @@ kubectl -n annual-sports rollout restart deploy/annual-sports-backend
 kubectl -n annual-sports rollout restart deploy/annual-sports-frontend
 ```
 
+## 10) Access the Frontend
+
 If you are using minikube:
 
 ```bash
@@ -217,7 +221,7 @@ kubectl -n annual-sports patch svc annual-sports-frontend -p '{"spec":{"type":"N
 minikube service -n annual-sports annual-sports-frontend --url
 ```
 
-## 10) Troubleshooting
+## 11) Troubleshooting
 
 ### ImagePullBackOff
 

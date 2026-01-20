@@ -25,6 +25,10 @@ Required values:
 - `PORT=3001`
 - `MONGODB_URI=...`
 - `JWT_SECRET=...`
+- `GMAIL_USER=...`
+- `GMAIL_APP_PASSWORD=...`
+
+See `docs/setup/env-setup.md` for details.
 
 ## 3) Create systemd Service
 

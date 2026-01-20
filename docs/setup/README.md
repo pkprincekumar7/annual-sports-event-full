@@ -12,6 +12,7 @@ For environment variable setup, see `docs/setup/env-setup.md`.
 - `ubuntu/systemd-frontend.md` - Frontend as a systemd service
 - `ubuntu/systemd-backend.md` - Backend as a systemd service (includes MongoDB)
 - `ubuntu/nginx-reverse-proxy.md` - Nginx reverse proxy for frontend/backend
+- `ubuntu/nginx-https.md` - HTTPS for frontend/backend with Nginx + Certbot
 - `ubuntu/kubernetes-prereqs.md` - Kubernetes prerequisites (kubectl, minikube/k3s)
 - `ubuntu/kubernetes.md` - Kubernetes deployment (frontend, backend, MongoDB)
 - `ubuntu/troubleshooting.md` - Common service and port issues

@@ -54,8 +54,8 @@ kubectl create namespace annual-sports
 kubectl -n annual-sports create secret generic backend-secrets \
   --from-literal=JWT_SECRET="your-strong-secret" \
   --from-literal=MONGODB_URI="mongodb://mongodb-0.mongodb:27017/annual-sports" \
-  --from-literal=GMAIL_USER="your-gmail-address" \
-  --from-literal=GMAIL_APP_PASSWORD="your-gmail-app-password"
+  --from-literal=GMAIL_USER="your-email@gmail.com" \
+  --from-literal=GMAIL_APP_PASSWORD="your-16-char-app-password"
 ```
 
 ### Frontend Config

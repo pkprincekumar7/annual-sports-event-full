@@ -3,7 +3,7 @@
 Use this for local development on Windows.
 
 ## Prerequisites
-- Node.js 16+ (18 LTS recommended)
+- Node.js 24+ (24 LTS recommended)
 - MongoDB Community Server (local or remote)
 - Git
 

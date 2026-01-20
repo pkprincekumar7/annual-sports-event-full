@@ -32,7 +32,7 @@ After splitting, you'll have:
 ## Prerequisites
 
 - Git installed
-- Node.js (v16 or higher) and npm installed
+- Node.js (v24 or higher) and npm installed
 - MongoDB instance (local or remote)
 - Basic knowledge of file system operations
 - Terminal/Command line access

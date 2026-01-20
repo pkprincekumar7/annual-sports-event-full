@@ -4,7 +4,7 @@ Use this for local development on macOS.
 
 ## Prerequisites
 - Homebrew
-- Node.js 16+ (18 LTS recommended)
+- Node.js 24+ (24 LTS recommended)
 - MongoDB (local or remote)
 - Git
 

@@ -8,7 +8,16 @@ Download: https://nssm.cc/download
 
 Extract and add the folder to PATH or reference the full path to `nssm.exe`.
 
-## 2) Build the Frontend
+## 2) Configure Environment
+
+```powershell
+cd C:\annual-sports-event-full
+copy .env.example .env
+```
+
+Set `VITE_API_URL` to your backend URL before building.
+
+## 3) Build the Frontend
 
 ```powershell
 cd C:\annual-sports-event-full
@@ -16,7 +25,7 @@ npm install
 npm run build
 ```
 
-## 3) Create Frontend Service
+## 4) Create Frontend Service
 
 ```powershell
 nssm install AnnualSportsFrontend "C:\\Program Files\\nodejs\\npm.cmd" "run preview"
@@ -31,7 +40,7 @@ Start the service:
 nssm start AnnualSportsFrontend
 ```
 
-## 4) Create Backend Service
+## 5) Create Backend Service
 
 ```powershell
 nssm install AnnualSportsBackend "C:\\Program Files\\nodejs\\npm.cmd" "start"
@@ -46,7 +55,7 @@ Start the service:
 nssm start AnnualSportsBackend
 ```
 
-## 5) Manage Services
+## 6) Manage Services
 
 ```powershell
 nssm status AnnualSportsFrontend

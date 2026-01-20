@@ -6,6 +6,7 @@
    npm run build
    ```
 2. Set `VITE_API_URL` at build time to your backend URL.
+   This is a build-time value; changing it requires a rebuild.
 3. Upload the `dist/` folder to your hosting provider and configure SPA routing.
 
 ## Backend: PaaS (Render/Railway/Heroku)
@@ -17,7 +18,7 @@
 1. Build images:
    ```bash
    docker build -f Dockerfile.backend -t annual-sports-backend .
-   docker build -f Dockerfile.frontend -t annual-sports-frontend .
+   docker build -f Dockerfile.frontend --build-arg VITE_API_URL=/api -t annual-sports-frontend .
    ```
 2. Run containers with required environment variables and port mappings.
 

@@ -54,3 +54,4 @@ docker compose logs -f
 
 ## Notes
 - The frontend build uses `VITE_API_URL=/api` and Nginx proxies `/api` to `annual-sports-backend:3001`.
+- `VITE_API_URL` is a build-time value; changing it requires a rebuild.

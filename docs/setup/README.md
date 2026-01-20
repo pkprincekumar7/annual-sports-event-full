@@ -31,3 +31,21 @@ For environment variable setup, see `docs/setup/env-setup.md`.
 
 ## Other Deployment Options
 - `other-options.md` - Static hosting, PaaS, Docker without Compose, Kubernetes
+
+## AWS
+- `aws/eks.md` - AWS EKS deployment (ECR, ALB, TLS)
+- `aws/eks-terraform.md` - AWS EKS with Terraform (infra + ALB)
+- `aws/ecs.md` - AWS ECS Fargate deployment (ALB, TLS)
+- `aws/ecs-terraform.md` - AWS ECS Fargate with Terraform
+
+## Azure
+- `azure/aks.md` - Azure AKS deployment (ACR, ingress, TLS)
+- `azure/aks-terraform.md` - Azure AKS with Terraform
+- `azure/container-apps.md` - Azure Container Apps deployment
+- `azure/container-apps-terraform.md` - Azure Container Apps with Terraform
+
+## GCP
+- `gcp/gke.md` - Google Kubernetes Engine (GKE) deployment
+- `gcp/gke-terraform.md` - GKE with Terraform
+- `gcp/cloud-run.md` - Cloud Run deployment
+- `gcp/cloud-run-terraform.md` - Cloud Run with Terraform

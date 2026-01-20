@@ -130,11 +130,39 @@ kubectl -n annual-sports rollout restart deploy/annual-sports-frontend
 
 ## 7) Ingress (Optional)
 
-If you have an Ingress controller installed (NGINX, Traefik), use the repo file `ingress.yaml`, update the host value, and set the correct `ingressClassName` if your cluster requires it.
-
-Apply:
+If you have an Ingress controller installed (NGINX, Traefik), create an `ingress.yaml`
+with the content below. Update the `host` value and `ingressClassName` if your cluster
+requires it, then apply the file.
 
 ```bash
+cat <<'EOF' > ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: annual-sports-ingress
+  namespace: annual-sports
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: your-domain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: annual-sports-frontend
+                port:
+                  number: 80
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: annual-sports-backend
+                port:
+                  number: 3001
+EOF
+
 kubectl apply -f ingress.yaml
 ```
 

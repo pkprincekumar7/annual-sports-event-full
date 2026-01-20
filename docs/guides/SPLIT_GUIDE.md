@@ -32,7 +32,7 @@ After splitting, you'll have:
 ## Prerequisites
 
 - Git installed
-- Node.js (v16 or higher) and npm installed
+- Node.js (v24 or higher) and npm installed
 - MongoDB instance (local or remote)
 - Basic knowledge of file system operations
 - Terminal/Command line access
@@ -535,6 +535,8 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
+
+**Note:** `nginx.conf` proxies `/api` to `annual-sports-backend:3001`. If your backend service name is different, update `nginx.conf` accordingly. When using this proxy setup, build the frontend with `VITE_API_URL=/api`.
 
 ### Environment Variables in Production
 

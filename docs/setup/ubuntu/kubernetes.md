@@ -6,6 +6,7 @@ This guide deploys the frontend and backend as separate services on a Kubernetes
 - A Kubernetes cluster (minikube, k3s, EKS, GKE, AKS, etc.)
 - `kubectl` installed and connected to your cluster
 - Container registry access (Docker Hub, GHCR, ECR, etc.)
+- Docker login for your registry (required for pushing images)
 
 If you are new to Kubernetes, follow `docs/setup/ubuntu/kubernetes-prereqs.md` first.
 
@@ -14,11 +15,29 @@ If you are new to Kubernetes, follow `docs/setup/ubuntu/kubernetes-prereqs.md` f
 From the repo root:
 
 ```bash
-docker build -f Dockerfile.backend -t <registry>/annual-sports-backend:latest .
-docker build -f Dockerfile.frontend -t <registry>/annual-sports-frontend:latest .
+docker login
+docker build -f Dockerfile.backend -t pkprincekumar7/annual-sports-backend:latest .
+docker build -f Dockerfile.frontend --build-arg VITE_API_URL=/api -t pkprincekumar7/annual-sports-frontend:latest .
 
-docker push <registry>/annual-sports-backend:latest
-docker push <registry>/annual-sports-frontend:latest
+docker push pkprincekumar7/annual-sports-backend:latest
+docker push pkprincekumar7/annual-sports-frontend:latest
+```
+
+If your registry is private, create an image pull secret:
+
+```bash
+kubectl -n annual-sports create secret docker-registry regcred \
+  --docker-server=https://index.docker.io/v1/ \
+  --docker-username=<your-username> \
+  --docker-password=<your-password-or-token> \
+  --docker-email=<your-email>
+```
+
+Attach it to the default service account:
+
+```bash
+kubectl -n annual-sports patch serviceaccount default \
+  -p '{"imagePullSecrets":[{"name":"regcred"}]}'
 ```
 
 ## 2) Create Namespace
@@ -34,7 +53,9 @@ kubectl create namespace annual-sports
 ```bash
 kubectl -n annual-sports create secret generic backend-secrets \
   --from-literal=JWT_SECRET="your-strong-secret" \
-  --from-literal=MONGODB_URI="mongodb://mongodb-0.mongodb:27017/annual-sports"
+  --from-literal=MONGODB_URI="mongodb://mongodb-0.mongodb:27017/annual-sports" \
+  --from-literal=GMAIL_USER="your-email@gmail.com" \
+  --from-literal=GMAIL_APP_PASSWORD="your-16-char-app-password"
 ```
 
 ### Frontend Config
@@ -46,55 +67,8 @@ kubectl -n annual-sports create configmap frontend-config \
 
 ## 4) Deploy MongoDB (StatefulSet)
 
-Create `mongodb.yaml`:
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: mongodb
-  namespace: annual-sports
-spec:
-  ports:
-    - port: 27017
-      name: mongo
-  clusterIP: None
-  selector:
-    app: mongodb
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: mongodb
-  namespace: annual-sports
-spec:
-  serviceName: mongodb
-  replicas: 1
-  selector:
-    matchLabels:
-      app: mongodb
-  template:
-    metadata:
-      labels:
-        app: mongodb
-    spec:
-      containers:
-        - name: mongodb
-          image: mongo:7
-          ports:
-            - containerPort: 27017
-          volumeMounts:
-            - name: mongo-data
-              mountPath: /data/db
-  volumeClaimTemplates:
-    - metadata:
-        name: mongo-data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 5Gi
-```
+Use the repo file `mongodb.yaml`. If you are using an external MongoDB, skip this step and update `MONGODB_URI` in the secret accordingly.
+If your cluster does not have a default `StorageClass`, set `storageClassName` in `mongodb.yaml` before applying.
 
 Apply:
 
@@ -102,57 +76,15 @@ Apply:
 kubectl apply -f mongodb.yaml
 ```
 
+Wait for MongoDB:
+
+```bash
+kubectl -n annual-sports rollout status statefulset/mongodb
+```
+
 ## 5) Deploy Backend
 
-Create `backend.yaml`:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: annual-sports-backend
-  namespace: annual-sports
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: annual-sports-backend
-  template:
-    metadata:
-      labels:
-        app: annual-sports-backend
-    spec:
-      containers:
-        - name: backend
-          image: <registry>/annual-sports-backend:latest
-          ports:
-            - containerPort: 3001
-          env:
-            - name: PORT
-              value: "3001"
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: backend-secrets
-                  key: JWT_SECRET
-            - name: MONGODB_URI
-              valueFrom:
-                secretKeyRef:
-                  name: backend-secrets
-                  key: MONGODB_URI
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: annual-sports-backend
-  namespace: annual-sports
-spec:
-  selector:
-    app: annual-sports-backend
-  ports:
-    - port: 3001
-      targetPort: 3001
-```
+Use the repo file `backend.yaml` (update the image registry before applying if you are not using `pkprincekumar7`).
 
 Apply:
 
@@ -160,47 +92,21 @@ Apply:
 kubectl apply -f backend.yaml
 ```
 
+Wait for backend:
+
+```bash
+kubectl -n annual-sports rollout status deploy/annual-sports-backend
+```
+
+Restart backend after image updates:
+
+```bash
+kubectl -n annual-sports rollout restart deploy/annual-sports-backend
+```
+
 ## 6) Deploy Frontend
 
-Create `frontend.yaml`:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: annual-sports-frontend
-  namespace: annual-sports
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: annual-sports-frontend
-  template:
-    metadata:
-      labels:
-        app: annual-sports-frontend
-    spec:
-      containers:
-        - name: frontend
-          image: <registry>/annual-sports-frontend:latest
-          ports:
-            - containerPort: 80
-          envFrom:
-            - configMapRef:
-                name: frontend-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: annual-sports-frontend
-  namespace: annual-sports
-spec:
-  selector:
-    app: annual-sports-frontend
-  ports:
-    - port: 80
-      targetPort: 80
-```
+Use the repo file `frontend.yaml` (update the image registry before applying if you are not using `pkprincekumar7`).
 
 Apply:
 
@@ -208,36 +114,21 @@ Apply:
 kubectl apply -f frontend.yaml
 ```
 
+Wait for frontend:
+
+```bash
+kubectl -n annual-sports rollout status deploy/annual-sports-frontend
+```
+
+Restart frontend after image updates:
+
+```bash
+kubectl -n annual-sports rollout restart deploy/annual-sports-frontend
+```
+
 ## 7) Ingress (Optional)
 
-If you have an Ingress controller installed (NGINX, Traefik), create an Ingress to route `/` to frontend and `/api` to backend.
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: annual-sports-ingress
-  namespace: annual-sports
-spec:
-  rules:
-    - host: your-domain.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: annual-sports-frontend
-                port:
-                  number: 80
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: annual-sports-backend
-                port:
-                  number: 3001
-```
+If you have an Ingress controller installed (NGINX, Traefik), use the repo file `ingress.yaml`, update the host value, and set the correct `ingressClassName` if your cluster requires it.
 
 Apply:
 
@@ -253,10 +144,99 @@ kubectl -n annual-sports get svc
 kubectl -n annual-sports get ingress
 ```
 
+Check rollout history:
+
+```bash
+kubectl -n annual-sports rollout history deploy/annual-sports-backend
+kubectl -n annual-sports rollout history deploy/annual-sports-frontend
+```
+
+Rollback (if needed):
+
+```bash
+kubectl -n annual-sports rollout undo deploy/annual-sports-backend
+kubectl -n annual-sports rollout undo deploy/annual-sports-frontend
+```
+
+## 9) Apply Updated YAML
+
+If `backend.yaml` or `frontend.yaml` changes, re-apply and verify rollout:
+
+```bash
+kubectl apply -f backend.yaml
+kubectl apply -f frontend.yaml
+
+kubectl -n annual-sports rollout status deploy/annual-sports-backend
+kubectl -n annual-sports rollout status deploy/annual-sports-frontend
+```
+
+If the image tag stays the same (e.g., `latest`), restart to pull the new image:
+
+```bash
+kubectl -n annual-sports rollout restart deploy/annual-sports-backend
+kubectl -n annual-sports rollout restart deploy/annual-sports-frontend
+```
+
 If you are using minikube:
 
 ```bash
 minikube service -n annual-sports annual-sports-frontend
+```
+
+If you get `xdg-open` / browser errors on a server VM, use the URL directly:
+
+```bash
+minikube service -n annual-sports annual-sports-frontend --url
+```
+
+If you kept the service as `ClusterIP`, use port-forwarding instead:
+
+```bash
+kubectl -n annual-sports port-forward svc/annual-sports-frontend 5173:80
+```
+
+If you are running on a remote Ubuntu instance and want to access from a local browser, bind the forward to all interfaces and open the port in your firewall/security group:
+
+```bash
+kubectl -n annual-sports port-forward svc/annual-sports-frontend 5173:80 --address 0.0.0.0
+```
+
+Then visit:
+
+```
+http://<PUBLIC_IP>:5173
+```
+
+For a systemd-based port-forward that survives SSH disconnects and VM reboots, see:
+`docs/setup/ubuntu/kubectl-port-forward-systemd.md`.
+
+If `minikube service` says "no node port", patch the service:
+
+```bash
+kubectl -n annual-sports patch svc annual-sports-frontend -p '{"spec":{"type":"NodePort"}}'
+minikube service -n annual-sports annual-sports-frontend --url
+```
+
+## 10) Troubleshooting
+
+### ImagePullBackOff
+
+```bash
+kubectl -n annual-sports get pods
+kubectl -n annual-sports describe pod <pod-name>
+```
+
+Common fixes:
+- Make sure the image exists in your registry
+- Run `docker login` and re-push
+- If private, create `regcred` and attach it to the service account
+
+### CrashLoopBackOff (frontend)
+
+Check logs:
+
+```bash
+kubectl -n annual-sports logs <frontend-pod>
 ```
 
 ## Notes

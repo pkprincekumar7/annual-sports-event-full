@@ -1,0 +1,130 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  identity-service:
+    build:
+      context: ./identity-service
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./identity-service/.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  enrollment-service:
+    build:
+      context: ./enrollment-service
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    env_file:
+      - ./enrollment-service/.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  organization-service:
+    build:
+      context: ./organization-service
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    env_file:
+      - ./organization-service/.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  sports-participation-service:
+    build:
+      context: ./sports-participation-service
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    env_file:
+      - ./sports-participation-service/.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  event-configuration-service:
+    build:
+      context: ./event-configuration-service
+      dockerfile: Dockerfile
+    ports:
+      - "8005:8005"
+    env_file:
+      - ./event-configuration-service/.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  scheduling-service:
+    build:
+      context: ./scheduling-service
+      dockerfile: Dockerfile
+    ports:
+      - "8006:8006"
+    env_file:
+      - ./scheduling-service/.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  scoring-service:
+    build:
+      context: ./scoring-service
+      dockerfile: Dockerfile
+    ports:
+      - "8007:8007"
+    env_file:
+      - ./scoring-service/.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  reporting-service:
+    build:
+      context: ./reporting-service
+      dockerfile: Dockerfile
+    ports:
+      - "8008:8008"
+    env_file:
+      - ./reporting-service/.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    expose:
+      - "80"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "5173:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - identity-service
+      - enrollment-service
+      - organization-service
+      - sports-participation-service
+      - event-configuration-service
+      - scheduling-service
+      - scoring-service
+      - reporting-service
+    restart: unless-stopped

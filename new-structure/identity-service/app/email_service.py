@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from typing import Dict
 
@@ -65,18 +66,93 @@ async def send_password_reset_email(
     from_name = settings.email_from_name
     app_name = settings.app_name
 
+    current_year = str(datetime.now(timezone.utc).year)
+    safe_name = recipient_name or "User"
     html_body = f"""
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
+  <style>
+    body {{
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }}
+    .container {{
+      background-color: #f9f9f9;
+      border-radius: 10px;
+      padding: 30px;
+      border: 1px solid #ddd;
+    }}
+    .header {{
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 10px 10px 0 0;
+      text-align: center;
+      margin: -30px -30px 20px -30px;
+    }}
+    .password-box {{
+      background-color: #fff;
+      border: 2px solid #667eea;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+      text-align: center;
+      font-size: 24px;
+      font-weight: bold;
+      color: #667eea;
+      letter-spacing: 2px;
+    }}
+    .warning {{
+      background-color: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }}
+    .footer {{
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 1px solid #ddd;
+      text-align: center;
+      color: #666;
+      font-size: 12px;
+    }}
+  </style>
 </head>
 <body>
-  <p>Hello {recipient_name or 'User'},</p>
-  <p>You have requested to reset your password. Your new temporary password is:</p>
-  <p><strong>{new_password}</strong></p>
-  <p>For security reasons, you will be required to change this password immediately after logging in.</p>
-  <p>This is an automated email from {app_name}.</p>
+  <div class="container">
+    <div class="header">
+      <h1>{app_name}</h1>
+      <h2>Password Reset Request</h2>
+    </div>
+
+    <p>Hello {safe_name},</p>
+
+    <p>You have requested to reset your password for your account. Your new temporary password is:</p>
+
+    <div class="password-box">
+      {new_password}
+    </div>
+
+    <div class="warning">
+      <strong>⚠️ Important:</strong> For security reasons, you will be required to change this password immediately after logging in.
+    </div>
+
+    <p>Please use this password to log in, and then change it to a password of your choice.</p>
+
+    <p>If you did not request this password reset, please contact the administrator immediately.</p>
+
+    <div class="footer">
+      <p>This is an automated email. Please do not reply to this message.</p>
+      <p>&copy; {current_year} {app_name}. All rights reserved.</p>
+    </div>
+  </div>
 </body>
 </html>
 """.strip()
@@ -84,7 +160,7 @@ async def send_password_reset_email(
     text_body = f"""
 Password Reset - {app_name}
 
-Hello {recipient_name or 'User'},
+Hello {safe_name},
 
 You have requested to reset your password for your account. Your new temporary password is:
 
@@ -92,7 +168,13 @@ You have requested to reset your password for your account. Your new temporary p
 
 IMPORTANT: For security reasons, you will be required to change this password immediately after logging in.
 
+Please use this password to log in, and then change it to a password of your choice.
+
+If you did not request this password reset, please contact the administrator immediately.
+
 This is an automated email. Please do not reply to this message.
+
+© {current_year} {app_name}. All rights reserved.
 """.strip()
 
     message = EmailMessage()

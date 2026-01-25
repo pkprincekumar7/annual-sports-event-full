@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any, Dict, List
 
@@ -134,7 +134,7 @@ async def export_excel(
     buffer.seek(0)
 
     event_year_label = event_year_doc.get("event_year") if event_year_doc else "no-event"
-    filename = f"Players_Report_{event_year_label}_{datetime.utcnow().date()}.xlsx"
+    filename = f"Players_Report_{event_year_label}_{datetime.now(timezone.utc).date()}.xlsx"
     return Response(
         content=buffer.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

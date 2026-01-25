@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from bson import ObjectId
@@ -134,8 +134,8 @@ async def create_department(
         "display_order": display_order,
         "createdBy": request.state.user.get("reg_number"),
         "updatedBy": None,
-        "createdAt": datetime.utcnow(),
-        "updatedAt": datetime.utcnow(),
+        "createdAt": datetime.now(timezone.utc),
+        "updatedAt": datetime.now(timezone.utc),
     }
 
     insert_result = await departments_collection().insert_one(department_doc)
@@ -183,7 +183,7 @@ async def update_department(
 
     update_fields: Dict[str, Any] = {
         "updatedBy": request.state.user.get("reg_number"),
-        "updatedAt": datetime.utcnow(),
+        "updatedAt": datetime.now(timezone.utc),
     }
     if "display_order" in body:
         update_fields["display_order"] = body.get("display_order")

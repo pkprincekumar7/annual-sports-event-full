@@ -229,8 +229,8 @@ async def create_event_year(
         else "Community Entertainment Fest",
         "createdBy": request.state.user.get("reg_number"),
         "updatedBy": None,
-        "createdAt": datetime.utcnow(),
-        "updatedAt": datetime.utcnow(),
+        "createdAt": datetime.now(timezone.utc),
+        "updatedAt": datetime.now(timezone.utc),
     }
 
     insert_result = await event_years_collection().insert_one(event_doc)
@@ -404,7 +404,7 @@ async def update_event_year(
             event_year_doc["event_dates"] = _prepare_dates(final_event_dates)
 
     event_year_doc["updatedBy"] = request.state.user.get("reg_number")
-    event_year_doc["updatedAt"] = datetime.utcnow()
+    event_year_doc["updatedAt"] = datetime.now(timezone.utc)
 
     update_doc = {key: value for key, value in event_year_doc.items() if key != "_id"}
     await event_years_collection().update_one(

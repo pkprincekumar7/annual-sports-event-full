@@ -23,9 +23,16 @@ helpers for points backfill.
 - No per-service tokens are supported.
 ### Endpoints
 
-- `GET /api/points-table/{sport}`
-- `POST /api/points-table/backfill/{sport}`
-- `POST /api/internal/points-table/update` (internal)
+- `GET /scorings/points-table/{sport}`
+- `POST /scorings/points-table/backfill/{sport}`
+- `POST /scorings/internal/points-table/update` (internal)
+
+### API Docs (Swagger)
+
+- Local UI: `http://localhost:8007/scorings/docs`
+- Spec file: `swagger.yaml`
+- Nginx UI: `http://localhost:5173/scorings/docs`
+- Nginx Spec: `http://localhost:5173/scorings/swagger.yml`
 
 ### Checklist
 

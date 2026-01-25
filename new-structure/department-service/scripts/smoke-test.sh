@@ -19,8 +19,8 @@ require_cmd jq
 echo "==> Health check"
 curl -sS "$BASE_URL/health" | jq .
 
-echo "==> /api/departments (public)"
-curl -sS "$BASE_URL/api/departments" | jq .
+echo "==> /departments (public)"
+curl -sS "$BASE_URL/departments" | jq .
 
 if [[ -z "$ADMIN_TOKEN" ]]; then
   echo "Skipping admin department operations (set ADMIN_TOKEN)."
@@ -28,8 +28,8 @@ if [[ -z "$ADMIN_TOKEN" ]]; then
   exit 0
 fi
 
-echo "==> /api/departments (create)"
-CREATE_RESPONSE=$(curl -sS -X POST "$BASE_URL/api/departments" \
+echo "==> /departments (create)"
+CREATE_RESPONSE=$(curl -sS -X POST "$BASE_URL/departments" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"$DEPARTMENT_NAME\",\"code\":\"$DEPARTMENT_CODE\",\"display_order\":0}")
@@ -42,14 +42,14 @@ if [[ -z "$DEPARTMENT_ID" ]]; then
   exit 0
 fi
 
-echo "==> /api/departments/{id} (update display_order)"
-curl -sS -X PUT "$BASE_URL/api/departments/$DEPARTMENT_ID" \
+echo "==> /departments/{id} (update display_order)"
+curl -sS -X PUT "$BASE_URL/departments/$DEPARTMENT_ID" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"display_order\":1}" | jq .
 
-echo "==> /api/departments/{id} (delete)"
-curl -sS -X DELETE "$BASE_URL/api/departments/$DEPARTMENT_ID" \
+echo "==> /departments/{id} (delete)"
+curl -sS -X DELETE "$BASE_URL/departments/$DEPARTMENT_ID" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
 
 echo "==> Smoke test complete"

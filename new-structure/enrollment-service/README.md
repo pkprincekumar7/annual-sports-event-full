@@ -21,21 +21,28 @@ FastAPI service for batch management. This ports routes from `routes/batches.js`
 
 ### Endpoints
 
-- `POST /api/add-batch`
-- `DELETE /api/remove-batch`
-- `GET /api/batches`
-- `POST /api/batches/assign-player`
-- `POST /api/batches/unassign-player`
-- `POST /api/batches/unassign-players`
+- `POST /enrollments/add-batch`
+- `DELETE /enrollments/remove-batch`
+- `GET /enrollments/batches`
+- `POST /enrollments/batches/assign-player`
+- `POST /enrollments/batches/unassign-player`
+- `POST /enrollments/batches/unassign-players`
+
+### API Docs (Swagger)
+
+- Local UI: `http://localhost:8002/enrollments/docs`
+- Spec file: `swagger.yaml`
+- Nginx UI: `http://localhost:5173/enrollments/docs`
+- Nginx Spec: `http://localhost:5173/enrollments/swagger.yml`
 
 ### Checklist
 
-- `POST /api/add-batch` enforces admin + registration period
-- `DELETE /api/remove-batch` blocks deletion when players exist
-- `GET /api/batches` returns cached list with players array
-- `POST /api/batches/assign-player` assigns player to a batch
-- `POST /api/batches/unassign-player` removes player from a batch
-- `POST /api/batches/unassign-players` removes players from batches
+- `POST /enrollments/add-batch` enforces admin + registration period
+- `DELETE /enrollments/remove-batch` blocks deletion when players exist
+- `GET /enrollments/batches` returns cached list with players array
+- `POST /enrollments/batches/assign-player` assigns player to a batch
+- `POST /enrollments/batches/unassign-player` removes player from a batch
+- `POST /enrollments/batches/unassign-players` removes players from batches
 
 ### Smoke Test
 

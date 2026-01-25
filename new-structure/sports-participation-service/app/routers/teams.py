@@ -236,12 +236,14 @@ async def update_team_participation(
     update_doc = {key: value for key, value in sport_doc.items() if key != "_id"}
     await sports_collection().update_one({"_id": sport_doc.get("_id")}, {"$set": update_doc})
 
-    cache.clear(f"/api/sports?event_id={quote(str(resolved_event_id))}")
-    cache.clear(f"/api/sports/{sport}?event_id={quote(str(resolved_event_id))}")
-    cache.clear(f"/api/teams/{sport}?event_id={quote(str(resolved_event_id))}")
-    cache.clear(f"/api/sports-counts?event_id={quote(str(resolved_event_id))}")
-    cache.clear_pattern("/api/players")
-    cache.clear_pattern("/api/me")
+    cache.clear(f"/sports-participations/sports?event_id={quote(str(resolved_event_id))}")
+    cache.clear(f"/sports-participations/sports/{sport}?event_id={quote(str(resolved_event_id))}")
+    cache.clear(f"/sports-participations/teams/{sport}?event_id={quote(str(resolved_event_id))}")
+    cache.clear(
+        f"/sports-participations/sports-counts?event_id={quote(str(resolved_event_id))}"
+    )
+    cache.clear_pattern("/identities/players")
+    cache.clear_pattern("/identities/me")
     clear_team_gender_cache(team_name, sport, resolved_event_id)
 
     return send_success_response(
@@ -270,7 +272,7 @@ async def get_teams(
         raise
 
     resolved_event_id = event_year_data.get("doc", {}).get("event_id")
-    cache_key = f"/api/teams/{sport}?event_id={quote(str(resolved_event_id))}"
+    cache_key = f"/sports-participations/teams/{sport}?event_id={quote(str(resolved_event_id))}"
     cached = cache.get(cache_key)
     if cached:
         return send_success_response(cached)
@@ -492,12 +494,14 @@ async def update_team_player(
     update_doc = {key: value for key, value in sport_doc.items() if key != "_id"}
     await sports_collection().update_one({"_id": sport_doc.get("_id")}, {"$set": update_doc})
 
-    cache.clear(f"/api/sports?event_id={quote(str(resolved_event_id))}")
-    cache.clear(f"/api/sports/{sport}?event_id={quote(str(resolved_event_id))}")
-    cache.clear(f"/api/teams/{sport}?event_id={quote(str(resolved_event_id))}")
-    cache.clear(f"/api/sports-counts?event_id={quote(str(resolved_event_id))}")
-    cache.clear_pattern("/api/players")
-    cache.clear_pattern("/api/me")
+    cache.clear(f"/sports-participations/sports?event_id={quote(str(resolved_event_id))}")
+    cache.clear(f"/sports-participations/sports/{sport}?event_id={quote(str(resolved_event_id))}")
+    cache.clear(f"/sports-participations/teams/{sport}?event_id={quote(str(resolved_event_id))}")
+    cache.clear(
+        f"/sports-participations/sports-counts?event_id={quote(str(resolved_event_id))}"
+    )
+    cache.clear_pattern("/identities/players")
+    cache.clear_pattern("/identities/me")
     clear_team_gender_cache(team_name, sport, resolved_event_id)
 
     new_player_data = serialize_player(new_player)
@@ -593,12 +597,14 @@ async def delete_team(
     update_doc = {key: value for key, value in sport_doc.items() if key != "_id"}
     await sports_collection().update_one({"_id": sport_doc.get("_id")}, {"$set": update_doc})
 
-    cache.clear(f"/api/sports?event_id={quote(str(resolved_event_id))}")
-    cache.clear(f"/api/sports/{sport}?event_id={quote(str(resolved_event_id))}")
-    cache.clear(f"/api/teams/{sport}?event_id={quote(str(resolved_event_id))}")
-    cache.clear(f"/api/sports-counts?event_id={quote(str(resolved_event_id))}")
-    cache.clear_pattern("/api/players")
-    cache.clear_pattern("/api/me")
+    cache.clear(f"/sports-participations/sports?event_id={quote(str(resolved_event_id))}")
+    cache.clear(f"/sports-participations/sports/{sport}?event_id={quote(str(resolved_event_id))}")
+    cache.clear(f"/sports-participations/teams/{sport}?event_id={quote(str(resolved_event_id))}")
+    cache.clear(
+        f"/sports-participations/sports-counts?event_id={quote(str(resolved_event_id))}"
+    )
+    cache.clear_pattern("/identities/players")
+    cache.clear_pattern("/identities/me")
     clear_team_gender_cache(team_name, sport, resolved_event_id)
 
     return send_success_response(

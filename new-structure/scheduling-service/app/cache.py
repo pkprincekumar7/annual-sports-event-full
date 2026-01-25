@@ -8,8 +8,8 @@ from .config import get_settings
 
 
 CACHE_TTL: Dict[str, int] = {
-    "/api/event-schedule": 10000,
-    "/api/event-schedule/teams-players": 10000,
+    "/schedulings/event-schedule": 10000,
+    "/schedulings/event-schedule/teams-players": 10000,
     "default": 5000,
 }
 

@@ -18,24 +18,24 @@ echo "==> Health check"
 curl -sS "$BASE_URL/health" | jq .
 
 if [[ -n "$EVENT_ID" ]]; then
-  echo "==> /api/batches (public)"
-  curl -sS "$BASE_URL/api/batches?event_id=$EVENT_ID" | jq .
+  echo "==> /enrollments/batches (public)"
+  curl -sS "$BASE_URL/enrollments/batches?event_id=$EVENT_ID" | jq .
 else
-  echo "Skipping /api/batches (set EVENT_ID to include query)."
+  echo "Skipping /enrollments/batches (set EVENT_ID to include query)."
 fi
 
 if [[ -z "$ADMIN_TOKEN" || -z "$EVENT_ID" ]]; then
   echo "Skipping admin batch operations (set ADMIN_TOKEN and EVENT_ID)."
 else
-  echo "==> /api/add-batch"
-  ADD_BATCH_RESPONSE=$(curl -sS -X POST "$BASE_URL/api/add-batch" \
+  echo "==> /enrollments/add-batch"
+  ADD_BATCH_RESPONSE=$(curl -sS -X POST "$BASE_URL/enrollments/add-batch" \
     -H "Authorization: Bearer $ADMIN_TOKEN" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"$BATCH_NAME\",\"event_id\":\"$EVENT_ID\"}")
   echo "$ADD_BATCH_RESPONSE" | jq .
 
-  echo "==> /api/remove-batch"
-  REMOVE_BATCH_RESPONSE=$(curl -sS -X DELETE "$BASE_URL/api/remove-batch" \
+  echo "==> /enrollments/remove-batch"
+  REMOVE_BATCH_RESPONSE=$(curl -sS -X DELETE "$BASE_URL/enrollments/remove-batch" \
     -H "Authorization: Bearer $ADMIN_TOKEN" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"$BATCH_NAME\",\"event_id\":\"$EVENT_ID\"}")
@@ -43,13 +43,13 @@ else
 fi
 
 if [[ -n "$EVENT_ID" && -n "$BATCH_NAME" && -n "$REG_NUMBER" ]]; then
-  echo "==> /api/batches/assign-player"
-  curl -sS -X POST "$BASE_URL/api/batches/assign-player" \
+  echo "==> /enrollments/batches/assign-player"
+  curl -sS -X POST "$BASE_URL/enrollments/batches/assign-player" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"$BATCH_NAME\",\"event_id\":\"$EVENT_ID\",\"reg_number\":\"$REG_NUMBER\"}" | jq .
 
-  echo "==> /api/batches/unassign-player"
-  curl -sS -X POST "$BASE_URL/api/batches/unassign-player" \
+  echo "==> /enrollments/batches/unassign-player"
+  curl -sS -X POST "$BASE_URL/enrollments/batches/unassign-player" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"$BATCH_NAME\",\"event_id\":\"$EVENT_ID\",\"reg_number\":\"$REG_NUMBER\"}" | jq .
 else

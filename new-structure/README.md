@@ -6,13 +6,35 @@ This folder contains the FastAPI microservices + Vite frontend for the annual sp
 
 - Identity Service (`identity-service`)
 - Enrollment Service (`enrollment-service`)
-- Organization Service (`organization-service`)
+- Department Service (`department-service`)
 - Sports Participation Service (`sports-participation-service`)
 - Event Configuration Service (`event-configuration-service`)
 - Scheduling Service (`scheduling-service`)
 - Scoring Service (`scoring-service`)
 - Reporting Service (`reporting-service`)
 - Frontend (`frontend`)
+
+### Base Paths (Nginx + Local)
+
+- `/identities`
+- `/enrollments`
+- `/departments`
+- `/sports-participations`
+- `/event-configurations`
+- `/schedulings`
+- `/scorings`
+- `/reportings`
+
+### API Docs (Swagger)
+
+- Identity: `http://localhost:5173/identities/docs`
+- Enrollment: `http://localhost:5173/enrollments/docs`
+- Department: `http://localhost:5173/departments/docs`
+- Sports Participation: `http://localhost:5173/sports-participations/docs`
+- Event Configuration: `http://localhost:5173/event-configurations/docs`
+- Scheduling: `http://localhost:5173/schedulings/docs`
+- Scoring: `http://localhost:5173/scorings/docs`
+- Reporting: `http://localhost:5173/reportings/docs`
 
 ### Prerequisites
 

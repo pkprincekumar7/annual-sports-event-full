@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     event_configuration_url: str = os.getenv("EVENT_CONFIGURATION_URL", "").rstrip("/")
     sports_participation_url: str = os.getenv("SPORTS_PARTICIPATION_URL", "").rstrip("/")
     enrollment_url: str = os.getenv("ENROLLMENT_URL", "").rstrip("/")
-    organization_url: str = os.getenv("ORGANIZATION_URL", "").rstrip("/")
+    department_url: str = os.getenv("DEPARTMENT_URL", "").rstrip("/")
     scheduling_url: str = os.getenv("SCHEDULING_URL", "").rstrip("/")
 
     email_provider: str = os.getenv("EMAIL_PROVIDER", "gmail")

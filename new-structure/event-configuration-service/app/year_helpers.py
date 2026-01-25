@@ -55,14 +55,14 @@ async def find_active_event_year() -> Optional[Dict[str, Any]]:
 
 
 async def get_active_event_year_cached() -> Optional[Dict[str, Any]]:
-    cached = cache.get("/api/event-years/active")
+    cached = cache.get("/event-configurations/event-years/active")
     if cached and should_event_year_be_active(cached):
         return cached
     if cached:
-        cache.clear("/api/event-years/active")
+        cache.clear("/event-configurations/event-years/active")
     active = await find_active_event_year()
     if active:
-        cache.set("/api/event-years/active", active)
+        cache.set("/event-configurations/event-years/active", active)
     return active
 
 

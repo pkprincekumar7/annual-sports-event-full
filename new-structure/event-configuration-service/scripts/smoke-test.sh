@@ -26,8 +26,8 @@ fi
 echo "==> Health check"
 curl -sS "$BASE_URL/health" | jq .
 
-echo "==> /api/event-years/active (public)"
-curl -sS "$BASE_URL/api/event-years/active" | jq .
+echo "==> /event-configurations/event-years/active (public)"
+curl -sS "$BASE_URL/event-configurations/event-years/active" | jq .
 
 if [[ -z "$ADMIN_TOKEN" ]]; then
   echo "Skipping admin event-year operations (set ADMIN_TOKEN)."
@@ -35,8 +35,8 @@ if [[ -z "$ADMIN_TOKEN" ]]; then
   exit 0
 fi
 
-echo "==> /api/event-years (auth)"
-curl -sS "$BASE_URL/api/event-years" \
+echo "==> /event-configurations/event-years (auth)"
+curl -sS "$BASE_URL/event-configurations/event-years" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
 
 if [[ -z "$EVENT_YEAR" || -z "$REG_START_DATE" || -z "$REG_END_DATE" || -z "$EVENT_START_DATE" || -z "$EVENT_END_DATE" ]]; then
@@ -47,8 +47,8 @@ fi
 
 EVENT_ID="${EVENT_ID:-${EVENT_YEAR}-$(echo "$EVENT_NAME" | tr '[:upper:]' '[:lower:]' | tr -s ' ' '-' )}"
 
-echo "==> /api/event-years (create)"
-CREATE_RESPONSE=$(curl -sS -X POST "$BASE_URL/api/event-years" \
+echo "==> /event-configurations/event-years (create)"
+CREATE_RESPONSE=$(curl -sS -X POST "$BASE_URL/event-configurations/event-years" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
@@ -62,15 +62,15 @@ CREATE_RESPONSE=$(curl -sS -X POST "$BASE_URL/api/event-years" \
   }")
 echo "$CREATE_RESPONSE" | jq .
 
-echo "==> /api/event-years/${EVENT_ID} (update highlight)"
-UPDATE_RESPONSE=$(curl -sS -X PUT "$BASE_URL/api/event-years/$EVENT_ID" \
+echo "==> /event-configurations/event-years/${EVENT_ID} (update highlight)"
+UPDATE_RESPONSE=$(curl -sS -X PUT "$BASE_URL/event-configurations/event-years/$EVENT_ID" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"event_highlight\":\"${EVENT_HIGHLIGHT} Updated\"}")
 echo "$UPDATE_RESPONSE" | jq .
 
-echo "==> /api/event-years/${EVENT_ID} (delete)"
-DELETE_RESPONSE=$(curl -sS -X DELETE "$BASE_URL/api/event-years/$EVENT_ID" \
+echo "==> /event-configurations/event-years/${EVENT_ID} (delete)"
+DELETE_RESPONSE=$(curl -sS -X DELETE "$BASE_URL/event-configurations/event-years/$EVENT_ID" \
   -H "Authorization: Bearer $ADMIN_TOKEN")
 echo "$DELETE_RESPONSE" | jq .
 

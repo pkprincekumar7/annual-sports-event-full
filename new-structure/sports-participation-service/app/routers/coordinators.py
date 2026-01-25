@@ -81,10 +81,10 @@ async def add_coordinator(
     update_doc = {key: value for key, value in sport_doc.items() if key != "_id"}
     await sports_collection().update_one({"_id": sport_doc.get("_id")}, {"$set": update_doc})
 
-    cache.clear(f"/api/sports?event_id={quote(str(resolved_event_id))}")
-    cache.clear(f"/api/sports/{sport}?event_id={quote(str(resolved_event_id))}")
-    cache.clear_pattern("/api/players")
-    cache.clear_pattern("/api/me")
+    cache.clear(f"/sports-participations/sports?event_id={quote(str(resolved_event_id))}")
+    cache.clear(f"/sports-participations/sports/{sport}?event_id={quote(str(resolved_event_id))}")
+    cache.clear_pattern("/identities/players")
+    cache.clear_pattern("/identities/me")
 
     return send_success_response(
         {"sport": _serialize_sport(sport_doc)},
@@ -125,10 +125,10 @@ async def remove_coordinator(
     update_doc = {key: value for key, value in sport_doc.items() if key != "_id"}
     await sports_collection().update_one({"_id": sport_doc.get("_id")}, {"$set": update_doc})
 
-    cache.clear(f"/api/sports?event_id={quote(str(resolved_event_id))}")
-    cache.clear(f"/api/sports/{sport}?event_id={quote(str(resolved_event_id))}")
-    cache.clear_pattern("/api/players")
-    cache.clear_pattern("/api/me")
+    cache.clear(f"/sports-participations/sports?event_id={quote(str(resolved_event_id))}")
+    cache.clear(f"/sports-participations/sports/{sport}?event_id={quote(str(resolved_event_id))}")
+    cache.clear_pattern("/identities/players")
+    cache.clear_pattern("/identities/me")
 
     return send_success_response(
         {"sport": _serialize_sport(sport_doc)},

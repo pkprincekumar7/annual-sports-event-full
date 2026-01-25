@@ -30,7 +30,7 @@ export function useEventYear(selectedEventIdOverride = null) {
         return null
       }
 
-      const response = await fetchWithAuth('/api/event-years')
+      const response = await fetchWithAuth('/event-configurations/event-years')
       
       if (!response.ok) {
         logger.warn('Failed to fetch event years for fallback:', response.status)
@@ -64,7 +64,7 @@ export function useEventYear(selectedEventIdOverride = null) {
       setError(null)
       
       try {
-        const response = await fetchWithAuth('/api/event-years/active')
+        const response = await fetchWithAuth('/event-configurations/event-years/active')
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)

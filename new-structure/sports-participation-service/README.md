@@ -24,32 +24,39 @@ FastAPI service for sports, captains, coordinators, teams, and participants. Thi
 - No per-service tokens are supported.
 ### Endpoints
 
-- `GET /api/sports`
-- `POST /api/sports`
-- `PUT /api/sports/{id}`
-- `DELETE /api/sports/{id}`
-- `GET /api/sports-counts`
-- `GET /api/sports/{name}`
-- `POST /api/add-captain`
-- `DELETE /api/remove-captain`
-- `GET /api/captains-by-sport`
-- `POST /api/add-coordinator`
-- `DELETE /api/remove-coordinator`
-- `GET /api/coordinators-by-sport`
-- `POST /api/update-team-participation`
-- `GET /api/teams/{sport}`
-- `POST /api/update-team-player`
-- `DELETE /api/delete-team`
-- `POST /api/validate-participations`
-- `GET /api/participants/{sport}`
-- `GET /api/participants-count/{sport}`
-- `GET /api/player-enrollments/{reg_number}`
-- `POST /api/update-participation`
-- `DELETE /api/remove-participation`
+- `GET /sports-participations/sports`
+- `POST /sports-participations/sports`
+- `PUT /sports-participations/sports/{id}`
+- `DELETE /sports-participations/sports/{id}`
+- `GET /sports-participations/sports-counts`
+- `GET /sports-participations/sports/{name}`
+- `POST /sports-participations/add-captain`
+- `DELETE /sports-participations/remove-captain`
+- `GET /sports-participations/captains-by-sport`
+- `POST /sports-participations/add-coordinator`
+- `DELETE /sports-participations/remove-coordinator`
+- `GET /sports-participations/coordinators-by-sport`
+- `POST /sports-participations/update-team-participation`
+- `GET /sports-participations/teams/{sport}`
+- `POST /sports-participations/update-team-player`
+- `DELETE /sports-participations/delete-team`
+- `POST /sports-participations/validate-participations`
+- `GET /sports-participations/participants/{sport}`
+- `GET /sports-participations/participants-count/{sport}`
+- `GET /sports-participations/player-enrollments/{reg_number}`
+- `POST /sports-participations/update-participation`
+- `DELETE /sports-participations/remove-participation`
+
+### API Docs (Swagger)
+
+- Local UI: `http://localhost:8004/sports-participations/docs`
+- Spec file: `swagger.yaml`
+- Nginx UI: `http://localhost:5173/sports-participations/docs`
+- Nginx Spec: `http://localhost:5173/sports-participations/swagger.yml`
 
 ### Checklist
 
-- Public `/api/sports` and `/api/sports/{name}` responses match legacy payloads
+- Public `/sports-participations/sports` and `/sports-participations/sports/{name}` responses match legacy payloads
 - Team validations enforce batch + gender + captain rules
 - Coordinator/captain assignment rules mirror legacy logic
 - Cache invalidation follows the Node.js behavior

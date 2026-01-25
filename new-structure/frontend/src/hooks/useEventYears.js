@@ -72,7 +72,7 @@ export function useEventYears() {
       setLoading(true)
       try {
         fetchPromise = (async () => {
-          const response = await fetchWithAuth('/api/event-years')
+          const response = await fetchWithAuth('/event-configurations/event-years')
           
           // Handle 401 (unauthorized) - user is not logged in
           if (response.status === 401) {

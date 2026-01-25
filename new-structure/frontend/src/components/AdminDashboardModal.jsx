@@ -97,7 +97,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
   const fetchEventYearsData = async () => {
     setLoadingEventYears(true)
     try {
-      const response = await fetchWithAuth('/api/event-years')
+      const response = await fetchWithAuth('/event-configurations/event-years')
       
       if (!response.ok) {
         // Only show error for actual server errors (5xx), not for empty data or 404
@@ -132,7 +132,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
   const fetchSportsData = async () => {
     setLoadingSports(true)
     try {
-      const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports', currentEventId))
+      const response = await fetchWithAuth(buildApiUrlWithYear('/sports-participations/sports', currentEventId))
       if (!response.ok) {
         // Only show error for actual server errors (5xx), not for empty data
         if (response.status >= 500) {
@@ -159,7 +159,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
   const fetchDepartmentsData = async () => {
     setLoadingDepts(true)
     try {
-      const response = await fetchWithAuth('/api/departments')
+      const response = await fetchWithAuth('/departments')
       if (!response.ok) {
         // Only show error for actual server errors (5xx), not for empty data
         if (response.status >= 500) {
@@ -224,7 +224,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
     }
 
     try {
-      const response = await fetchWithAuth('/api/event-years', {
+      const response = await fetchWithAuth('/event-configurations/event-years', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -248,7 +248,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
         throw new Error(error.error || 'Failed to create event year')
       }
       const createdYear = await response.json()
-      clearCache('/api/event-years/active')
+      clearCache('/event-configurations/event-years/active')
       // Dispatch custom event to trigger refetch in all components using useEventYear hook
       window.dispatchEvent(new CustomEvent('eventYearUpdated'))
       onStatusPopup('✅ Event year created successfully', 'success', 2500)
@@ -391,7 +391,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
     
     try {
       const response = await fetchWithAuth(
-        `/api/event-years/${editingEventYear.event_id}`,
+        `/event-configurations/event-years/${editingEventYear.event_id}`,
         {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -402,7 +402,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
         const error = await response.json()
         throw new Error(error.error || 'Failed to update event year')
       }
-      clearCache('/api/event-years/active')
+      clearCache('/event-configurations/event-years/active')
       // Dispatch custom event to trigger refetch in all components using useEventYear hook
       window.dispatchEvent(new CustomEvent('eventYearUpdated'))
       onStatusPopup('✅ Event year updated successfully', 'success', 2500)
@@ -445,7 +445,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
   const handleDeleteEventYear = async (eventYear) => {
     try {
       const response = await fetchWithAuth(
-        `/api/event-years/${eventYear.event_id}`,
+        `/event-configurations/event-years/${eventYear.event_id}`,
         {
         method: 'DELETE'
         }
@@ -454,7 +454,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
         const error = await response.json()
         throw new Error(error.error || 'Failed to delete event year')
       }
-      clearCache('/api/event-years/active')
+      clearCache('/event-configurations/event-years/active')
       // Dispatch custom event to trigger refetch in all components using useEventYear hook
       window.dispatchEvent(new CustomEvent('eventYearUpdated'))
       onStatusPopup('✅ Event year deleted successfully', 'success', 2500)
@@ -519,7 +519,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
     }
     
     try {
-      const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports', currentEventId), {
+      const response = await fetchWithAuth(buildApiUrlWithYear('/sports-participations/sports', currentEventId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -537,8 +537,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
       // Clear sport-related caches using utility function
       clearSportManagementCaches(currentEventId)
       // Also clear captains and coordinators caches as they're sport-specific
-      clearCache(buildApiUrlWithYear('/api/captains-by-sport', currentEventId))
-      clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', currentEventId))
+      clearCache(buildApiUrlWithYear('/sports-participations/captains-by-sport', currentEventId))
+      clearCache(buildApiUrlWithYear('/sports-participations/coordinators-by-sport', currentEventId))
       onStatusPopup('✅ Sport created successfully', 'success', 2500)
       setSportForm({ name: '', type: '', category: '', team_size: '', imageUri: '' })
       fetchSportsData()
@@ -576,7 +576,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
     }
     
     try {
-      const response = await fetchWithAuth(buildApiUrlWithYear(`/api/sports/${editingSport._id}`, currentEventId), {
+      const response = await fetchWithAuth(buildApiUrlWithYear(`/sports-participations/sports/${editingSport._id}`, currentEventId), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -593,8 +593,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
       // Clear sport-related caches using utility function
       clearSportManagementCaches(currentEventId)
       // Also clear captains and coordinators caches as they're sport-specific
-      clearCache(buildApiUrlWithYear('/api/captains-by-sport', currentEventId))
-      clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', currentEventId))
+      clearCache(buildApiUrlWithYear('/sports-participations/captains-by-sport', currentEventId))
+      clearCache(buildApiUrlWithYear('/sports-participations/coordinators-by-sport', currentEventId))
       onStatusPopup('✅ Sport updated successfully', 'success', 2500)
       setEditingSport(null)
       setSportForm({ name: '', type: '', category: '', team_size: '', imageUri: '' })
@@ -625,7 +625,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
     }
     
     try {
-      const response = await fetchWithAuth(buildApiUrlWithYear(`/api/sports/${sportId}`, currentEventId), {
+      const response = await fetchWithAuth(buildApiUrlWithYear(`/sports-participations/sports/${sportId}`, currentEventId), {
         method: 'DELETE'
       })
       if (!response.ok) {
@@ -635,8 +635,8 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
       // Clear sport-related caches using utility function
       clearSportManagementCaches(currentEventId)
       // Also clear captains and coordinators caches as they're sport-specific
-      clearCache(buildApiUrlWithYear('/api/captains-by-sport', currentEventId))
-      clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', currentEventId))
+      clearCache(buildApiUrlWithYear('/sports-participations/captains-by-sport', currentEventId))
+      clearCache(buildApiUrlWithYear('/sports-participations/coordinators-by-sport', currentEventId))
       onStatusPopup('✅ Sport deleted successfully', 'success', 2500)
       setShowDeleteSportConfirm(null)
       fetchSportsData()
@@ -662,7 +662,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
   const handleCreateDepartment = async (e) => {
     e.preventDefault()
     try {
-      const response = await fetchWithAuth('/api/departments', {
+      const response = await fetchWithAuth('/departments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -674,7 +674,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
         const error = await response.json()
         throw new Error(error.error || 'Failed to create department')
       }
-      clearCache('/api/departments')
+      clearCache('/departments')
       onStatusPopup('✅ Department created successfully', 'success', 2500)
       setDeptForm({ name: '', code: '', display_order: 0 })
       fetchDepartmentsData()
@@ -687,7 +687,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
     e.preventDefault()
     if (!editingDept) return
     try {
-      const response = await fetchWithAuth(`/api/departments/${editingDept._id}`, {
+      const response = await fetchWithAuth(`/departments/${editingDept._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -698,7 +698,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
         const error = await response.json()
         throw new Error(error.error || 'Failed to update department')
       }
-      clearCache('/api/departments')
+      clearCache('/departments')
       onStatusPopup('✅ Department updated successfully', 'success', 2500)
       setEditingDept(null)
       setDeptForm({ name: '', code: '', display_order: 0 })
@@ -714,7 +714,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
     const deptName = deptToDelete?.name || 'this department'
     
     try {
-      const response = await fetchWithAuth(`/api/departments/${deptId}`, {
+      const response = await fetchWithAuth(`/departments/${deptId}`, {
         method: 'DELETE'
       })
       if (!response.ok) {
@@ -722,7 +722,7 @@ function AdminDashboardModal({ isOpen, onClose, onStatusPopup, selectedEventId, 
         // Backend returns: "Cannot delete department. X player(s) are registered with this department."
         throw new Error(error.error || `Failed to delete department "${deptName}"`)
       }
-      clearCache('/api/departments')
+      clearCache('/departments')
       onStatusPopup('✅ Department deleted successfully', 'success', 2500)
       setShowDeleteDeptConfirm(null)
       fetchDepartmentsData()

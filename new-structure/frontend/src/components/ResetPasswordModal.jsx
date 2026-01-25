@@ -39,7 +39,7 @@ function ResetPasswordModal({ isOpen, onClose, onStatusPopup }) {
 
     try {
       await execute(
-        () => fetch(buildApiUrl('/api/reset-password'), {
+        () => fetch(buildApiUrl('/identities/reset-password'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

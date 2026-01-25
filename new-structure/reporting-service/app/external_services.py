@@ -56,7 +56,9 @@ def should_event_year_be_active(event_year_doc: Dict[str, Any]) -> bool:
 async def get_active_event_year() -> Optional[Dict[str, Any]]:
     if not settings.event_configuration_url:
         return None
-    data = await _get_json(f"{settings.event_configuration_url}/api/event-years/active")
+    data = await _get_json(
+        f"{settings.event_configuration_url}/event-configurations/event-years/active"
+    )
     event_year = data.get("eventYear")
     if event_year and should_event_year_be_active(event_year):
         return event_year
@@ -67,7 +69,7 @@ async def fetch_event_years(token: str = "") -> List[Dict[str, Any]]:
     if not settings.event_configuration_url:
         raise RuntimeError("EVENT_CONFIGURATION_URL is not configured")
     data = await _get_json(
-        f"{settings.event_configuration_url}/api/event-years",
+        f"{settings.event_configuration_url}/event-configurations/event-years",
         token=token,
     )
     return data.get("eventYears", [])
@@ -117,7 +119,7 @@ async def fetch_sports(event_id: Optional[str], token: str = "") -> List[Dict[st
     if event_id:
         params["event_id"] = event_id
     data = await _get_json(
-        f"{settings.sports_participation_url}/api/sports",
+        f"{settings.sports_participation_url}/sports-participations/sports",
         params=params or None,
         token=token,
     )
@@ -131,7 +133,7 @@ async def fetch_players(event_id: Optional[str], token: str = "") -> List[Dict[s
     if event_id:
         params["event_id"] = event_id
     data = await _get_json(
-        f"{settings.identity_url}/api/players",
+        f"{settings.identity_url}/identities/players",
         params=params or None,
         token=token,
     )
@@ -142,7 +144,7 @@ async def fetch_batches(event_id: str, token: str = "") -> List[Dict[str, Any]]:
     if not settings.enrollment_url:
         raise RuntimeError("ENROLLMENT_URL is not configured")
     data = await _get_json(
-        f"{settings.enrollment_url}/api/batches",
+        f"{settings.enrollment_url}/enrollments/batches",
         params={"event_id": event_id},
         token=token,
     )
@@ -153,7 +155,7 @@ async def get_identity_me(token: str) -> Optional[Dict[str, Any]]:
     if not settings.identity_url:
         raise RuntimeError("IDENTITY_URL is not configured")
     data = await _get_json(
-        f"{settings.identity_url}/api/me",
+        f"{settings.identity_url}/identities/me",
         token=token,
     )
     return data.get("player")

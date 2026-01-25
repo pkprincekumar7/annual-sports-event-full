@@ -8,7 +8,7 @@ from .config import get_settings
 
 
 CACHE_TTL: Dict[str, int] = {
-    "/api/points-table": 10000,
+    "/scorings/points-table": 10000,
     "default": 5000,
 }
 

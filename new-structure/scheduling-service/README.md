@@ -23,11 +23,18 @@ utilities (match validation, gender derivation, and cache handling).
 - No per-service tokens are supported.
 ### Endpoints
 
-- `GET /api/event-schedule/{sport}`
-- `GET /api/event-schedule/{sport}/teams-players`
-- `POST /api/event-schedule`
-- `PUT /api/event-schedule/{match_id}`
-- `DELETE /api/event-schedule/{match_id}`
+- `GET /schedulings/event-schedule/{sport}`
+- `GET /schedulings/event-schedule/{sport}/teams-players`
+- `POST /schedulings/event-schedule`
+- `PUT /schedulings/event-schedule/{match_id}`
+- `DELETE /schedulings/event-schedule/{match_id}`
+
+### API Docs (Swagger)
+
+- Local UI: `http://localhost:8006/schedulings/docs`
+- Spec file: `swagger.yaml`
+- Nginx UI: `http://localhost:5173/schedulings/docs`
+- Nginx Spec: `http://localhost:5173/schedulings/swagger.yml`
 
 ### Checklist
 

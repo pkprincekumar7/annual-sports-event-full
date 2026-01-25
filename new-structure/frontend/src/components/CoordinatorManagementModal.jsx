@@ -51,17 +51,17 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
     const fetchData = async () => {
       try {
         const [playersRes, sportsRes] = await Promise.all([
-          fetchWithAuth(buildApiUrlWithYear('/api/players', eventId), { signal: abortController.signal }),
-          fetchWithAuth(buildApiUrlWithYear('/api/sports', eventId), { signal: abortController.signal }),
+          fetchWithAuth(buildApiUrlWithYear('/identities/players', eventId), { signal: abortController.signal }),
+          fetchWithAuth(buildApiUrlWithYear('/sports-participations/sports', eventId), { signal: abortController.signal }),
         ])
 
         if (!isMounted) return
 
         if (!playersRes.ok) {
-          throw new Error(`HTTP error! status: ${playersRes.status} for /api/players`)
+          throw new Error(`HTTP error! status: ${playersRes.status} for /identities/players`)
         }
         if (!sportsRes.ok) {
-          throw new Error(`HTTP error! status: ${sportsRes.status} for /api/sports`)
+          throw new Error(`HTTP error! status: ${sportsRes.status} for /sports-participations/sports`)
         }
 
         const [playersData, sportsData] = await Promise.all([
@@ -98,7 +98,7 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
   // Fetch coordinators by sport for Remove tab
   useEffect(() => {
     if (isOpen && activeTab === TABS.REMOVE && eventYear) {
-      fetchWithAuth(buildApiUrlWithYear('/api/coordinators-by-sport', eventId))
+      fetchWithAuth(buildApiUrlWithYear('/sports-participations/coordinators-by-sport', eventId))
         .then((res) => {
           if (!res.ok) {
             if (res.status >= 500) {
@@ -170,7 +170,7 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
 
     try {
       await execute(
-        () => fetchWithAuth('/api/add-coordinator', {
+        () => fetchWithAuth('/sports-participations/add-coordinator', {
           method: 'POST',
           body: JSON.stringify({
             reg_number: selectedPlayer.reg_number,
@@ -180,10 +180,10 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
         }),
         {
           onSuccess: (data) => {
-            clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', eventId))
-            clearCache(buildApiUrlWithYear('/api/players', eventId))
-            clearCache(buildApiUrlWithYear('/api/me', eventId))
-            clearCache(buildApiUrlWithYear('/api/sports', eventId))
+            clearCache(buildApiUrlWithYear('/sports-participations/coordinators-by-sport', eventId))
+            clearCache(buildApiUrlWithYear('/identities/players', eventId))
+            clearCache(buildApiUrlWithYear('/identities/me', eventId))
+            clearCache(buildApiUrlWithYear('/sports-participations/sports', eventId))
             
             onStatusPopup(
               `✅ ${selectedPlayer.full_name} has been added as coordinator for ${selectedSport}!`,
@@ -229,7 +229,7 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
     
     try {
       await execute(
-        () => fetchWithAuth('/api/remove-coordinator', {
+        () => fetchWithAuth('/sports-participations/remove-coordinator', {
           method: 'DELETE',
           body: JSON.stringify({
             reg_number: regNumber,
@@ -245,12 +245,12 @@ function CoordinatorManagementModal({ isOpen, onClose, onStatusPopup, selectedEv
               3000
             )
             isRefreshingRef.current = true
-            clearCache(buildApiUrlWithYear('/api/coordinators-by-sport', eventId))
-            clearCache(buildApiUrlWithYear('/api/players', eventId))
-            clearCache(buildApiUrlWithYear('/api/me', eventId))
-            clearCache(buildApiUrlWithYear('/api/sports', eventId))
+            clearCache(buildApiUrlWithYear('/sports-participations/coordinators-by-sport', eventId))
+            clearCache(buildApiUrlWithYear('/identities/players', eventId))
+            clearCache(buildApiUrlWithYear('/identities/me', eventId))
+            clearCache(buildApiUrlWithYear('/sports-participations/sports', eventId))
             
-            const coordinatorsUrl = buildApiUrlWithYear('/api/coordinators-by-sport', eventId)
+            const coordinatorsUrl = buildApiUrlWithYear('/sports-participations/coordinators-by-sport', eventId)
             fetchWithAuth(coordinatorsUrl, { skipCache: true })
               .then((res) => {
                 if (!res.ok) {

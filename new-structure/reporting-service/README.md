@@ -23,7 +23,14 @@ player participation and batch lookups for report generation.
 - No per-service tokens are supported.
 ### Endpoints
 
-- `GET /api/export-excel`
+- `GET /reportings/export-excel`
+
+### API Docs (Swagger)
+
+- Local UI: `http://localhost:8008/reportings/docs`
+- Spec file: `swagger.yaml`
+- Nginx UI: `http://localhost:5173/reportings/docs`
+- Nginx Spec: `http://localhost:5173/reportings/swagger.yml`
 
 ### Checklist
 

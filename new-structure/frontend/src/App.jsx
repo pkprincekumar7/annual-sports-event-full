@@ -323,7 +323,7 @@ function App() {
 
     try {
       // Clear cache to force fresh fetch
-      clearCache('/api/players')
+      clearCache('/identities/players')
       // Use optimized fetchCurrentUser function
       const result = await fetchCurrentUser()
       if (result.user) {
@@ -347,7 +347,7 @@ function App() {
     // Update logged-in user data (e.g., after participation update)
     setLoggedInUser(updatedPlayer)
     // Clear cache to ensure fresh data on next fetch
-    clearCache('/api/players')
+    clearCache('/identities/players')
   }
 
   const handleLogout = () => {
@@ -376,7 +376,7 @@ function App() {
       // Always use the selected event_id; if none is selected, export with empty event data
       const eventId = selectedEventId || null
       
-      const exportUrl = buildApiUrlWithYear('/api/export-excel', eventId)
+      const exportUrl = buildApiUrlWithYear('/reportings/export-excel', eventId)
       const response = await fetchWithAuth(exportUrl)
       
       if (!response.ok) {
@@ -499,9 +499,9 @@ function App() {
                 onEventYearChange={(eventId) => {
                   setSelectedEventId(eventId)
                   // Clear caches when event year changes
-                  clearCache('/api/sports')
-                  clearCache('/api/sports-counts')
-                  clearCache('/api/event-schedule')
+                  clearCache('/sports-participations/sports')
+                  clearCache('/sports-participations/sports-counts')
+                  clearCache('/schedulings/event-schedule')
                 }}
                 selectedEventId={selectedEventId}
                 loggedInUser={loggedInUser}
@@ -628,9 +628,9 @@ function App() {
         onEventYearChange={(eventId) => {
           setSelectedEventId(eventId)
           // Clear caches when event year changes
-          clearCache('/api/sports')
-          clearCache('/api/sports-counts')
-          clearCache('/api/event-schedule')
+          clearCache('/sports-participations/sports')
+          clearCache('/sports-participations/sports-counts')
+          clearCache('/schedulings/event-schedule')
         }}
         loggedInUser={loggedInUser}
       />

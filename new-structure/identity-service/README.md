@@ -13,7 +13,7 @@ FastAPI service for authentication and player management. This ports routes from
 - Event Configuration Service: `EVENT_CONFIGURATION_URL`
 - Sports Participation Service: `SPORTS_PARTICIPATION_URL`
 - Enrollment Service: `ENROLLMENT_URL`
-- Organization Service: `ORGANIZATION_URL`
+- Department Service: `DEPARTMENT_URL`
 - Scheduling Service: `SCHEDULING_URL`
 - Redis: `REDIS_URL`
 
@@ -24,29 +24,36 @@ FastAPI service for authentication and player management. This ports routes from
 
 ### Endpoints
 
-- `POST /api/login`
-- `POST /api/change-password`
-- `POST /api/reset-password`
-- `GET /api/me`
-- `GET /api/players`
-- `POST /api/save-player`
-- `PUT /api/update-player`
-- `POST /api/bulk-player-enrollments`
-- `DELETE /api/delete-player/{reg_number}`
-- `POST /api/bulk-delete-players`
+- `POST /identities/login`
+- `POST /identities/change-password`
+- `POST /identities/reset-password`
+- `GET /identities/me`
+- `GET /identities/players`
+- `POST /identities/save-player`
+- `PUT /identities/update-player`
+- `POST /identities/bulk-player-enrollments`
+- `DELETE /identities/delete-player/{reg_number}`
+- `POST /identities/bulk-delete-players`
+
+### API Docs (Swagger)
+
+- Local UI: `http://localhost:8001/identities/docs`
+- Spec file: `swagger.yaml`
+- Nginx UI: `http://localhost:5173/identities/docs`
+- Nginx Spec: `http://localhost:5173/identities/swagger.yml`
 
 ### Checklist
 
-- `POST /api/login` returns `token`, `player`, and `change_password_required`
-- `POST /api/change-password` enforces auth and clears `change_password_required`
-- `POST /api/reset-password` sends email and updates password
-- `GET /api/me` includes computed fields and `batch_name`
-- `GET /api/players` supports search + pagination + computed fields
-- `POST /api/save-player` validates department + batch + event context
-- `PUT /api/update-player` enforces admin + gender immutability
-- `POST /api/bulk-player-enrollments` returns enrollments + matches
-- `DELETE /api/delete-player/{reg_number}` blocks team/match constraints
-- `POST /api/bulk-delete-players` enforces constraints and returns details
+- `POST /identities/login` returns `token`, `player`, and `change_password_required`
+- `POST /identities/change-password` enforces auth and clears `change_password_required`
+- `POST /identities/reset-password` sends email and updates password
+- `GET /identities/me` includes computed fields and `batch_name`
+- `GET /identities/players` supports search + pagination + computed fields
+- `POST /identities/save-player` validates department + batch + event context
+- `PUT /identities/update-player` enforces admin + gender immutability
+- `POST /identities/bulk-player-enrollments` returns enrollments + matches
+- `DELETE /identities/delete-player/{reg_number}` blocks team/match constraints
+- `POST /identities/bulk-delete-players` enforces constraints and returns details
 
 ### Smoke Test
 

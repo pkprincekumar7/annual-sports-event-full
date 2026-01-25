@@ -40,9 +40,13 @@ async def check_registration_deadline(request: Request):
     if request.method == "GET":
         return None
     path = request.url.path
-    if path in {"/api/login", "/api/change-password", "/api/reset-password"}:
+    if path in {
+        "/identities/login",
+        "/identities/change-password",
+        "/identities/reset-password",
+    }:
         return None
-    if path.startswith("/api/event-years"):
+    if path.startswith("/event-configurations/event-years"):
         return None
     try:
         active_year = await get_active_event_year_cached()

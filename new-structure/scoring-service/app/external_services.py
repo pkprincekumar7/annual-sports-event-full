@@ -55,17 +55,19 @@ def should_event_year_be_active(event_year_doc: Dict[str, Any]) -> bool:
 
 
 async def get_active_event_year() -> Optional[Dict[str, Any]]:
-    cached = cache.get("/api/event-years/active")
+    cached = cache.get("/event-configurations/event-years/active")
     if cached and should_event_year_be_active(cached):
         return cached
     if cached:
-        cache.clear("/api/event-years/active")
+        cache.clear("/event-configurations/event-years/active")
     if not settings.event_configuration_url:
         return None
-    data = await _get_json(f"{settings.event_configuration_url}/api/event-years/active")
+    data = await _get_json(
+        f"{settings.event_configuration_url}/event-configurations/event-years/active"
+    )
     event_year = data.get("eventYear")
     if event_year:
-        cache.set("/api/event-years/active", event_year)
+        cache.set("/event-configurations/event-years/active", event_year)
     return event_year
 
 
@@ -73,7 +75,7 @@ async def fetch_event_years(token: str = "") -> List[Dict[str, Any]]:
     if not settings.event_configuration_url:
         raise RuntimeError("EVENT_CONFIGURATION_URL is not configured")
     data = await _get_json(
-        f"{settings.event_configuration_url}/api/event-years",
+        f"{settings.event_configuration_url}/event-configurations/event-years",
         token=token,
     )
     return data.get("eventYears", [])
@@ -127,7 +129,7 @@ async def fetch_sport(
     if event_id:
         params["event_id"] = event_id
     data = await _get_json(
-        f"{settings.sports_participation_url}/api/sports/{sport_name}",
+        f"{settings.sports_participation_url}/sports-participations/sports/{sport_name}",
         params=params or None,
         token=token,
     )
@@ -142,7 +144,7 @@ async def fetch_matches_for_sport(
     if not settings.scheduling_url:
         raise RuntimeError("SCHEDULING_URL is not configured")
     data = await _get_json(
-        f"{settings.scheduling_url}/api/event-schedule/{sport_name}",
+        f"{settings.scheduling_url}/schedulings/event-schedule/{sport_name}",
         params={"event_id": event_id},
         token=token,
     )
@@ -160,7 +162,7 @@ async def fetch_player(
     if event_id:
         params["event_id"] = event_id
     data = await _get_json(
-        f"{settings.identity_url}/api/players",
+        f"{settings.identity_url}/identities/players",
         params=params,
         token=token,
     )
@@ -191,7 +193,7 @@ async def fetch_players_by_reg_numbers(
     if event_id:
         params["event_id"] = event_id
     data = await _get_json(
-        f"{settings.identity_url}/api/players",
+        f"{settings.identity_url}/identities/players",
         params=params or None,
         token=token,
     )
@@ -204,7 +206,7 @@ async def get_identity_me(token: str) -> Optional[Dict[str, Any]]:
     if not settings.identity_url:
         raise RuntimeError("IDENTITY_URL is not configured")
     data = await _get_json(
-        f"{settings.identity_url}/api/me",
+        f"{settings.identity_url}/identities/me",
         token=token,
     )
     return data.get("player")

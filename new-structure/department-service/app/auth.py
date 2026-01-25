@@ -11,7 +11,7 @@ from .errors import send_error_response
 from .external_services import get_identity_profile
 
 
-logger = logging.getLogger("organization-service.auth")
+logger = logging.getLogger("department-service.auth")
 settings = get_settings()
 
 

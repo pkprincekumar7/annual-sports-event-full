@@ -124,11 +124,11 @@ async def get_event_years(_: None = Depends(auth_dependency)):
 
 @router.get("/event-years/active")
 async def get_active_event_year():
-    cached = cache.get("/api/event-years/active")
+    cached = cache.get("/event-configurations/event-years/active")
     if cached and should_event_year_be_active(cached):
         return JSONResponse(content={"success": True, "eventYear": _serialize_event_year(cached)})
     if cached:
-        cache.clear("/api/event-years/active")
+        cache.clear("/event-configurations/event-years/active")
 
     active_year = await find_active_event_year()
     if not active_year:
@@ -140,7 +140,7 @@ async def get_active_event_year():
             }
         )
 
-    cache.set("/api/event-years/active", active_year)
+    cache.set("/event-configurations/event-years/active", active_year)
     return JSONResponse(content={"success": True, "eventYear": _serialize_event_year(active_year)})
 
 
@@ -236,7 +236,7 @@ async def create_event_year(
     insert_result = await event_years_collection().insert_one(event_doc)
     event_doc["_id"] = insert_result.inserted_id
 
-    cache.clear("/api/event-years/active")
+    cache.clear("/event-configurations/event-years/active")
 
     response_event_year = {
         "_id": str(event_doc.get("_id")),
@@ -412,7 +412,7 @@ async def update_event_year(
     )
     updated = await event_years_collection().find_one({"_id": event_year_doc.get("_id")})
 
-    cache.clear("/api/event-years/active")
+    cache.clear("/event-configurations/event-years/active")
 
     return send_success_response(
         _serialize_event_year(updated), "Event year updated successfully"
@@ -485,6 +485,6 @@ async def delete_event_year(
 
     await event_years_collection().delete_one({"_id": year_doc.get("_id")})
 
-    cache.clear("/api/event-years/active")
+    cache.clear("/event-configurations/event-years/active")
 
     return send_success_response({}, "Event year deleted successfully")

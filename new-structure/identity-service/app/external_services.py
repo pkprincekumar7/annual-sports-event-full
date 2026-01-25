@@ -67,17 +67,19 @@ def should_event_year_be_active(event_year_doc: Dict[str, Any]) -> bool:
 
 
 async def get_active_event_year() -> Optional[Dict[str, Any]]:
-    cached = cache.get("/api/event-years/active")
+    cached = cache.get("/event-configurations/event-years/active")
     if cached and should_event_year_be_active(cached):
         return cached
     if cached:
-        cache.clear("/api/event-years/active")
+        cache.clear("/event-configurations/event-years/active")
     if not settings.event_configuration_url:
         return None
-    data = await _get_json(f"{settings.event_configuration_url}/api/event-years/active")
+    data = await _get_json(
+        f"{settings.event_configuration_url}/event-configurations/event-years/active"
+    )
     event_year = data.get("eventYear")
     if event_year:
-        cache.set("/api/event-years/active", event_year)
+        cache.set("/event-configurations/event-years/active", event_year)
     return event_year
 
 
@@ -85,7 +87,7 @@ async def fetch_event_years(token: str = "") -> List[Dict[str, Any]]:
     if not settings.event_configuration_url:
         raise RuntimeError("EVENT_CONFIGURATION_URL is not configured")
     data = await _get_json(
-        f"{settings.event_configuration_url}/api/event-years",
+        f"{settings.event_configuration_url}/event-configurations/event-years",
         token=token,
     )
     return data.get("eventYears", [])
@@ -129,15 +131,15 @@ async def get_event_year(
 
 
 async def validate_department_exists(department_name: str) -> Dict[str, Any]:
-    if not settings.organization_url:
+    if not settings.department_url:
         return {"exists": False, "department": None}
-    cached = cache.get("/api/departments")
+    cached = cache.get("/departments")
     departments = None
     if cached:
         departments = cached.get("departments")
     if departments is None:
-        data = await _get_json(f"{settings.organization_url}/api/departments")
-        cache.set("/api/departments", data)
+        data = await _get_json(f"{settings.department_url}/departments")
+        cache.set("/departments", data)
         departments = data.get("departments", [])
     for dept in departments:
         if dept.get("name") == department_name:
@@ -149,7 +151,7 @@ async def get_sports(event_id: str, token: str = "") -> List[Dict[str, Any]]:
     if not settings.sports_participation_url:
         raise RuntimeError("SPORTS_PARTICIPATION_URL is not configured")
     data = await _get_json(
-        f"{settings.sports_participation_url}/api/sports",
+        f"{settings.sports_participation_url}/sports-participations/sports",
         params={"event_id": event_id},
         token=token,
     )
@@ -160,7 +162,7 @@ async def get_batches(event_id: str, token: str = "") -> List[Dict[str, Any]]:
     if not settings.enrollment_url:
         raise RuntimeError("ENROLLMENT_URL is not configured")
     data = await _get_json(
-        f"{settings.enrollment_url}/api/batches",
+        f"{settings.enrollment_url}/enrollments/batches",
         params={"event_id": event_id},
         token=token,
     )
@@ -177,7 +179,7 @@ async def assign_player_to_batch(
         raise RuntimeError("ENROLLMENT_URL is not configured")
     payload = {"name": batch_name, "reg_number": reg_number, "event_id": event_id}
     return await _post_json(
-        f"{settings.enrollment_url}/api/batches/assign-player",
+        f"{settings.enrollment_url}/enrollments/batches/assign-player",
         payload,
         token=token,
     )
@@ -193,7 +195,7 @@ async def unassign_player_from_batch(
         raise RuntimeError("ENROLLMENT_URL is not configured")
     payload = {"name": batch_name, "reg_number": reg_number, "event_id": event_id}
     return await _post_json(
-        f"{settings.enrollment_url}/api/batches/unassign-player",
+        f"{settings.enrollment_url}/enrollments/batches/unassign-player",
         payload,
         token=token,
     )
@@ -208,7 +210,7 @@ async def unassign_players_from_batches(
         raise RuntimeError("ENROLLMENT_URL is not configured")
     payload = {"reg_numbers": reg_numbers, "event_id": event_id}
     return await _post_json(
-        f"{settings.enrollment_url}/api/batches/unassign-players",
+        f"{settings.enrollment_url}/enrollments/batches/unassign-players",
         payload,
         token=token,
     )
@@ -222,7 +224,7 @@ async def get_matches_for_sport(
     if not settings.scheduling_url:
         raise RuntimeError("SCHEDULING_URL is not configured")
     data = await _get_json(
-        f"{settings.scheduling_url}/api/event-schedule/{sport_name}",
+        f"{settings.scheduling_url}/schedulings/event-schedule/{sport_name}",
         params={"event_id": event_id},
         token=token,
     )
@@ -238,7 +240,7 @@ async def remove_participation(
     if not settings.sports_participation_url:
         raise RuntimeError("SPORTS_PARTICIPATION_URL is not configured")
     await _post_json(
-        f"{settings.sports_participation_url}/api/remove-participation",
+        f"{settings.sports_participation_url}/sports-participations/remove-participation",
         {"reg_number": reg_number, "sport": sport_name, "event_id": event_id},
         token=token,
     )

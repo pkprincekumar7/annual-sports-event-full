@@ -29,14 +29,14 @@ services:
       - redis
     restart: unless-stopped
 
-  organization-service:
+  department-service:
     build:
-      context: ./organization-service
+      context: ./department-service
       dockerfile: Dockerfile
     ports:
       - "8003:8003"
     env_file:
-      - ./organization-service/.env
+      - ./department-service/.env
     depends_on:
       - redis
     restart: unless-stopped
@@ -106,7 +106,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: /api
+        VITE_API_URL: /
     expose:
       - "80"
     restart: unless-stopped
@@ -121,7 +121,7 @@ services:
       - frontend
       - identity-service
       - enrollment-service
-      - organization-service
+      - department-service
       - sports-participation-service
       - event-configuration-service
       - scheduling-service

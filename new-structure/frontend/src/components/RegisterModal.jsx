@@ -61,7 +61,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       setLoadingDepartments(true)
       try {
         // Use regular fetch (not fetchWithAuth) since departments endpoint is public
-        const res = await fetch(buildApiUrl('/api/departments'), { signal: abortController.signal })
+        const res = await fetch(buildApiUrl('/departments'), { signal: abortController.signal })
         if (!isMounted) return
         
         if (res.ok) {
@@ -110,7 +110,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     const fetchBatches = async () => {
       try {
         // Use regular fetch (not fetchWithAuth) since batches endpoint is now public
-        const url = buildApiUrlWithYear('/api/batches', eventId)
+        const url = buildApiUrlWithYear('/enrollments/batches', eventId)
         const res = await fetch(buildApiUrl(url), { signal: abortController.signal })
         if (!isMounted) return
         
@@ -257,7 +257,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
       const fetchPlayers = async () => {
         try {
           // Don't pass page parameter to get all players (needed for participant selection)
-          const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventId))
+          const response = await fetchWithAuth(buildApiUrlWithYear('/identities/players', eventId))
           
           if (!isMountedRef.current) {
             logger.warn('Component unmounted, skipping players update')
@@ -386,7 +386,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
     try {
       await executeGeneral(
-        () => fetch(buildApiUrl('/api/save-player'), {
+        () => fetch(buildApiUrl('/identities/save-player'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -405,7 +405,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
         {
           onSuccess: (data) => {
             // Clear cache to ensure new player appears in player lists (use pattern to clear all variations)
-            clearCachePattern('/api/players')
+            clearCachePattern('/identities/players')
             onStatusPopup('✅ Your registration has been saved!', 'success', 2500)
             form.reset()
             setTimeout(() => {
@@ -528,7 +528,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
     // All client-side validation passed, now validate participation limits before submitting
     try {
-      const validationResponse = await fetchWithAuth('/api/validate-participations', {
+      const validationResponse = await fetchWithAuth('/sports-participations/validate-participations', {
         method: 'POST',
         body: JSON.stringify({
           reg_numbers: playerRegNumbers,
@@ -553,7 +553,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
     if (playerRegNumbers.length > 0) {
       try {
         await executeTeam(
-          () => fetchWithAuth('/api/update-team-participation', {
+          () => fetchWithAuth('/sports-participations/update-team-participation', {
             method: 'POST',
           body: JSON.stringify({
             reg_numbers: playerRegNumbers,
@@ -568,11 +568,11 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
               clearTeamParticipationCaches(selectedSport.name, eventId)
               
               // Update logged-in user data if they are one of the players
-              // Use /api/me instead of /api/players for efficiency (only need current user's data)
+              // Use /identities/me instead of /identities/players for efficiency (only need current user's data)
               if (loggedInUser && playerRegNumbers.includes(loggedInUser.reg_number) && onUserUpdate) {
                 try {
                   // Fetch updated user data (cache already cleared above)
-                  const userResponse = await fetchWithAuth('/api/me')
+                  const userResponse = await fetchWithAuth('/identities/me')
                   if (userResponse.ok) {
                     const userData = await userResponse.json()
                     if (userData.success && userData.player) {
@@ -641,7 +641,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
 
     try {
       await executeIndividual(
-        () => fetchWithAuth('/api/update-participation', {
+        () => fetchWithAuth('/sports-participations/update-participation', {
           method: 'POST',
           body: JSON.stringify({
             reg_number: loggedInUser.reg_number,
@@ -661,7 +661,7 @@ function RegisterModal({ isOpen, onClose, selectedSport, onStatusPopup, loggedIn
             } else if (onUserUpdate) {
               // If backend doesn't return player data, fetch it explicitly
               try {
-                const userResponse = await fetchWithAuth('/api/me')
+                const userResponse = await fetchWithAuth('/identities/me')
                 if (userResponse.ok) {
                   const userData = await userResponse.json()
                   if (userData.success && userData.player) {

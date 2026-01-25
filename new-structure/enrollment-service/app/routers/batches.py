@@ -112,7 +112,7 @@ async def add_batch(
     insert_result = await batches_collection().insert_one(batch_doc)
     batch_doc["_id"] = insert_result.inserted_id
 
-    cache_key = f"/api/batches?event_id={quote(str(resolved_event_id))}"
+    cache_key = f"/enrollments/batches?event_id={quote(str(resolved_event_id))}"
     cache.clear(cache_key)
 
     return send_success_response(
@@ -161,9 +161,9 @@ async def remove_batch(
 
     await batches_collection().delete_one({"name": str(name).strip(), "event_id": resolved_event_id})
 
-    cache_key = f"/api/batches?event_id={quote(str(resolved_event_id))}"
+    cache_key = f"/enrollments/batches?event_id={quote(str(resolved_event_id))}"
     cache.clear(cache_key)
-    cache.clear_pattern("/api/players")
+    cache.clear_pattern("/identities/players")
 
     return send_success_response({}, f'Batch "{name}" deleted successfully')
 
@@ -183,7 +183,7 @@ async def get_batches(request: Request):
     event_doc = event_year_data.get("doc", {})
     resolved_event_id = event_doc.get("event_id")
 
-    cache_key = f"/api/batches?event_id={quote(str(resolved_event_id))}"
+    cache_key = f"/enrollments/batches?event_id={quote(str(resolved_event_id))}"
     cached = cache.get(cache_key)
     if cached:
         return send_success_response(cached)
@@ -231,7 +231,7 @@ async def assign_player_to_batch(
         {"$addToSet": {"players": reg_number}},
     )
 
-    cache_key = f"/api/batches?event_id={quote(str(resolved_event_id))}"
+    cache_key = f"/enrollments/batches?event_id={quote(str(resolved_event_id))}"
     cache.clear(cache_key)
 
     return send_success_response(
@@ -274,7 +274,7 @@ async def unassign_player_from_batch(
         {"$pull": {"players": reg_number}},
     )
 
-    cache_key = f"/api/batches?event_id={quote(str(resolved_event_id))}"
+    cache_key = f"/enrollments/batches?event_id={quote(str(resolved_event_id))}"
     cache.clear(cache_key)
 
     updated_players = [player for player in (batch.get("players") or []) if player != reg_number]
@@ -311,7 +311,7 @@ async def unassign_players_from_batches(
         {"$pull": {"players": {"$in": reg_numbers}}},
     )
 
-    cache_key = f"/api/batches?event_id={quote(str(resolved_event_id))}"
+    cache_key = f"/enrollments/batches?event_id={quote(str(resolved_event_id))}"
     cache.clear(cache_key)
 
     return send_success_response(

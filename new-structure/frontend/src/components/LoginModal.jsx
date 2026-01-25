@@ -27,7 +27,7 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup, onResetPas
 
     try {
       await execute(
-        () => fetch(buildApiUrl('/api/login'), {
+        () => fetch(buildApiUrl('/identities/login'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -42,11 +42,11 @@ function LoginModal({ isOpen, onClose, onLoginSuccess, onStatusPopup, onResetPas
             // useApi already checked response.ok, parsed JSON, and verified data.success
             // Clear caches to ensure fresh data after login
             // Use clearCachePattern to clear all variations with event_id parameters
-            clearCachePattern('/api/me')
-            clearCachePattern('/api/players')
-            clearCachePattern('/api/captains-by-sport')
-            clearCachePattern('/api/coordinators-by-sport')
-            clearCachePattern('/api/sports-counts')
+            clearCachePattern('/identities/me')
+            clearCachePattern('/identities/players')
+            clearCachePattern('/sports-participations/captains-by-sport')
+            clearCachePattern('/sports-participations/coordinators-by-sport')
+            clearCachePattern('/sports-participations/sports-counts')
             
             // Store JWT token in localStorage (user data is handled by App.jsx)
             if (data.token) {

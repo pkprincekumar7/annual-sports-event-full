@@ -22,19 +22,19 @@ echo "==> Health check"
 curl -sS "$BASE_URL/health" | jq .
 
 if [[ -n "$ADMIN_TOKEN" && -n "$EVENT_ID" && -n "$SPORT_NAME" ]]; then
-  echo "==> /api/event-schedule/$SPORT_NAME"
-  curl -sS "$BASE_URL/api/event-schedule/$SPORT_NAME?event_id=$EVENT_ID" \
+  echo "==> /schedulings/event-schedule/$SPORT_NAME"
+  curl -sS "$BASE_URL/schedulings/event-schedule/$SPORT_NAME?event_id=$EVENT_ID" \
     -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
 else
-  echo "Skipping /api/event-schedule (set ADMIN_TOKEN, EVENT_ID, SPORT_NAME)."
+  echo "Skipping /schedulings/event-schedule (set ADMIN_TOKEN, EVENT_ID, SPORT_NAME)."
 fi
 
 if [[ -n "$ADMIN_TOKEN" && -n "$EVENT_ID" && -n "$SPORT_NAME" && -n "$GENDER" ]]; then
-  echo "==> /api/event-schedule/$SPORT_NAME/teams-players"
-  curl -sS "$BASE_URL/api/event-schedule/$SPORT_NAME/teams-players?event_id=$EVENT_ID&gender=$GENDER" \
+  echo "==> /schedulings/event-schedule/$SPORT_NAME/teams-players"
+  curl -sS "$BASE_URL/schedulings/event-schedule/$SPORT_NAME/teams-players?event_id=$EVENT_ID&gender=$GENDER" \
     -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
 else
-  echo "Skipping /api/event-schedule/{sport}/teams-players (set ADMIN_TOKEN, EVENT_ID, SPORT_NAME, GENDER)."
+  echo "Skipping /schedulings/event-schedule/{sport}/teams-players (set ADMIN_TOKEN, EVENT_ID, SPORT_NAME, GENDER)."
 fi
 
 if [[ -z "$ADMIN_TOKEN" || -z "$EVENT_ID" || -z "$SPORT_NAME" || -z "$MATCH_TYPE" || -z "$MATCH_DATE" ]]; then
@@ -68,8 +68,8 @@ CREATE_PAYLOAD=$(jq -n \
     players: $players
   }')
 
-echo "==> /api/event-schedule (create)"
-CREATE_RESPONSE=$(curl -sS -X POST "$BASE_URL/api/event-schedule" \
+echo "==> /schedulings/event-schedule (create)"
+CREATE_RESPONSE=$(curl -sS -X POST "$BASE_URL/schedulings/event-schedule" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "$CREATE_PAYLOAD")
@@ -82,8 +82,8 @@ if [[ -z "$MATCH_ID" ]]; then
   exit 0
 fi
 
-echo "==> /api/event-schedule/$MATCH_ID (delete)"
-curl -sS -X DELETE "$BASE_URL/api/event-schedule/$MATCH_ID" \
+echo "==> /schedulings/event-schedule/$MATCH_ID (delete)"
+curl -sS -X DELETE "$BASE_URL/schedulings/event-schedule/$MATCH_ID" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | jq .
 
 echo "==> Smoke test complete"

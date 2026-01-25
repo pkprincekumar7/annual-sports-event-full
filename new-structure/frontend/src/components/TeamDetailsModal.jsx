@@ -46,7 +46,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, sportDetails = null, loggedI
 
     try {
       const encodedSport = encodeURIComponent(sport)
-      const url = buildApiUrlWithYear(`/api/event-schedule/${encodedSport}`, eventId)
+      const url = buildApiUrlWithYear(`/schedulings/event-schedule/${encodedSport}`, eventId)
       const response = await fetchWithAuth(url)
       if (!response.ok) {
         return true
@@ -133,7 +133,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, sportDetails = null, loggedI
   const fetchPlayers = async (signal) => {
     try {
       // Don't pass page parameter to get all players (needed for team member replacement)
-      const response = await fetchWithAuth(buildApiUrlWithYear('/api/players', eventId), signal ? { signal } : {})
+      const response = await fetchWithAuth(buildApiUrlWithYear('/identities/players', eventId), signal ? { signal } : {})
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -360,7 +360,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, sportDetails = null, loggedI
 
     try {
       await executeUpdate(
-        () => fetchWithAuth('/api/update-team-player', {
+        () => fetchWithAuth('/sports-participations/update-team-player', {
           method: 'POST',
           body: JSON.stringify({
             team_name: editingPlayer.team_name,
@@ -377,8 +377,8 @@ function TeamDetailsModal({ isOpen, onClose, sport, sportDetails = null, loggedI
             }
             // Clear cache before refreshing to ensure we get fresh data
             clearSportCaches(sport, eventId)
-            clearCachePattern('/api/me') // Current user's data may have changed (clear all variations)
-            clearCachePattern('/api/players')
+            clearCachePattern('/identities/me') // Current user's data may have changed (clear all variations)
+            clearCachePattern('/identities/players')
             // Refresh team data (no signal needed for manual refresh)
             fetchTeamDetails(null)
             setEditingPlayer(null)
@@ -419,7 +419,7 @@ function TeamDetailsModal({ isOpen, onClose, sport, sportDetails = null, loggedI
 
     try {
       await executeDelete(
-        () => fetchWithAuth('/api/delete-team', {
+        () => fetchWithAuth('/sports-participations/delete-team', {
           method: 'DELETE',
           body: JSON.stringify({
             team_name: teamName,
@@ -434,8 +434,8 @@ function TeamDetailsModal({ isOpen, onClose, sport, sportDetails = null, loggedI
             }
             // Clear cache before refreshing to ensure we get fresh data
             clearSportCaches(sport, eventId)
-            clearCachePattern('/api/me') // If any logged-in user was in this team (clear all variations)
-            clearCachePattern('/api/players')
+            clearCachePattern('/identities/me') // If any logged-in user was in this team (clear all variations)
+            clearCachePattern('/identities/players')
             // Remove deleted team from expanded teams if it was expanded
             setExpandedTeams(prev => {
               const newSet = new Set(prev)

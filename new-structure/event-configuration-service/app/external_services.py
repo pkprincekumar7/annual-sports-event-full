@@ -32,7 +32,7 @@ async def _get_json(
 async def get_identity_profile(token: str) -> Dict[str, Any]:
     if not settings.identity_url:
         raise RuntimeError("IDENTITY_URL is not configured")
-    data = await _get_json(f"{settings.identity_url}/api/me", token=token)
+    data = await _get_json(f"{settings.identity_url}/identities/me", token=token)
     player = data.get("player")
     if not player:
         raise ValueError("User not found")
@@ -43,7 +43,7 @@ async def fetch_sports(event_id: str, token: str = "") -> List[Dict[str, Any]]:
     if not settings.sports_participation_url:
         raise RuntimeError("SPORTS_PARTICIPATION_URL is not configured")
     data = await _get_json(
-        f"{settings.sports_participation_url}/api/sports",
+        f"{settings.sports_participation_url}/sports-participations/sports",
         params={"event_id": event_id},
         token=token,
     )
@@ -67,7 +67,7 @@ async def count_schedules(event_id: str, token: str = "") -> int:
         if not sport_name:
             continue
         data = await _get_json(
-            f"{settings.scheduling_url}/api/event-schedule/{quote(str(sport_name))}",
+            f"{settings.scheduling_url}/schedulings/event-schedule/{quote(str(sport_name))}",
             params={"event_id": event_id},
             token=token,
         )
@@ -87,7 +87,7 @@ async def count_points_entries(event_id: str, token: str = "") -> int:
             continue
         for gender in ("Male", "Female"):
             data = await _get_json(
-                f"{settings.scoring_url}/api/points-table/{quote(str(sport_name))}",
+                f"{settings.scoring_url}/scorings/points-table/{quote(str(sport_name))}",
                 params={"event_id": event_id, "gender": gender},
                 token=token,
             )

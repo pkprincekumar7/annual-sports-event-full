@@ -56,7 +56,7 @@ async def get_sports(request: Request):
         raise
 
     event_id = event_year_data.get("doc", {}).get("event_id")
-    cache_key = f"/api/sports?event_id={quote(str(event_id))}"
+    cache_key = f"/sports-participations/sports?event_id={quote(str(event_id))}"
     cached = cache.get(cache_key)
     if cached:
         return JSONResponse(content=cached)
@@ -142,8 +142,8 @@ async def create_sport(
     insert_result = await sports_collection().insert_one(sport_doc)
     sport_doc["_id"] = insert_result.inserted_id
 
-    cache.clear_pattern("/api/sports")
-    cache.clear_pattern("/api/sports-counts")
+    cache.clear_pattern("/sports-participations/sports")
+    cache.clear_pattern("/sports-participations/sports-counts")
 
     return send_success_response(
         {"sport": _serialize_sport(sport_doc)},
@@ -248,8 +248,8 @@ async def update_sport(
     await sports_collection().update_one({"_id": object_id}, {"$set": update_doc})
     updated = await sports_collection().find_one({"_id": object_id})
 
-    cache.clear_pattern("/api/sports")
-    cache.clear_pattern("/api/sports-counts")
+    cache.clear_pattern("/sports-participations/sports")
+    cache.clear_pattern("/sports-participations/sports-counts")
 
     return send_success_response(
         {"sport": _serialize_sport(updated)},
@@ -331,8 +331,8 @@ async def delete_sport(
 
     await sports_collection().delete_one({"_id": object_id})
 
-    cache.clear_pattern("/api/sports")
-    cache.clear_pattern("/api/sports-counts")
+    cache.clear_pattern("/sports-participations/sports")
+    cache.clear_pattern("/sports-participations/sports-counts")
 
     return send_success_response({}, "Sport deleted successfully")
 
@@ -352,7 +352,7 @@ async def get_sports_counts(
         raise
 
     event_id = event_year_data.get("doc", {}).get("event_id")
-    cache_key = f"/api/sports-counts?event_id={quote(str(event_id))}"
+    cache_key = f"/sports-participations/sports-counts?event_id={quote(str(event_id))}"
     cached = cache.get(cache_key)
     if cached:
         return JSONResponse(content=cached)

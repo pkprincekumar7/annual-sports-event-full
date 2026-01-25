@@ -102,9 +102,9 @@ async def get_event_schedule(
     gender = request.query_params.get("gender")
 
     cache_key = (
-        f"/api/event-schedule/{sport}?event_id={quote(str(event_id))}&gender={gender}"
+        f"/schedulings/event-schedule/{sport}?event_id={quote(str(event_id))}&gender={gender}"
         if gender
-        else f"/api/event-schedule/{sport}?event_id={quote(str(event_id))}"
+        else f"/schedulings/event-schedule/{sport}?event_id={quote(str(event_id))}"
     )
     cached = cache.get(cache_key)
     if cached:

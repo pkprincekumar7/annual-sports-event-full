@@ -19,7 +19,7 @@ export function useDepartments() {
       setError(null)
       
       try {
-        const response = await fetchWithAuth('/api/departments')
+        const response = await fetchWithAuth('/departments')
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)

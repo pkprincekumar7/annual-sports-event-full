@@ -50,14 +50,14 @@ async def login(request: Request):
         return send_error_response(401, "Invalid registration number or password")
 
     event_id = None
-    cached_active = cache.get("/api/event-years/active")
+    cached_active = cache.get("/event-configurations/event-years/active")
     if cached_active:
         event_id = cached_active.get("event_id")
     else:
         active_year = await get_active_event_year()
         if active_year:
             event_id = active_year.get("event_id")
-            cache.set("/api/event-years/active", active_year)
+            cache.set("/event-configurations/event-years/active", active_year)
 
     participation = {"participated_in": [], "captain_in": [], "coordinator_in": []}
     request_token = get_request_token(request)

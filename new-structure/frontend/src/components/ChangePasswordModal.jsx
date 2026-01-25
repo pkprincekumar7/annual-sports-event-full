@@ -40,7 +40,7 @@ function ChangePasswordModal({ isOpen, onClose, onStatusPopup, onPasswordChanged
 
     try {
       await execute(
-        () => fetchWithAuth('/api/change-password', {
+        () => fetchWithAuth('/identities/change-password', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

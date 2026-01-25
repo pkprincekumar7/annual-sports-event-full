@@ -14,7 +14,7 @@ from ..external_services import fetch_players
 from ..validators import normalize_department_code, normalize_department_name, trim_object_fields
 
 
-logger = logging.getLogger("organization-service.departments")
+logger = logging.getLogger("department-service.departments")
 router = APIRouter()
 
 
@@ -66,9 +66,10 @@ def _get_request_token(request: Request) -> str:
     return ""
 
 
-@router.get("/departments")
+@router.get("")
+@router.get("/")
 async def get_departments(request: Request):
-    cached = cache.get("/api/departments")
+    cached = cache.get("/departments")
     if cached:
         return send_success_response(cached)
 
@@ -96,11 +97,12 @@ async def get_departments(request: Request):
         departments_with_counts.append(serialized)
 
     result = {"departments": departments_with_counts}
-    cache.set("/api/departments", result)
+    cache.set("/departments", result)
     return send_success_response(result)
 
 
-@router.post("/departments")
+@router.post("")
+@router.post("/")
 async def create_department(
     request: Request,
     _: None = Depends(auth_dependency),
@@ -141,7 +143,7 @@ async def create_department(
     insert_result = await departments_collection().insert_one(department_doc)
     department_doc["_id"] = insert_result.inserted_id
 
-    cache.clear("/api/departments")
+    cache.clear("/departments")
 
     return send_success_response(
         _serialize_department(department_doc),
@@ -150,7 +152,7 @@ async def create_department(
     )
 
 
-@router.put("/departments/{department_id}")
+@router.put("/{department_id}")
 async def update_department(
     department_id: str,
     request: Request,
@@ -191,7 +193,7 @@ async def update_department(
     await departments_collection().update_one({"_id": object_id}, {"$set": update_fields})
     updated = await departments_collection().find_one({"_id": object_id})
 
-    cache.clear("/api/departments")
+    cache.clear("/departments")
 
     return send_success_response(
         _serialize_department(updated),
@@ -199,7 +201,7 @@ async def update_department(
     )
 
 
-@router.delete("/departments/{department_id}")
+@router.delete("/{department_id}")
 async def delete_department(
     department_id: str,
     request: Request,
@@ -231,6 +233,6 @@ async def delete_department(
 
     await departments_collection().delete_one({"_id": object_id})
 
-    cache.clear("/api/departments")
+    cache.clear("/departments")
 
     return send_success_response({}, "Department deleted successfully")

@@ -1,10 +1,14 @@
 import logging
 import logging.config
 import time
+from pathlib import Path
 from uuid import uuid4
 
 import structlog
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import FileResponse, HTMLResponse
 
 from app.auth import _ResponseException
 from app.config import get_settings
@@ -55,8 +59,16 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
-app = FastAPI(title="Identity Service", version="0.1.0")
+app = FastAPI(title="Identity Service", version="0.1.0", docs_url=None, redoc_url=None)
 logger = structlog.get_logger("identity-service")
+swagger_path = Path(__file__).with_name("swagger.yaml")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.exception_handler(_ResponseException)
@@ -71,6 +83,14 @@ async def no_cache_headers(request: Request, call_next):
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
+
+
+@app.middleware("http")
+async def strip_trailing_slash(request: Request, call_next):
+    path = request.scope.get("path") or ""
+    if path != "/" and path.endswith("/"):
+        request.scope["path"] = path.rstrip("/")
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -102,15 +122,45 @@ async def request_logging_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def registration_deadline_middleware(request: Request, call_next):
-    if request.url.path.startswith("/api"):
+    if request.url.path.startswith("/identities"):
         response = await check_registration_deadline(request)
         if response is not None:
             return response
     return await call_next(request)
 
 
-app.include_router(auth_router.router, prefix="/api")
-app.include_router(players_router.router, prefix="/api")
+app.include_router(auth_router.router, prefix="/identities")
+app.include_router(players_router.router, prefix="/identities")
+
+
+@app.get("/identities/swagger.yaml", include_in_schema=False)
+async def swagger_spec():
+    return FileResponse(swagger_path, media_type="application/yaml")
+
+
+@app.get("/identities/swagger.yml", include_in_schema=False)
+async def swagger_spec_alias():
+    return FileResponse(swagger_path, media_type="application/yaml")
+
+
+@app.get("/identities/docs", include_in_schema=False)
+async def swagger_ui():
+    return HTMLResponse(
+        get_swagger_ui_html(
+            openapi_url="/identities/swagger.yaml",
+            title="Identity Service API Docs",
+        ).body
+    )
+
+
+@app.get("/identities/docs/", include_in_schema=False)
+async def swagger_ui_slash():
+    return HTMLResponse(
+        get_swagger_ui_html(
+            openapi_url="/identities/swagger.yaml",
+            title="Identity Service API Docs",
+        ).body
+    )
 
 
 @app.get("/health")

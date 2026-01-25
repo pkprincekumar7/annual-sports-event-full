@@ -26,7 +26,7 @@ echo "==> Health check"
 curl -sS "$BASE_URL/health" | jq .
 
 echo "==> Login"
-LOGIN_RESPONSE=$(curl -sS -X POST "$BASE_URL/api/login" \
+LOGIN_RESPONSE=$(curl -sS -X POST "$BASE_URL/identities/login" \
   -H "Content-Type: application/json" \
   -d "{\"reg_number\":\"$ADMIN_REG_NUMBER\",\"password\":\"$ADMIN_PASSWORD\"}")
 
@@ -37,16 +37,16 @@ if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
   exit 1
 fi
 
-echo "==> /api/me"
-curl -sS "$BASE_URL/api/me" \
+echo "==> /identities/me"
+curl -sS "$BASE_URL/identities/me" \
   -H "Authorization: Bearer $TOKEN" | jq .
 
-echo "==> /api/players (first page)"
-curl -sS "$BASE_URL/api/players?page=1&limit=5" \
+echo "==> /identities/players (first page)"
+curl -sS "$BASE_URL/identities/players?page=1&limit=5" \
   -H "Authorization: Bearer $TOKEN" | jq .
 
-echo "==> /api/save-player (sample data)"
-SAVE_PLAYER_RESPONSE=$(curl -sS -X POST "$BASE_URL/api/save-player" \
+echo "==> /identities/save-player (sample data)"
+SAVE_PLAYER_RESPONSE=$(curl -sS -X POST "$BASE_URL/identities/save-player" \
   -H "Content-Type: application/json" \
   -d "{
     \"reg_number\":\"$SAMPLE_REG_NUMBER\",
@@ -60,8 +60,8 @@ SAVE_PLAYER_RESPONSE=$(curl -sS -X POST "$BASE_URL/api/save-player" \
   }")
 echo "$SAVE_PLAYER_RESPONSE" | jq .
 
-echo "==> /api/update-player (sample data)"
-UPDATE_PLAYER_RESPONSE=$(curl -sS -X PUT "$BASE_URL/api/update-player" \
+echo "==> /identities/update-player (sample data)"
+UPDATE_PLAYER_RESPONSE=$(curl -sS -X PUT "$BASE_URL/identities/update-player" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
@@ -74,8 +74,8 @@ UPDATE_PLAYER_RESPONSE=$(curl -sS -X PUT "$BASE_URL/api/update-player" \
   }")
 echo "$UPDATE_PLAYER_RESPONSE" | jq .
 
-echo "==> /api/delete-player/{reg_number}"
-DELETE_PLAYER_RESPONSE=$(curl -sS -X DELETE "$BASE_URL/api/delete-player/$SAMPLE_REG_NUMBER" \
+echo "==> /identities/delete-player/{reg_number}"
+DELETE_PLAYER_RESPONSE=$(curl -sS -X DELETE "$BASE_URL/identities/delete-player/$SAMPLE_REG_NUMBER" \
   -H "Authorization: Bearer $TOKEN")
 echo "$DELETE_PLAYER_RESPONSE" | jq .
 

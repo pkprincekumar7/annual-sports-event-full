@@ -18,7 +18,7 @@ export const buildSportApiUrl = (endpoint, sportName, eventId = null) => {
     params.push(`event_id=${encodeURIComponent(String(eventId).trim())}`)
   }
   const queryString = params.length > 0 ? `?${params.join('&')}` : ''
-  return `/api/${endpoint}/${encodedSport}${queryString}`
+  return `/sports-participations/${endpoint}/${encodedSport}${queryString}`
 }
 
 /**
@@ -39,12 +39,12 @@ export const buildEventScheduleApiUrl = (sportName, subPath = '', eventId = null
   }
   if (gender && (gender === 'Male' || gender === 'Female')) params.push(`gender=${encodeURIComponent(gender)}`)
   const queryString = params.length > 0 ? `?${params.join('&')}` : ''
-  return `/api/event-schedule/${path}${queryString}`
+  return `/schedulings/event-schedule/${path}${queryString}`
 }
 
 /**
  * Build API URL with event_id parameter
- * @param {string} baseUrl - The base URL (e.g., '/api/sports')
+ * @param {string} baseUrl - The base URL (e.g., '/sports-participations/sports')
  * @param {string|null} eventId - Optional event_id
  * @param {string|null} gender - Optional gender ('Male' or 'Female')
  * @returns {string} - The complete API URL with event_id parameter

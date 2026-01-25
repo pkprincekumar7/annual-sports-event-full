@@ -117,7 +117,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
       setLoadingSports(true)
       setError(null)
       try {
-        const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports', eventId), {
+        const response = await fetchWithAuth(buildApiUrlWithYear('/sports-participations/sports', eventId), {
           signal: abortController.signal,
         })
 
@@ -202,7 +202,7 @@ function SportsSection({ onSportClick, onEventScheduleClick, loggedInUser, selec
     const fetchAllCounts = async () => {
       setLoadingCounts(true)
       try {
-        const response = await fetchWithAuth(buildApiUrlWithYear('/api/sports-counts', eventId), {
+        const response = await fetchWithAuth(buildApiUrlWithYear('/sports-participations/sports-counts', eventId), {
           signal: abortController.signal,
         })
 

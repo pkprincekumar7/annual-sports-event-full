@@ -55,7 +55,7 @@ async def get_points_table(
             400, 'Gender parameter is required and must be "Male" or "Female"'
         )
 
-    cache_key = f"/api/points-table/{sport}?event_id={quote(str(event_id))}&gender={gender}"
+    cache_key = f"/scorings/points-table/{sport}?event_id={quote(str(event_id))}&gender={gender}"
     cached = cache.get(cache_key)
     if cached:
         return send_success_response(cached)
@@ -168,8 +168,8 @@ async def backfill_points_table(
     if result.get("errors", 0) > 0 and result.get("processed", 0) == 0:
         return send_error_response(500, result.get("message", "Error backfilling points table"))
 
-    cache.clear(f"/api/points-table/{sport}?event_id={quote(str(event_id))}&gender=Male")
-    cache.clear(f"/api/points-table/{sport}?event_id={quote(str(event_id))}&gender=Female")
+    cache.clear(f"/scorings/points-table/{sport}?event_id={quote(str(event_id))}&gender=Male")
+    cache.clear(f"/scorings/points-table/{sport}?event_id={quote(str(event_id))}&gender=Female")
     return send_success_response(result, result.get("message") or "Points table backfilled successfully")
 
 

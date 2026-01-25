@@ -2,10 +2,10 @@ import API_URL from '../config/api.js'
 import logger from './logger.js'
 
 // Cache configuration
-// Note: /api/me is never cached to ensure fresh authentication data
+// Note: /identities/me is never cached to ensure fresh authentication data
 const CACHE_TTL = {
-  '/api/players': 5000, // 5 seconds for players list
-  '/api/sports': 5000, // 5 seconds for sports list
+  '/identities/players': 5000, // 5 seconds for players list
+  '/sports-participations/sports': 5000, // 5 seconds for sports list
   default: 5000, // 5 seconds default
 }
 
@@ -41,14 +41,11 @@ export const buildApiUrl = (endpoint) => {
   if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
     return endpoint
   }
-  // Otherwise, prepend API_URL, avoiding duplicate /api when API_URL already ends with /api
+  // Otherwise, prepend API_URL
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
   const normalizedApiUrl = API_URL.endsWith('/')
     ? API_URL.slice(0, -1)
     : API_URL
-  if (normalizedApiUrl.endsWith('/api') && normalizedEndpoint.startsWith('/api/')) {
-    return `${normalizedApiUrl}${normalizedEndpoint.slice(4)}`
-  }
   return `${normalizedApiUrl}${normalizedEndpoint}`
 }
 
@@ -58,9 +55,9 @@ const getCacheKey = (url, options = {}) => {
   // Only cache GET requests
   if (method !== 'GET') return null
   
-  // Never cache /api/me - authentication endpoints should always fetch fresh data
+  // Never cache /identities/me - authentication endpoints should always fetch fresh data
   // This prevents race conditions and stale authentication state on rapid page refreshes
-  if (url === '/api/me' || url.startsWith('/api/me?')) {
+  if (url === '/identities/me' || url.startsWith('/identities/me?')) {
     return null // Return null to disable caching for this endpoint
   }
   
@@ -141,8 +138,8 @@ export const fetchWithAuth = async (url, options = {}) => {
     }
     
     // Check for pending request (deduplication)
-    // Skip deduplication for /api/me to avoid race conditions on rapid refreshes
-    if (pendingRequests.has(cacheKey) && !(url === '/api/me' || url.startsWith('/api/me?'))) {
+    // Skip deduplication for /identities/me to avoid race conditions on rapid refreshes
+    if (pendingRequests.has(cacheKey) && !(url === '/identities/me' || url.startsWith('/identities/me?'))) {
       // Wait for the pending request to complete
       // Wrap it to clone the response for this specific caller
       // This ensures each caller gets their own independent clone
@@ -241,7 +238,7 @@ export const fetchWithAuth = async (url, options = {}) => {
   return requestPromise
 }
 
-// Fetch current user data only (optimized - uses dedicated /api/me endpoint)
+// Fetch current user data only (optimized - uses dedicated /identities/me endpoint)
 // Returns { user: userData, authError: boolean } to distinguish auth failures from other errors
 // Uses singleton pattern to prevent race conditions on rapid page refreshes
 // Optional parameter: eventId for event filtering
@@ -287,11 +284,11 @@ export const fetchCurrentUser = async (eventId = null) => {
     }
 
       // Fetch current user directly using dedicated endpoint
-      // /api/me is never cached (see getCacheKey) to ensure fresh authentication data
+      // /identities/me is never cached (see getCacheKey) to ensure fresh authentication data
       // Don't reload or clear token on auth error during initial fetch - let App.jsx handle it
       // This prevents false logouts on page refresh due to temporary network issues
       // Build URL with event_id if provided
-      let meUrl = '/api/me'
+      let meUrl = '/identities/me'
       if (eventId) {
         meUrl += `?event_id=${encodeURIComponent(String(eventId).trim())}`
       }
@@ -363,12 +360,12 @@ export const fetchCurrentUser = async (eventId = null) => {
       try {
         const data = await response.json()
         if (data.success && data.player) {
-          // Backend returns 'player' for /api/me endpoint
+          // Backend returns 'player' for /identities/me endpoint
           const { password: _, ...userData } = data.player
             currentUserRequest = null
           return { user: userData, authError: false }
         } else {
-          logger.warn('Unexpected response structure from /api/me:', data)
+          logger.warn('Unexpected response structure from /identities/me:', data)
             currentUserRequest = null
           return { user: null, authError: false }
         }
@@ -381,7 +378,7 @@ export const fetchCurrentUser = async (eventId = null) => {
     }
     
     // Other errors (network, server errors, etc.) - not auth errors
-    logger.warn('API call failed with status:', response.status, 'for /api/me')
+    logger.warn('API call failed with status:', response.status, 'for /identities/me')
       currentUserRequest = null
     return { user: null, authError: false }
   } catch (error) {

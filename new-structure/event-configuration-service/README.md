@@ -25,18 +25,25 @@ Optional integrations for delete validation:
 - No per-service tokens are supported.
 ### Endpoints
 
-- `GET /api/event-years`
-- `GET /api/event-years/active`
-- `POST /api/event-years`
-- `PUT /api/event-years/{event_id}`
-- `DELETE /api/event-years/{event_id}`
+- `GET /event-configurations/event-years`
+- `GET /event-configurations/event-years/active`
+- `POST /event-configurations/event-years`
+- `PUT /event-configurations/event-years/{event_id}`
+- `DELETE /event-configurations/event-years/{event_id}`
+
+### API Docs (Swagger)
+
+- Local UI: `http://localhost:8005/event-configurations/docs`
+- Spec file: `swagger.yaml`
+- Nginx UI: `http://localhost:5173/event-configurations/docs`
+- Nginx Spec: `http://localhost:5173/event-configurations/swagger.yml`
 
 ### Checklist
 
-- `GET /api/event-years/active` caches active year and validates dates
-- `POST /api/event-years` enforces date relationships and future starts
-- `PUT /api/event-years/{event_id}` respects update windows and date locks
-- `DELETE /api/event-years/{event_id}` blocks when related data exists
+- `GET /event-configurations/event-years/active` caches active year and validates dates
+- `POST /event-configurations/event-years` enforces date relationships and future starts
+- `PUT /event-configurations/event-years/{event_id}` respects update windows and date locks
+- `DELETE /event-configurations/event-years/{event_id}` blocks when related data exists
 
 ### Smoke Test
 

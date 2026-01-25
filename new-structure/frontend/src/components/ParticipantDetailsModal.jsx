@@ -31,7 +31,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, sportDetails = null, 
 
     try {
       const encodedSport = encodeURIComponent(sport)
-      const url = buildApiUrlWithYear(`/api/event-schedule/${encodedSport}`, eventId)
+      const url = buildApiUrlWithYear(`/schedulings/event-schedule/${encodedSport}`, eventId)
       const response = await fetchWithAuth(url)
       if (!response.ok) {
         return true
@@ -111,7 +111,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, sportDetails = null, 
     try {
       // URL encode the sport name to handle special characters
       const encodedSport = encodeURIComponent(sport)
-      const url = buildApiUrlWithYear(`/api/participants/${encodedSport}`, eventId)
+      const url = buildApiUrlWithYear(`/sports-participations/participants/${encodedSport}`, eventId)
       // Fetching participants for sport
       
       const response = await fetchWithAuth(url, { signal })
@@ -213,7 +213,7 @@ function ParticipantDetailsModal({ isOpen, onClose, sport, sportDetails = null, 
 
     try {
       await execute(
-        () => fetchWithAuth('/api/remove-participation', {
+        () => fetchWithAuth('/sports-participations/remove-participation', {
           method: 'DELETE',
           body: JSON.stringify({
             reg_number: participantToDelete.reg_number,

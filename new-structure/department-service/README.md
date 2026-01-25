@@ -1,4 +1,4 @@
-## Organization Service
+## Department Service
 
 FastAPI service for department management, porting routes from `routes/departments.js`.
 
@@ -20,17 +20,24 @@ FastAPI service for department management, porting routes from `routes/departmen
 - No per-service tokens are supported.
 ### Endpoints
 
-- `GET /api/departments`
-- `POST /api/departments`
-- `PUT /api/departments/{department_id}`
-- `DELETE /api/departments/{department_id}`
+- `GET /departments`
+- `POST /departments`
+- `PUT /departments/{department_id}`
+- `DELETE /departments/{department_id}`
+
+### API Docs (Swagger)
+
+- Local UI: `http://localhost:8003/docs`
+- Spec file: `swagger.yaml`
+- Nginx UI: `http://localhost:5173/departments/docs`
+- Nginx Spec: `http://localhost:5173/departments/swagger.yml`
 
 ### Checklist
 
-- `GET /api/departments` returns departments sorted with `player_count`
-- `POST /api/departments` enforces unique names and admin auth
-- `PUT /api/departments/{department_id}` only updates `display_order`
-- `DELETE /api/departments/{department_id}` blocks if players exist
+- `GET /departments` returns departments sorted with `player_count`
+- `POST /departments` enforces unique names and admin auth
+- `PUT /departments/{department_id}` only updates `display_order`
+- `DELETE /departments/{department_id}` blocks if players exist
 
 ### Smoke Test
 

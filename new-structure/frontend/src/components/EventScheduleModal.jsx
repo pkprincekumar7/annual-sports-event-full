@@ -384,7 +384,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, sportDetails: s
     
     try {
       await executeStatusUpdate(
-        () => fetchWithAuth(`/api/event-schedule/${matchId}`, {
+        () => fetchWithAuth(`/schedulings/event-schedule/${matchId}`, {
           method: 'PUT',
           body: JSON.stringify({ status: newStatus }),
         }),
@@ -409,7 +409,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, sportDetails: s
               // Clear points-table cache if this is a league match (affects points table)
               if (match.match_type === 'league') {
                 const encodedSport = encodeURIComponent(sport)
-                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventId, match.gender))
+                clearCache(buildApiUrlWithYear(`/scorings/points-table/${encodedSport}`, eventId, match.gender))
               }
             }
             fetchMatches()
@@ -467,7 +467,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, sportDetails: s
     
     try {
       await executeWinnerUpdate(
-        () => fetchWithAuth(`/api/event-schedule/${matchId}`, {
+        () => fetchWithAuth(`/schedulings/event-schedule/${matchId}`, {
           method: 'PUT',
           body: JSON.stringify({ 
             winner: winnerName,
@@ -489,7 +489,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, sportDetails: s
               // Clear points-table cache if this is a league match (affects points table)
               if (match.match_type === 'league') {
                 const encodedSport = encodeURIComponent(sport)
-                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventId, match.gender))
+                clearCache(buildApiUrlWithYear(`/scorings/points-table/${encodedSport}`, eventId, match.gender))
               }
             }
             fetchMatches()
@@ -576,7 +576,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, sportDetails: s
     
     try {
       await executeQualifiersUpdate(
-        () => fetchWithAuth(`/api/event-schedule/${matchId}`, {
+        () => fetchWithAuth(`/schedulings/event-schedule/${matchId}`, {
           method: 'PUT',
           body: JSON.stringify({ 
             qualifiers: qualifiers,
@@ -602,7 +602,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, sportDetails: s
               // Clear points-table cache if this is a league match (affects points table)
               if (match.match_type === 'league') {
                 const encodedSport = encodeURIComponent(sport)
-                clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventId, match.gender))
+                clearCache(buildApiUrlWithYear(`/scorings/points-table/${encodedSport}`, eventId, match.gender))
               }
             }
             fetchMatches()
@@ -638,7 +638,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, sportDetails: s
     
     try {
       await executeDelete(
-        () => fetchWithAuth(`/api/event-schedule/${deletingMatchId}`, {
+        () => fetchWithAuth(`/schedulings/event-schedule/${deletingMatchId}`, {
           method: 'DELETE',
         }),
         {
@@ -659,7 +659,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, sportDetails: s
             // Clear points-table cache if this is a league match (affects points table)
             if (match && match.match_type === 'league') {
               const encodedSport = encodeURIComponent(sport)
-              clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventId, match.gender))
+              clearCache(buildApiUrlWithYear(`/scorings/points-table/${encodedSport}`, eventId, match.gender))
             }
             fetchMatches()
             // Refresh teams/players list if deleted match was knockout/final (participants are now available)
@@ -1212,7 +1212,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, sportDetails: s
       }
       
       await executeSubmit(
-        () => fetchWithAuth('/api/event-schedule', {
+        () => fetchWithAuth('/schedulings/event-schedule', {
           method: 'POST',
           body: JSON.stringify({
             match_type: matchType,
@@ -1241,7 +1241,7 @@ function EventScheduleModal({ isOpen, onClose, sport, sportType, sportDetails: s
             // Clear points-table cache if this is a league match (affects points table)
             if (matchType === 'league') {
               const encodedSport = encodeURIComponent(sport)
-              clearCache(buildApiUrlWithYear(`/api/points-table/${encodedSport}`, eventId, selectedGender))
+              clearCache(buildApiUrlWithYear(`/scorings/points-table/${encodedSport}`, eventId, selectedGender))
             }
             fetchMatches()
             // Refresh teams/players list if new match is knockout/final (participants are now in scheduled match)

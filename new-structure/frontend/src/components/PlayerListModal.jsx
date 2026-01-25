@@ -71,7 +71,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
       setLoadingDepartments(true)
       try {
         // Use regular fetch (not fetchWithAuth) since departments endpoint is public
-        const res = await fetch(buildApiUrl('/api/departments'), { signal: abortController.signal })
+        const res = await fetch(buildApiUrl('/departments'), { signal: abortController.signal })
         if (!isMounted) return
         
         if (res.ok) {
@@ -117,7 +117,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
   const fetchPlayers = async (signal = null, showError = true, search = null, page = 1) => {
     setLoading(true)
     try {
-      let url = buildApiUrlWithYear('/api/players', eventId)
+      let url = buildApiUrlWithYear('/identities/players', eventId)
       const baseSeparator = url.includes('?') ? '&' : '?'
       url += `${baseSeparator}page=${page}&limit=${PAGE_SIZE}`
       if (search && search.trim()) {
@@ -319,7 +319,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
     try {
       // Fetch player enrollments
       const response = await fetchWithAuth(
-        buildApiUrlWithYear(`/api/player-enrollments/${player.reg_number}`, eventId)
+        buildApiUrlWithYear(`/sports-participations/player-enrollments/${player.reg_number}`, eventId)
       )
 
       if (!response.ok) {
@@ -367,7 +367,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
     try {
       await executeDelete(
         () => fetchWithAuth(
-          buildApiUrlWithYear(`/api/delete-player/${playerToDelete.reg_number}`, eventId),
+          buildApiUrlWithYear(`/identities/delete-player/${playerToDelete.reg_number}`, eventId),
           {
             method: 'DELETE',
           }
@@ -385,11 +385,11 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
             // Refresh players list
             isRefreshingRef.current = true
             // Clear players cache pattern to match backend behavior
-            clearCachePattern('/api/players')
-            clearCachePattern('/api/teams')
-            clearCachePattern('/api/participants')
-            clearCachePattern('/api/sports-counts')
-            clearCachePattern('/api/event-schedule')
+            clearCachePattern('/identities/players')
+            clearCachePattern('/sports-participations/teams')
+            clearCachePattern('/sports-participations/participants')
+            clearCachePattern('/sports-participations/sports-counts')
+            clearCachePattern('/schedulings/event-schedule')
             fetchPlayers(null, false, searchQuery, currentPage).finally(() => {
               isRefreshingRef.current = false
             })
@@ -498,7 +498,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
     try {
       // OPTIMIZATION: Fetch enrollments for all selected players in a single API call
       const response = await fetchWithAuth(
-        buildApiUrlWithYear('/api/bulk-player-enrollments', eventId),
+        buildApiUrlWithYear('/identities/bulk-player-enrollments', eventId),
         {
           method: 'POST',
           body: JSON.stringify({ reg_numbers: regNumbers }),
@@ -571,7 +571,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
 
     try {
       const response = await fetchWithAuth(
-        buildApiUrlWithYear('/api/bulk-delete-players', eventId),
+        buildApiUrlWithYear('/identities/bulk-delete-players', eventId),
         {
           method: 'POST',
           body: JSON.stringify({ reg_numbers: regNumbers }),
@@ -632,7 +632,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
       // Refresh players list
       isRefreshingRef.current = true
       // Clear players cache pattern to match backend behavior
-      clearCachePattern('/api/players')
+      clearCachePattern('/identities/players')
       // If we're on a page that might be empty after deletion, go to previous page or page 1
       const newPage = currentPage > 1 ? currentPage - 1 : 1
       fetchPlayers(null, false, searchQuery, newPage).finally(() => {
@@ -722,7 +722,7 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
       const { batch_name, ...updateData } = trimmed
       
       await execute(
-        () => fetchWithAuth('/api/update-player', {
+        () => fetchWithAuth('/identities/update-player', {
           method: 'PUT',
           body: JSON.stringify(updateData),
         }),
@@ -736,10 +736,10 @@ function PlayerListModal({ isOpen, onClose, onStatusPopup, selectedEventId }) {
             isRefreshingRef.current = true
             
             // Clear cache first to ensure we get fresh data (use pattern to match backend)
-            clearCachePattern('/api/players')
+            clearCachePattern('/identities/players')
             
             // Use a separate function to avoid showing loading state and errors
-            let refreshUrl = buildApiUrlWithYear('/api/players', eventId)
+            let refreshUrl = buildApiUrlWithYear('/identities/players', eventId)
             const baseSeparator = refreshUrl.includes('?') ? '&' : '?'
             refreshUrl += `${baseSeparator}page=${currentPage}&limit=${PAGE_SIZE}`
             if (searchQuery && searchQuery.trim()) {

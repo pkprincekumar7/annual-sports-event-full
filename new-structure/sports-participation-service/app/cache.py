@@ -8,9 +8,9 @@ from .config import get_settings
 
 
 CACHE_TTL: Dict[str, int] = {
-    "/api/sports": 10000,
-    "/api/sports-counts": 10000,
-    "/api/teams": 10000,
+    "/sports-participations/sports": 10000,
+    "/sports-participations/sports-counts": 10000,
+    "/sports-participations/teams": 10000,
     "default": 5000,
 }
 

@@ -67,7 +67,7 @@ async def get_me(request: Request, _: None = Depends(auth_dependency)):
             raise
 
     if event_id:
-        cache_key = f"/api/me?event_id={event_id}"
+        cache_key = f"/identities/me?event_id={event_id}"
         cached = cache.get(cache_key)
         if cached and cached.get("reg_number") == request.state.user.get("reg_number"):
             return send_success_response({"player": cached})
@@ -93,7 +93,7 @@ async def get_me(request: Request, _: None = Depends(auth_dependency)):
         )
 
     if event_id:
-        cache_key = f"/api/me?event_id={event_id}"
+        cache_key = f"/identities/me?event_id={event_id}"
         cache.set(cache_key, user_with_computed)
 
     return send_success_response({"player": user_with_computed})
@@ -147,7 +147,7 @@ async def get_players(request: Request, _: None = Depends(auth_dependency)):
         query["$or"] = [{"reg_number": regex}, {"full_name": regex}]
 
     if not search_query and not has_page_param and event_id:
-        cache_key = f"/api/players?event_id={event_id}"
+        cache_key = f"/identities/players?event_id={event_id}"
         cached = cache.get(cache_key)
         if cached:
             return send_success_response(cached)
@@ -196,7 +196,7 @@ async def get_players(request: Request, _: None = Depends(auth_dependency)):
         result["totalCount"] = total_count
 
     if not search_query and not has_page_param and event_id:
-        cache_key = f"/api/players?event_id={event_id}"
+        cache_key = f"/identities/players?event_id={event_id}"
         cache.set(cache_key, result)
 
     return send_success_response(result)
@@ -269,8 +269,8 @@ async def save_player(
     saved_player = await players_collection().find_one({"reg_number": reg_number})
     player_data = serialize_player(saved_player)
 
-    cache.clear_pattern("/api/players")
-    cache.clear(f"/api/batches?event_id={event_id}")
+    cache.clear_pattern("/identities/players")
+    cache.clear(f"/enrollments/batches?event_id={event_id}")
 
     return send_success_response(
         {"player": player_data}, "Player data saved successfully"
@@ -326,8 +326,8 @@ async def update_player(
     updated_player = await players_collection().find_one({"reg_number": reg_number})
     player_data = serialize_player(updated_player)
 
-    cache.clear_pattern("/api/players")
-    cache.clear_pattern("/api/me")
+    cache.clear_pattern("/identities/players")
+    cache.clear_pattern("/identities/me")
 
     return send_success_response({"player": player_data}, "Player data updated successfully")
 
@@ -508,9 +508,9 @@ async def delete_player(
     await unassign_players_from_batches([reg_number], event_id, token=token)
     await players_collection().delete_one({"reg_number": reg_number})
 
-    cache.clear_pattern("/api/players")
-    cache.clear(f"/api/me?event_id={event_id}")
-    cache.clear(f"/api/batches?event_id={event_id}")
+    cache.clear_pattern("/identities/players")
+    cache.clear(f"/identities/me?event_id={event_id}")
+    cache.clear(f"/enrollments/batches?event_id={event_id}")
 
     return send_success_response(
         {"deleted_events": len(non_team_events), "events": [e["sport"] for e in non_team_events]},
@@ -665,9 +665,9 @@ async def bulk_delete_players(
         await unassign_players_from_batches(reg_numbers_to_delete, event_id, token=request.state.token)
         await players_collection().delete_many({"reg_number": {"$in": reg_numbers_to_delete}})
 
-    cache.clear_pattern("/api/players")
-    cache.clear(f"/api/me?event_id={event_id}")
-    cache.clear(f"/api/batches?event_id={event_id}")
+    cache.clear_pattern("/identities/players")
+    cache.clear(f"/identities/me?event_id={event_id}")
+    cache.clear(f"/enrollments/batches?event_id={event_id}")
 
     return send_success_response(
         {

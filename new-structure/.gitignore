@@ -12,6 +12,19 @@ dist
 dist-ssr
 *.local
 .env
+terraform.tfvars
+*.auto.tfvars
+*.tfvars
+.terraform/
+terraform.tfstate
+terraform.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # Editor directories and files
 .vscode/*

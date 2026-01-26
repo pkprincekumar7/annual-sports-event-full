@@ -17,27 +17,41 @@ export function useEventYears() {
   const [eventYears, setEventYears] = useState(cachedEventYears || [])
   const [loading, setLoading] = useState(!cachedEventYears && !fetchFailed)
   const [refreshTrigger, setRefreshTrigger] = useState(0) // State to trigger re-fetch when cache is reset
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem('authToken'))
 
-  // Listen for cache reset events
+  // Listen for cache reset and login events
   useEffect(() => {
     const handleCacheReset = () => {
       setRefreshTrigger(prev => prev + 1)
     }
+    const handleLogin = () => {
+      setAuthToken(localStorage.getItem('authToken'))
+    }
+    const handleStorage = (event) => {
+      if (event.key === 'authToken') {
+        setAuthToken(event.newValue)
+      }
+    }
     window.addEventListener('eventYearsCacheReset', handleCacheReset)
+    window.addEventListener('userLoggedIn', handleLogin)
+    window.addEventListener('storage', handleStorage)
     return () => {
       window.removeEventListener('eventYearsCacheReset', handleCacheReset)
+      window.removeEventListener('userLoggedIn', handleLogin)
+      window.removeEventListener('storage', handleStorage)
     }
   }, [])
 
   useEffect(() => {
     // Check if user is authenticated before attempting to fetch
     // This endpoint requires admin authentication, so don't fetch if no token
-    const authToken = localStorage.getItem('authToken')
     if (!authToken) {
-      // No token - don't attempt to fetch, set fetchFailed to prevent retries
-      fetchFailed = true
-      setLoading(false)
+      // No token - don't attempt to fetch
+      cachedEventYears = null
+      fetchPromise = null
+      fetchFailed = false
       setEventYears([])
+      setLoading(false)
       return
     }
 
@@ -125,7 +139,7 @@ export function useEventYears() {
     }
 
     fetchEventYears()
-  }, [refreshTrigger]) // Re-run when refresh trigger changes
+  }, [refreshTrigger, authToken]) // Re-run when refresh trigger changes or token updates
 
   return { eventYears, loading }
 }

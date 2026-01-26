@@ -1,0 +1,41 @@
+# Example values for prod
+aws_region     = "us-east-1"
+aws_account_id = "123456789012"
+cluster_name   = "annual-sports-prod"
+
+availability_zones = ["us-east-1a", "us-east-1b"]
+public_subnets      = ["10.50.1.0/24", "10.50.2.0/24"]
+private_subnets     = ["10.50.11.0/24", "10.50.12.0/24"]
+
+domain     = "your-domain.com"
+api_domain = "api.your-domain.com"
+
+image_tag = "latest"
+
+mongo_uris = {
+  "identity-service"             = "mongodb+srv://user:pass@cluster/annual-sports-identity-prod"
+  "enrollment-service"           = "mongodb+srv://user:pass@cluster/annual-sports-enrollment-prod"
+  "department-service"           = "mongodb+srv://user:pass@cluster/annual-sports-department-prod"
+  "sports-participation-service" = "mongodb+srv://user:pass@cluster/annual-sports-participation-prod"
+  "event-configuration-service"  = "mongodb+srv://user:pass@cluster/annual-sports-event-config-prod"
+  "scheduling-service"           = "mongodb+srv://user:pass@cluster/annual-sports-scheduling-prod"
+  "scoring-service"              = "mongodb+srv://user:pass@cluster/annual-sports-scoring-prod"
+  "reporting-service"            = "mongodb+srv://user:pass@cluster/annual-sports-reporting-prod"
+}
+
+database_names = {
+  "identity-service"             = "annual-sports-identity-prod"
+  "enrollment-service"           = "annual-sports-enrollment-prod"
+  "department-service"           = "annual-sports-department-prod"
+  "sports-participation-service" = "annual-sports-participation-prod"
+  "event-configuration-service"  = "annual-sports-event-config-prod"
+  "scheduling-service"           = "annual-sports-scheduling-prod"
+  "scoring-service"              = "annual-sports-scoring-prod"
+  "reporting-service"            = "annual-sports-reporting-prod"
+}
+
+jwt_secret = "replace-with-strong-secret"
+email_provider = "gmail"
+gmail_user = "your-email@gmail.com"
+gmail_app_password = "your-app-password"
+email_from = "no-reply@your-domain.com"

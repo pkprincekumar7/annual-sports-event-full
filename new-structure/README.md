@@ -39,8 +39,8 @@ This folder contains the FastAPI microservices + Vite frontend for the annual sp
 ### Prerequisites
 
 - Docker + Docker Compose (recommended for local orchestration)
-- Python 3.11+ for running services outside Docker
-- Node 18+ for the frontend
+- Python 3.12+ for running services outside Docker
+- Node.js 24+ for the frontend
 
 ### Environment Setup
 

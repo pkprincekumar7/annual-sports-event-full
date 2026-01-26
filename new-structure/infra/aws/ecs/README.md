@@ -62,5 +62,6 @@ Repeat with `qa`, `stg`, `perf`, or `prod` by swapping the backend/tfvars files
 
 ## Notes
 - Configure Mongo Atlas URIs and secrets in your environment tfvars (for example, `dev.tfvars`).
+- Set `route53_zone_id` in tfvars to have Terraform create Route 53 records for `domain` and `api_domain`.
 - Redis is provisioned via ElastiCache; the services use that endpoint automatically.
 - `VITE_API_URL` is build-time; rebuild the frontend image when it changes.

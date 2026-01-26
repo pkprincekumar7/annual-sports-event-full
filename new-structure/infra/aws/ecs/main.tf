@@ -30,6 +30,7 @@ locals {
     "scoring-service"              = "score"
     "reporting-service"            = "report"
   }
+  has_route53_zone = var.route53_zone_id != ""
 
   service_url_env = {
     IDENTITY_URL             = "http://identity-service.${var.service_discovery_namespace}:8001"
@@ -227,6 +228,32 @@ resource "aws_lb" "app" {
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = module.vpc.public_subnets
+}
+
+resource "aws_route53_record" "frontend_domain" {
+  count   = local.has_route53_zone ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = var.domain
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.app.dns_name
+    zone_id                = aws_lb.app.zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "api_domain" {
+  count   = local.has_route53_zone && var.api_domain != "" ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = var.api_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.app.dns_name
+    zone_id                = aws_lb.app.zone_id
+    evaluate_target_health = true
+  }
 }
 
 resource "aws_lb_target_group" "frontend" {

@@ -7,8 +7,10 @@ availability_zones = ["us-east-1a", "us-east-1b"]
 public_subnets      = ["10.20.1.0/24", "10.20.2.0/24"]
 private_subnets     = ["10.20.11.0/24", "10.20.12.0/24"]
 
-domain     = "qa.your-domain.com"
-api_domain = "api.qa.your-domain.com"
+domain     = "sports-qa.learning-dev.com"
+api_domain = "sports-qa-api.learning-dev.com"
+route53_zone_id = "Z1234567890"
+acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/replace-with-your-cert-id"
 
 image_tag = "latest"
 

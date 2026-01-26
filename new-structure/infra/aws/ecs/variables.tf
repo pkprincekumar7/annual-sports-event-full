@@ -58,6 +58,12 @@ variable "acm_certificate_arn" {
   description = "Optional ACM certificate ARN for HTTPS listener."
 }
 
+variable "route53_zone_id" {
+  type        = string
+  default     = ""
+  description = "Optional Route 53 hosted zone ID for creating DNS records."
+}
+
 variable "redis_node_type" {
   type        = string
   default     = "cache.t3.micro"

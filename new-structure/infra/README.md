@@ -1,11 +1,12 @@
-# Infrastructure Prerequisites (Terraform + AWS CLI)
+# Infrastructure Prerequisites (Terraform + Cloud CLIs)
 
-This folder contains Infrastructure as Code for AWS. Install Terraform and the
-AWS CLI, then run `aws configure` before using any stack.
+This folder contains Infrastructure as Code for AWS and Azure. Install Terraform
+and the required cloud CLIs, then authenticate before using any stack.
 
 ## Required Versions
 - Terraform 1.13+
 - AWS CLI v2
+- Azure CLI
 
 ## Ubuntu
 
@@ -38,6 +39,19 @@ Configure:
 aws configure
 ```
 
+Azure CLI:
+
+```bash
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+az version
+```
+
+Authenticate:
+
+```bash
+az login
+```
+
 ## macOS
 
 Terraform (Homebrew):
@@ -61,6 +75,20 @@ Configure:
 aws configure
 ```
 
+Azure CLI (Homebrew):
+
+```bash
+brew update
+brew install azure-cli
+az version
+```
+
+Authenticate:
+
+```bash
+az login
+```
+
 ## Windows
 
 Terraform (winget):
@@ -82,3 +110,22 @@ Configure:
 ```powershell
 aws configure
 ```
+
+Azure CLI (winget):
+
+```powershell
+winget install Microsoft.AzureCLI
+az version
+```
+
+Authenticate:
+
+```powershell
+az login
+```
+
+## Azure Terraform State
+
+Azure stacks use an Azure Storage backend. Create a storage account and a
+container, then update the `hcl/backend-*.hcl` files under
+`infra/azure/aks` and `infra/azure/aca`.

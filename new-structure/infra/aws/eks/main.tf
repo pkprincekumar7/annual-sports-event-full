@@ -359,6 +359,7 @@ resource "kubernetes_service_v1" "services" {
     }
   }
   spec {
+    type = "ClusterIP"
     selector = {
       app = each.key
     }
@@ -409,6 +410,7 @@ resource "kubernetes_service_v1" "frontend" {
     namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
   spec {
+    type = "ClusterIP"
     selector = {
       app = "annual-sports-frontend"
     }

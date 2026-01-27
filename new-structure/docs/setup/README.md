@@ -48,10 +48,10 @@ This folder contains setup-focused documentation for the new microservices struc
 - `../infra/aws/ecs/README.md` - AWS ECS Fargate with Terraform
 
 ## Azure
-- `azure/aks.md` - Azure AKS deployment (ACR, ingress, TLS)
-- `azure/aks-terraform.md` - Azure AKS with Terraform
-- `azure/container-apps.md` - Azure Container Apps deployment
-- `azure/container-apps-terraform.md` - Azure Container Apps with Terraform
+- `azure/aks.md` - Azure AKS deployment (Terraform entry point)
+- `../infra/azure/aks/README.md` - Azure AKS with Terraform
+- `azure/container-apps.md` - Azure Container Apps deployment (Terraform entry point)
+- `../infra/azure/aca/README.md` - Azure Container Apps with Terraform
 
 ## GCP
 - `gcp/gke.md` - Google Kubernetes Engine (GKE) deployment

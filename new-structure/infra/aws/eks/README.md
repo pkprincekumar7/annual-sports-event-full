@@ -64,3 +64,4 @@ Repeat with `qa`, `stg`, `perf`, or `prod` by swapping the backend/tfvars files
 - Configure Mongo Atlas URIs and secrets in your environment tfvars (for example, `dev.tfvars`).
 - The ALB controller policy is included; apply creates the controller and Ingress.
 - `VITE_API_URL` is build-time; rebuild the frontend image when it changes.
+- Services are ClusterIP-only; only the ALB ingress is public.

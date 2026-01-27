@@ -54,7 +54,7 @@ This folder contains setup-focused documentation for the new microservices struc
 - `../infra/azure/aca/README.md` - Azure Container Apps with Terraform
 
 ## GCP
-- `gcp/gke.md` - Google Kubernetes Engine (GKE) deployment
-- `gcp/gke-terraform.md` - GKE with Terraform
-- `gcp/cloud-run.md` - Cloud Run deployment
-- `gcp/cloud-run-terraform.md` - Cloud Run deployment with Terraform
+- `gcp/gke.md` - Google Kubernetes Engine (GKE) deployment (Terraform entry point)
+- `../infra/gcp/gke/README.md` - GKE with Terraform
+- `gcp/cloud-run.md` - Cloud Run deployment (Terraform entry point)
+- `../infra/gcp/cloud-run/README.md` - Cloud Run with Terraform

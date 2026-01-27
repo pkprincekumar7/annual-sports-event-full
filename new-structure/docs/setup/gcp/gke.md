@@ -1,15 +1,17 @@
-# Google Cloud GKE Deployment (Frontend + Backend)
+# Google Cloud GKE Deployment (Frontend + Microservices)
 
 This guide deploys the app to Google Kubernetes Engine (GKE):
 - Artifact Registry for images
 - GKE for workloads
-- GKE Ingress (HTTP(S) Load Balancer)
+- Ingress for routing
 - Cloud DNS + managed TLS
 
 ## Prerequisites
 - GCP project with billing enabled
 - `gcloud` installed and authenticated
-- `kubectl` installed (or use `gcloud` to install it)
+- `kubectl` installed
+- Docker installed
+- Python 3.12+ and Node.js 24+ for local builds
 - A domain you control (Cloud DNS or external DNS)
 
 ## 1) Set Project and Region
@@ -20,7 +22,25 @@ gcloud config set compute/region us-central1
 gcloud config set compute/zone us-central1-a
 ```
 
-## 2) Create Artifact Registry
+## 2) Terraform (Recommended)
+
+Terraform for GKE lives in:
+
+`new-structure/infra/gcp/gke`
+
+Quick start:
+
+```bash
+cd new-structure/infra/gcp/gke
+terraform init -backend-config=hcl/backend-dev.hcl
+cp tfvars/dev.tfvars.example dev.tfvars
+terraform plan -var-file=dev.tfvars
+terraform apply -var-file=dev.tfvars
+```
+
+Then continue with image build/push and verification below.
+
+## 3) Create Artifact Registry
 
 ```bash
 gcloud artifacts repositories create annual-sports \
@@ -35,24 +55,41 @@ Configure Docker auth:
 gcloud auth configure-docker us-central1-docker.pkg.dev
 ```
 
-## 3) Build and Push Images
+## 4) Build and Push Images
 
 ```bash
 PROJECT_ID=<your-project-id>
 REGION=us-central1
 REPO=annual-sports
+```
 
-docker build -f Dockerfile.backend -t "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-backend:latest" .
-docker build -f Dockerfile.frontend --build-arg VITE_API_URL=/api \
-  -t "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-frontend:latest" .
+```bash
+for service in \
+  identity-service \
+  enrollment-service \
+  department-service \
+  sports-participation-service \
+  event-configuration-service \
+  scheduling-service \
+  scoring-service \
+  reporting-service; do
+  docker build -t "annual-sports-${service}:latest" "new-structure/$service"
+  docker tag "annual-sports-${service}:latest" \
+    "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-${service}:latest"
+  docker push "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-${service}:latest"
+done
 
-docker push "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-backend:latest"
+docker build -t annual-sports-frontend:latest \
+  --build-arg VITE_API_URL=/ \
+  new-structure/frontend
+docker tag annual-sports-frontend:latest \
+  "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-frontend:latest"
 docker push "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-frontend:latest"
 ```
 
 `VITE_API_URL` is a build-time value; changing it requires a rebuild.
 
-## 4) Create GKE Cluster
+## 5) Create GKE Cluster
 
 ```bash
 gcloud container clusters create annual-sports \
@@ -67,46 +104,55 @@ Get credentials:
 gcloud container clusters get-credentials annual-sports --region us-central1
 ```
 
-## 5) Create Namespace and Secrets
+## 6) Create Namespace and Secrets
 
 ```bash
 kubectl create namespace annual-sports
 ```
 
+Example for Identity:
+
 ```bash
-kubectl -n annual-sports create secret generic backend-secrets \
+kubectl -n annual-sports create secret generic identity-secrets \
   --from-literal=JWT_SECRET="your-strong-secret" \
-  --from-literal=MONGODB_URI="mongodb://mongodb-0.mongodb:27017/annual-sports" \
+  --from-literal=MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-identity" \
+  --from-literal=DATABASE_NAME="annual-sports-identity" \
+  --from-literal=REDIS_URL="redis://<redis-host>:6379/0" \
   --from-literal=GMAIL_USER="your-email@gmail.com" \
-  --from-literal=GMAIL_APP_PASSWORD="your-16-char-app-password"
+  --from-literal=GMAIL_APP_PASSWORD="your-16-char-app-password" \
+  --from-literal=EMAIL_FROM="no-reply@your-domain.com"
 ```
+
+Create frontend config:
 
 ```bash
 kubectl -n annual-sports create configmap frontend-config \
-  --from-literal=VITE_API_URL="/api"
+  --from-literal=VITE_API_URL="/"
 ```
 
-## 6) Deploy MongoDB (Optional)
+## 7) Deploy MongoDB and Redis (Optional)
 
-For production, use MongoDB Atlas or a managed Mongo service.
+For production, use MongoDB Atlas and Memorystore for Redis.
+If you want MongoDB inside the cluster for testing, use `mongodb.yaml`:
 
 ```bash
 kubectl apply -f mongodb.yaml
 kubectl -n annual-sports rollout status statefulset/mongodb
 ```
 
-## 7) Deploy Backend and Frontend
+## 8) Deploy Services and Frontend
 
-Update `backend.yaml` and `frontend.yaml` to use Artifact Registry image URLs:
+Create one Deployment/Service per microservice (example in `docs/setup/ubuntu/kubernetes.md`),
+then apply `frontend.yaml` with the frontend image. Verify rollouts:
 
 ```bash
-kubectl apply -f backend.yaml
-kubectl apply -f frontend.yaml
+kubectl -n annual-sports rollout status deploy/identity-service
+kubectl -n annual-sports rollout status deploy/annual-sports-frontend
 ```
 
-## 8) Ingress + TLS
+## 9) Ingress + TLS
 
-Create an `ingress.yaml`, replace the host, then apply it:
+Create an `ingress.yaml`, replace the hosts, then apply it:
 
 ```bash
 cat <<'EOF' > ingress.yaml
@@ -129,13 +175,121 @@ spec:
                 name: annual-sports-frontend
                 port:
                   number: 80
-          - path: /api
+          - path: /identities
             pathType: Prefix
             backend:
               service:
-                name: annual-sports-backend
+                name: identity-service
                 port:
-                  number: 3001
+                  number: 8001
+          - path: /enrollments
+            pathType: Prefix
+            backend:
+              service:
+                name: enrollment-service
+                port:
+                  number: 8002
+          - path: /departments
+            pathType: Prefix
+            backend:
+              service:
+                name: department-service
+                port:
+                  number: 8003
+          - path: /sports-participations
+            pathType: Prefix
+            backend:
+              service:
+                name: sports-participation-service
+                port:
+                  number: 8004
+          - path: /event-configurations
+            pathType: Prefix
+            backend:
+              service:
+                name: event-configuration-service
+                port:
+                  number: 8005
+          - path: /schedulings
+            pathType: Prefix
+            backend:
+              service:
+                name: scheduling-service
+                port:
+                  number: 8006
+          - path: /scorings
+            pathType: Prefix
+            backend:
+              service:
+                name: scoring-service
+                port:
+                  number: 8007
+          - path: /reportings
+            pathType: Prefix
+            backend:
+              service:
+                name: reporting-service
+                port:
+                  number: 8008
+    - host: api.your-domain.com
+      http:
+        paths:
+          - path: /identities
+            pathType: Prefix
+            backend:
+              service:
+                name: identity-service
+                port:
+                  number: 8001
+          - path: /enrollments
+            pathType: Prefix
+            backend:
+              service:
+                name: enrollment-service
+                port:
+                  number: 8002
+          - path: /departments
+            pathType: Prefix
+            backend:
+              service:
+                name: department-service
+                port:
+                  number: 8003
+          - path: /sports-participations
+            pathType: Prefix
+            backend:
+              service:
+                name: sports-participation-service
+                port:
+                  number: 8004
+          - path: /event-configurations
+            pathType: Prefix
+            backend:
+              service:
+                name: event-configuration-service
+                port:
+                  number: 8005
+          - path: /schedulings
+            pathType: Prefix
+            backend:
+              service:
+                name: scheduling-service
+                port:
+                  number: 8006
+          - path: /scorings
+            pathType: Prefix
+            backend:
+              service:
+                name: scoring-service
+                port:
+                  number: 8007
+          - path: /reportings
+            pathType: Prefix
+            backend:
+              service:
+                name: reporting-service
+                port:
+                  number: 8008
 EOF
 
 kubectl apply -f ingress.yaml
@@ -162,15 +316,15 @@ metadata:
     networking.gke.io/managed-certificates: annual-sports-cert
 ```
 
-## 9) DNS Setup
+## 10) DNS Setup
 
 Point `your-domain.com` to the load balancer IP from the ingress.
 
-## 10) Verify
+## 11) Verify
 
 ```bash
 curl -I https://your-domain.com
-curl -I https://your-domain.com/api/health
+curl -I https://your-domain.com/identities/docs
 ```
 
 ## Manual Setup (Console)
@@ -196,6 +350,11 @@ gcloud artifacts repositories delete annual-sports --location us-central1
 ```
 
 ## Best Practices Notes
-- Use MongoDB Atlas for production.
+- Use MongoDB Atlas and Memorystore for production.
 - Store secrets in Secret Manager and sync to Kubernetes.
+- Use ClusterIP for services; only the ingress should be public.
 - Pin image tags and enable image scanning.
+
+## Terraform Option
+
+If you want Infrastructure as Code, use `infra/gcp/gke/README.md`.

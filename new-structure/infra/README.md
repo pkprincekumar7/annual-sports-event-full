@@ -1,12 +1,13 @@
 # Infrastructure Prerequisites (Terraform + Cloud CLIs)
 
-This folder contains Infrastructure as Code for AWS and Azure. Install Terraform
+This folder contains Infrastructure as Code for AWS, Azure, and GCP. Install Terraform
 and the required cloud CLIs, then authenticate before using any stack.
 
 ## Required Versions
 - Terraform 1.13+
 - AWS CLI v2
 - Azure CLI
+- Google Cloud SDK
 
 ## Ubuntu
 
@@ -52,6 +53,24 @@ Authenticate:
 az login
 ```
 
+Google Cloud SDK:
+
+```bash
+sudo apt-get install -y apt-transport-https ca-certificates gnupg
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+  | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+sudo apt-get update
+sudo apt-get install -y google-cloud-cli
+gcloud --version
+```
+
+Authenticate:
+
+```bash
+gcloud auth login
+```
+
 ## macOS
 
 Terraform (Homebrew):
@@ -89,6 +108,20 @@ Authenticate:
 az login
 ```
 
+Google Cloud SDK (Homebrew):
+
+```bash
+brew update
+brew install --cask google-cloud-sdk
+gcloud --version
+```
+
+Authenticate:
+
+```bash
+gcloud auth login
+```
+
 ## Windows
 
 Terraform (winget):
@@ -124,8 +157,26 @@ Authenticate:
 az login
 ```
 
+Google Cloud SDK (winget):
+
+```powershell
+winget install Google.CloudSDK
+gcloud --version
+```
+
+Authenticate:
+
+```powershell
+gcloud auth login
+```
+
 ## Azure Terraform State
 
 Azure stacks use an Azure Storage backend. Create a storage account and a
 container, then update the `hcl/backend-*.hcl` files under
 `infra/azure/aks` and `infra/azure/aca`.
+
+## GCP Terraform State
+
+GCP stacks use a GCS backend. Create a GCS bucket and update the
+`hcl/backend-*.hcl` files under `infra/gcp/gke` and `infra/gcp/cloud-run`.

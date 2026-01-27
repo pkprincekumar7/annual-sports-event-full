@@ -1,16 +1,37 @@
-# Google Cloud Run Deployment (Frontend + Backend)
+# Google Cloud Run Deployment (Frontend + Microservices)
 
 This guide deploys the app to Cloud Run:
 - Artifact Registry for images
-- Cloud Run services for backend and frontend
-- Cloud Load Balancing + Cloud DNS for HTTPS
+- Cloud Run services for workloads
+- Internal-only microservices
+- A public API gateway and frontend
 
 ## Prerequisites
 - GCP project with billing enabled
 - `gcloud` authenticated
+- Docker installed
+- Python 3.12+ and Node.js 24+ for local builds
 - A domain you control
 
-## 1) Create Artifact Registry
+## 1) Terraform (Recommended)
+
+Terraform for Cloud Run lives in:
+
+`new-structure/infra/gcp/cloud-run`
+
+Quick start:
+
+```bash
+cd new-structure/infra/gcp/cloud-run
+terraform init -backend-config=hcl/backend-dev.hcl
+cp tfvars/dev.tfvars.example dev.tfvars
+terraform plan -var-file=dev.tfvars
+terraform apply -var-file=dev.tfvars
+```
+
+Then continue with image build/push and verification below.
+
+## 2) Create Artifact Registry
 
 ```bash
 gcloud config set project <your-project-id>
@@ -24,39 +45,120 @@ gcloud artifacts repositories create annual-sports \
 gcloud auth configure-docker us-central1-docker.pkg.dev
 ```
 
-## 2) Build and Push Images
+## 3) Build and Push Images
 
 ```bash
 PROJECT_ID=<your-project-id>
 REGION=us-central1
 REPO=annual-sports
+```
 
-docker build -f Dockerfile.backend -t "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-backend:latest" .
-docker build -f Dockerfile.frontend --build-arg VITE_API_URL=/api \
-  -t "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-frontend:latest" .
+```bash
+for service in \
+  identity-service \
+  enrollment-service \
+  department-service \
+  sports-participation-service \
+  event-configuration-service \
+  scheduling-service \
+  scoring-service \
+  reporting-service; do
+  docker build -t "annual-sports-${service}:latest" "new-structure/$service"
+  docker tag "annual-sports-${service}:latest" \
+    "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-${service}:latest"
+  docker push "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-${service}:latest"
+done
 
-docker push "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-backend:latest"
+docker build -t annual-sports-frontend:latest \
+  --build-arg VITE_API_URL=/ \
+  new-structure/frontend
+docker tag annual-sports-frontend:latest \
+  "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-frontend:latest"
 docker push "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-frontend:latest"
 ```
 
 `VITE_API_URL` is a build-time value; changing it requires a rebuild.
 
-## 3) Deploy Backend Service
+## 4) (Optional) Create a Gateway Service Account
+
+If you want IAM-authenticated calls from the gateway to the internal services,
+create a service account and grant it `roles/run.invoker`. Otherwise, you can
+use `--allow-unauthenticated` for the internal services while keeping
+`--ingress internal`.
 
 ```bash
-gcloud run deploy annual-sports-backend \
-  --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-backend:latest" \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --port 3001 \
-  --set-env-vars PORT=3001 \
-  --set-env-vars JWT_SECRET="your-strong-secret" \
-  --set-env-vars MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports" \
-  --set-env-vars GMAIL_USER="your-email@gmail.com" \
-  --set-env-vars GMAIL_APP_PASSWORD="your-16-char-app-password"
+gcloud iam service-accounts create annual-sports-gateway \
+  --display-name "Annual Sports API Gateway"
 ```
 
-## 4) Deploy Frontend Service
+## 5) Deploy Internal Microservices
+
+Example for Identity (repeat per service; use `--ingress internal`):
+
+```bash
+gcloud run deploy identity-service \
+  --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-identity-service:latest" \
+  --region us-central1 \
+  --ingress internal \
+  --allow-unauthenticated \
+  --port 8001 \
+  --set-env-vars PORT=8001 \
+  --set-env-vars JWT_SECRET="your-strong-secret" \
+  --set-env-vars MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-identity" \
+  --set-env-vars DATABASE_NAME="annual-sports-identity" \
+  --set-env-vars REDIS_URL="redis://<redis-host>:6379/0" \
+  --set-env-vars GMAIL_USER="your-email@gmail.com" \
+  --set-env-vars GMAIL_APP_PASSWORD="your-16-char-app-password" \
+  --set-env-vars EMAIL_FROM="no-reply@your-domain.com"
+```
+
+Repeat for the remaining services on ports `8002`–`8008`.
+
+If you are enforcing IAM auth, grant the gateway service account invoke access
+to each service:
+
+```bash
+gcloud run services add-iam-policy-binding identity-service \
+  --region us-central1 \
+  --member "serviceAccount:annual-sports-gateway@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role roles/run.invoker
+```
+
+## 6) Deploy API Gateway (Public)
+
+Create an NGINX config that proxies to the internal service URLs (replace the URLs
+with the Cloud Run service URLs from `gcloud run services describe`). If you
+enforced IAM auth, use a gateway that can attach identity tokens to requests.
+
+```nginx
+events {}
+http {
+  server {
+    listen 80;
+    location /identities { proxy_pass https://identity-service-<hash>-uc.a.run.app; }
+    location /enrollments { proxy_pass https://enrollment-service-<hash>-uc.a.run.app; }
+    location /departments { proxy_pass https://department-service-<hash>-uc.a.run.app; }
+    location /sports-participations { proxy_pass https://sports-participation-service-<hash>-uc.a.run.app; }
+    location /event-configurations { proxy_pass https://event-configuration-service-<hash>-uc.a.run.app; }
+    location /schedulings { proxy_pass https://scheduling-service-<hash>-uc.a.run.app; }
+    location /scorings { proxy_pass https://scoring-service-<hash>-uc.a.run.app; }
+    location /reportings { proxy_pass https://reporting-service-<hash>-uc.a.run.app; }
+  }
+}
+```
+
+Build and push a gateway image, then deploy it:
+
+```bash
+gcloud run deploy annual-sports-gateway \
+  --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-gateway:latest" \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --service-account "annual-sports-gateway@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --port 80
+```
+
+## 7) Deploy Frontend (Public)
 
 ```bash
 gcloud run deploy annual-sports-frontend \
@@ -66,49 +168,52 @@ gcloud run deploy annual-sports-frontend \
   --port 80
 ```
 
-## 5) HTTPS and Custom Domain
+## 8) HTTPS and Custom Domain
 
-Use Cloud Run domain mappings for each service:
+Use Cloud Run domain mappings:
 - `your-domain.com` → frontend
-- `api.your-domain.com` → backend
+- `api.your-domain.com` → gateway
 
 ```bash
 gcloud run domain-mappings create \
   --service annual-sports-frontend \
   --domain your-domain.com \
   --region us-central1
-```
 
-```bash
 gcloud run domain-mappings create \
-  --service annual-sports-backend \
+  --service annual-sports-gateway \
   --domain api.your-domain.com \
   --region us-central1
 ```
 
-## 6) Verify
+## 9) Verify
 
 ```bash
 curl -I https://your-domain.com
-curl -I https://api.your-domain.com
+curl -I https://api.your-domain.com/identities/docs
 ```
 
 ## Manual Setup (Console)
 
 Use Cloud Console to:
 - Create Artifact Registry
-- Deploy Cloud Run services
+- Deploy Cloud Run services (internal + public)
 - Configure custom domains
 
 ## Teardown
 
 ```bash
 gcloud run services delete annual-sports-frontend --region us-central1
-gcloud run services delete annual-sports-backend --region us-central1
+gcloud run services delete annual-sports-gateway --region us-central1
+gcloud run services delete identity-service --region us-central1
 gcloud artifacts repositories delete annual-sports --location us-central1
 ```
 
 ## Best Practices Notes
 - Use Secret Manager for backend secrets.
-- Use separate Cloud Run services for frontend/backend.
+- Keep microservices internal-only; expose only the gateway and frontend.
 - Pin image tags for releases.
+
+## Terraform Option
+
+If you want Infrastructure as Code, use `infra/gcp/cloud-run/README.md`.

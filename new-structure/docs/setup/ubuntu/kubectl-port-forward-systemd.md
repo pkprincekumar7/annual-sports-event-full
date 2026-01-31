@@ -1,13 +1,13 @@
 # Ubuntu - kubectl Port-Forward (systemd)
 
-Use this if you want the frontend port-forward to keep running after you close your SSH session, and to survive a VM reboot.
+Use this if you want the NGINX gateway port-forward to keep running after you close your SSH session, and to survive a VM reboot.
 
 ## 1) Create Port-Forward Service
 
 ```bash
-sudo tee /etc/systemd/system/annual-sports-frontend-forward.service >/dev/null <<'EOF'
+sudo tee /etc/systemd/system/annual-sports-nginx-forward.service >/dev/null <<'EOF'
 [Unit]
-Description=Port forward annual-sports frontend
+Description=Port forward annual-sports nginx gateway
 After=network.target minikube.service
 Wants=minikube.service
 
@@ -15,7 +15,7 @@ Wants=minikube.service
 Type=simple
 User=ubuntu
 Environment=KUBECONFIG=/home/ubuntu/.kube/config
-ExecStart=/usr/local/bin/kubectl -n annual-sports port-forward svc/annual-sports-frontend 5173:80 --address 0.0.0.0
+ExecStart=/usr/local/bin/kubectl -n annual-sports port-forward svc/annual-sports-nginx 8080:80 --address 0.0.0.0
 Restart=always
 RestartSec=3
 
@@ -24,8 +24,8 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now annual-sports-frontend-forward
-sudo systemctl status annual-sports-frontend-forward
+sudo systemctl enable --now annual-sports-nginx-forward
+sudo systemctl status annual-sports-nginx-forward
 ```
 
 ## 2) Start Minikube on Boot
@@ -62,6 +62,6 @@ sudo systemctl restart minikube
 ## 3) Restart Port-Forward (After Minikube)
 
 ```bash
-sudo systemctl stop annual-sports-frontend-forward
-sudo systemctl enable --now annual-sports-frontend-forward
+sudo systemctl stop annual-sports-nginx-forward
+sudo systemctl enable --now annual-sports-nginx-forward
 ```

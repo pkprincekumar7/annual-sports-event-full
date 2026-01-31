@@ -44,6 +44,12 @@ docker push your-registry/annual-sports-frontend:latest
 kubectl create namespace annual-sports
 ```
 
+List namespaces:
+
+```bash
+kubectl get namespaces
+```
+
 If your registry is private, create an image pull secret:
 
 ```bash
@@ -367,6 +373,16 @@ Check logs:
 
 ```bash
 kubectl -n annual-sports logs <frontend-pod>
+```
+
+### Reset Minikube and Namespace
+
+If you want to start from scratch:
+
+```bash
+kubectl delete namespace annual-sports
+minikube delete
+minikube start
 ```
 
 ## Notes

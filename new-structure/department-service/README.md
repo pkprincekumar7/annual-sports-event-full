@@ -29,8 +29,8 @@ FastAPI service for department management, porting routes from `routes/departmen
 
 - Local UI: `http://localhost:8003/docs`
 - Spec file: `swagger.yaml`
-- Nginx UI: `http://localhost:5173/departments/docs`
-- Nginx Spec: `http://localhost:5173/departments/swagger.yml`
+- Nginx UI: `http://localhost:8080/departments/docs`
+- Nginx Spec: `http://localhost:8080/departments/swagger.yml`
 
 ### Checklist
 

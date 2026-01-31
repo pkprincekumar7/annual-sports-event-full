@@ -67,7 +67,7 @@ Start the service:
 nssm start AnnualSportsIdentity
 ```
 
-Repeat for the remaining services and ports:
+Create services for the remaining services and ports:
 - Enrollment: `8002`
 - Department: `8003`
 - Sports Participation: `8004`

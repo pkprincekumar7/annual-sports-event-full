@@ -39,8 +39,8 @@ FastAPI service for authentication and player management. This ports routes from
 
 - Local UI: `http://localhost:8001/identities/docs`
 - Spec file: `swagger.yaml`
-- Nginx UI: `http://localhost:5173/identities/docs`
-- Nginx Spec: `http://localhost:5173/identities/swagger.yml`
+- Nginx UI: `http://localhost:8080/identities/docs`
+- Nginx Spec: `http://localhost:8080/identities/swagger.yml`
 
 ### Checklist
 

@@ -97,7 +97,7 @@ az containerapp env show \
 
 ## 5) Create Internal Microservices
 
-Example for Identity (repeat per service; use `--ingress internal`):
+Provision Redis (Azure Cache for Redis) and MongoDB (Cosmos DB Mongo API or Atlas). Set `REDIS_URL` and `MONGODB_URI` for each service.
 
 ```bash
 az containerapp create \
@@ -111,14 +111,99 @@ az containerapp create \
   --env-vars PORT=8001 \
             JWT_SECRET="your-strong-secret" \
             MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-identity" \
-            DATABASE_NAME="annual-sports-identity" \
-            REDIS_URL="redis://<redis-host>:6379/0" \
-            GMAIL_USER="your-email@gmail.com" \
-            GMAIL_APP_PASSWORD="your-16-char-app-password" \
-            EMAIL_FROM="no-reply@your-domain.com"
-```
+            REDIS_URL="redis://<redis-host>:6379/0"
 
-Repeat for the remaining services on ports `8002`–`8008`.
+az containerapp create \
+  --name enrollment-service \
+  --resource-group rg-annual-sports \
+  --environment ca-env-annual-sports \
+  --image "$ACR_LOGIN_SERVER/annual-sports-enrollment-service:latest" \
+  --target-port 8002 \
+  --ingress internal \
+  --registry-server "$ACR_LOGIN_SERVER" \
+  --env-vars PORT=8002 \
+            JWT_SECRET="your-strong-secret" \
+            MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-enrollment" \
+            REDIS_URL="redis://<redis-host>:6379/1"
+
+az containerapp create \
+  --name department-service \
+  --resource-group rg-annual-sports \
+  --environment ca-env-annual-sports \
+  --image "$ACR_LOGIN_SERVER/annual-sports-department-service:latest" \
+  --target-port 8003 \
+  --ingress internal \
+  --registry-server "$ACR_LOGIN_SERVER" \
+  --env-vars PORT=8003 \
+            JWT_SECRET="your-strong-secret" \
+            MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-department" \
+            REDIS_URL="redis://<redis-host>:6379/2"
+
+az containerapp create \
+  --name sports-participation-service \
+  --resource-group rg-annual-sports \
+  --environment ca-env-annual-sports \
+  --image "$ACR_LOGIN_SERVER/annual-sports-sports-participation-service:latest" \
+  --target-port 8004 \
+  --ingress internal \
+  --registry-server "$ACR_LOGIN_SERVER" \
+  --env-vars PORT=8004 \
+            JWT_SECRET="your-strong-secret" \
+            MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-participation" \
+            REDIS_URL="redis://<redis-host>:6379/3"
+
+az containerapp create \
+  --name event-configuration-service \
+  --resource-group rg-annual-sports \
+  --environment ca-env-annual-sports \
+  --image "$ACR_LOGIN_SERVER/annual-sports-event-configuration-service:latest" \
+  --target-port 8005 \
+  --ingress internal \
+  --registry-server "$ACR_LOGIN_SERVER" \
+  --env-vars PORT=8005 \
+            JWT_SECRET="your-strong-secret" \
+            MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-event-config" \
+            REDIS_URL="redis://<redis-host>:6379/4"
+
+az containerapp create \
+  --name scheduling-service \
+  --resource-group rg-annual-sports \
+  --environment ca-env-annual-sports \
+  --image "$ACR_LOGIN_SERVER/annual-sports-scheduling-service:latest" \
+  --target-port 8006 \
+  --ingress internal \
+  --registry-server "$ACR_LOGIN_SERVER" \
+  --env-vars PORT=8006 \
+            JWT_SECRET="your-strong-secret" \
+            MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-scheduling" \
+            REDIS_URL="redis://<redis-host>:6379/5"
+
+az containerapp create \
+  --name scoring-service \
+  --resource-group rg-annual-sports \
+  --environment ca-env-annual-sports \
+  --image "$ACR_LOGIN_SERVER/annual-sports-scoring-service:latest" \
+  --target-port 8007 \
+  --ingress internal \
+  --registry-server "$ACR_LOGIN_SERVER" \
+  --env-vars PORT=8007 \
+            JWT_SECRET="your-strong-secret" \
+            MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-scoring" \
+            REDIS_URL="redis://<redis-host>:6379/6"
+
+az containerapp create \
+  --name reporting-service \
+  --resource-group rg-annual-sports \
+  --environment ca-env-annual-sports \
+  --image "$ACR_LOGIN_SERVER/annual-sports-reporting-service:latest" \
+  --target-port 8008 \
+  --ingress internal \
+  --registry-server "$ACR_LOGIN_SERVER" \
+  --env-vars PORT=8008 \
+            JWT_SECRET="your-strong-secret" \
+            MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-reporting" \
+            REDIS_URL="redis://<redis-host>:6379/7"
+```
 
 ## 6) Create API Gateway (Public)
 

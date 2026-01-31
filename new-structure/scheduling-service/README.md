@@ -33,8 +33,8 @@ utilities (match validation, gender derivation, and cache handling).
 
 - Local UI: `http://localhost:8006/schedulings/docs`
 - Spec file: `swagger.yaml`
-- Nginx UI: `http://localhost:5173/schedulings/docs`
-- Nginx Spec: `http://localhost:5173/schedulings/swagger.yml`
+- Nginx UI: `http://localhost:8080/schedulings/docs`
+- Nginx Spec: `http://localhost:8080/schedulings/swagger.yml`
 
 ### Checklist
 

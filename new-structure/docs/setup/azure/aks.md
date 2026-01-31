@@ -118,36 +118,37 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx --create-namespace
 ```
 
-## 7) Create Namespace and Secrets
+## 7) Create Namespace, Config, and Secrets
 
 ```bash
 kubectl create namespace annual-sports
 ```
 
-Create one secret per service (or a shared secret if you prefer). Example for Identity:
+Create ConfigMaps for non-secret values and Secrets for sensitive values. Non-secrets should match `x-common-env` in `new-structure/docker-compose.yml`. Secrets (MongoDB URI, JWT secret, email credentials) should come from Azure Key Vault or Kubernetes Secrets.
 
 ```bash
-kubectl -n annual-sports create secret generic identity-secrets \
-  --from-literal=JWT_SECRET="your-strong-secret" \
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/annual-sports-config.yaml
+kubectl -n annual-sports create secret generic annual-sports-secrets \
   --from-literal=MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-identity" \
-  --from-literal=DATABASE_NAME="annual-sports-identity" \
-  --from-literal=REDIS_URL="redis://<redis-host>:6379/0" \
-  --from-literal=GMAIL_USER="your-email@gmail.com" \
+  --from-literal=JWT_SECRET="your-strong-secret"
+
+kubectl -n annual-sports create secret generic identity-secrets \
   --from-literal=GMAIL_APP_PASSWORD="your-16-char-app-password" \
-  --from-literal=EMAIL_FROM="no-reply@your-domain.com"
+  --from-literal=SENDGRID_API_KEY="your-sendgrid-api-key" \
+  --from-literal=RESEND_API_KEY="your-resend-api-key" \
+  --from-literal=SMTP_PASSWORD="your-smtp-password"
 ```
 
-Create frontend config:
+## 8) Redis and MongoDB
+
+Redis is required for caching. Use **Azure Cache for Redis** in production and set `REDIS_URL` for each service.
+If you want in-cluster Redis for testing, apply `new-structure/docs/setup/ubuntu/k8s/redis.yaml`.
 
 ```bash
-kubectl -n annual-sports create configmap frontend-config \
-  --from-literal=VITE_API_URL="/"
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/redis.yaml
 ```
 
-## 8) MongoDB and Redis
-
-For production, use Azure Cosmos DB (Mongo API) or MongoDB Atlas, and Azure Cache for Redis.
-If you want MongoDB inside the cluster for testing, use `mongodb.yaml`:
+MongoDB is optional if you use Azure Cosmos DB (Mongo API) or MongoDB Atlas. For in-cluster MongoDB:
 
 ```bash
 kubectl apply -f mongodb.yaml
@@ -156,10 +157,20 @@ kubectl -n annual-sports rollout status statefulset/mongodb
 
 ## 9) Deploy Services and Frontend
 
-Create one Deployment/Service per microservice (example in `docs/setup/ubuntu/kubernetes.md`),
-then apply `frontend.yaml` with the frontend image. Verify rollouts:
+Create one Deployment/Service per microservice using the manifests in `new-structure/docs/setup/ubuntu/k8s`,
+then apply the frontend manifest. AKS uses NGINX Ingress path routing; do not use the NGINX gateway.
 
 ```bash
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/identity-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/enrollment-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/department-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/sports-participation-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/event-configuration-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/scheduling-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/scoring-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/reporting-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/frontend.yaml
+
 kubectl -n annual-sports rollout status deploy/identity-service
 kubectl -n annual-sports rollout status deploy/annual-sports-frontend
 ```

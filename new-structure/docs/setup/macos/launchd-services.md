@@ -105,7 +105,7 @@ Load the service:
 launchctl load ~/Library/LaunchAgents/com.annualsports.identity.plist
 ```
 
-Repeat for the remaining services and ports:
+Create services for the remaining services and ports:
 - Enrollment: `8002`
 - Department: `8003`
 - Sports Participation: `8004`

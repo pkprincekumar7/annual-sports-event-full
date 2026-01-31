@@ -127,11 +127,19 @@ Create a task definition per microservice plus one for the frontend. Use Fargate
 - Port mappings:
   - services: `8001`–`8008`
   - frontend: `80`
-- Environment variables per service from the corresponding `.env.example`
+- Environment variables per service:
+  - Non-secret values (app settings + service URLs) should match `x-common-env` in `new-structure/docker-compose.yml`.
+  - Secrets (MongoDB URI, JWT secret, email credentials) should come from AWS Secrets Manager.
+
+ECS uses ALB path routing; no NGINX gateway is required.
+
+## 8) Provision Redis
+
+Provision a managed Redis (ElastiCache) and set `REDIS_URL` for each service (e.g., `redis://<endpoint>:6379/0`).
 
 Best practice: store secrets in AWS Secrets Manager and reference them in the task definition.
 
-## 8) Create an Application Load Balancer
+## 9) Create an Application Load Balancer
 
 Create an ALB with two target groups:
 - `annual-sports-frontend` target group (port 80)
@@ -142,7 +150,7 @@ Create listeners:
 - HTTPS 443 rules for `/identities`, `/enrollments`, `/departments`, `/sports-participations`,
   `/event-configurations`, `/schedulings`, `/scorings`, `/reportings`
 
-## 9) Create ECS Services
+## 10) Create ECS Services
 
 Create services in the cluster (Fargate, private subnets):
 - `annual-sports-frontend` → attach to frontend target group
@@ -150,7 +158,7 @@ Create services in the cluster (Fargate, private subnets):
 
 Set desired count to 1+ and enable autoscaling as needed.
 
-## 10) DNS Setup
+## 11) DNS Setup
 
 Create DNS records pointing to the ALB:
 - `your-domain.com` → ALB
@@ -158,7 +166,7 @@ Create DNS records pointing to the ALB:
 
 If using a single domain, only the root domain is required.
 
-## 11) Verify
+## 12) Verify
 
 ```bash
 curl -I https://your-domain.com
@@ -182,16 +190,41 @@ aws ecs delete-service --cluster annual-sports --service annual-sports-identity-
 aws ecs delete-cluster --cluster annual-sports
 ```
 
-Repeat for the remaining services, then delete the ALB, target groups, listeners, and security groups from the console or CLI.
+Delete all ECS services:
 
-Delete ECR repositories:
+```bash
+aws ecs delete-service --cluster annual-sports --service annual-sports-frontend --force
+aws ecs delete-service --cluster annual-sports --service annual-sports-identity-service --force
+aws ecs delete-service --cluster annual-sports --service annual-sports-enrollment-service --force
+aws ecs delete-service --cluster annual-sports --service annual-sports-department-service --force
+aws ecs delete-service --cluster annual-sports --service annual-sports-sports-participation-service --force
+aws ecs delete-service --cluster annual-sports --service annual-sports-event-configuration-service --force
+aws ecs delete-service --cluster annual-sports --service annual-sports-scheduling-service --force
+aws ecs delete-service --cluster annual-sports --service annual-sports-scoring-service --force
+aws ecs delete-service --cluster annual-sports --service annual-sports-reporting-service --force
+```
+
+Delete the ECS cluster:
+
+```bash
+aws ecs delete-cluster --cluster annual-sports
+```
+
+Delete all ECR repositories:
 
 ```bash
 aws ecr delete-repository --repository-name annual-sports-identity-service --force
+aws ecr delete-repository --repository-name annual-sports-enrollment-service --force
+aws ecr delete-repository --repository-name annual-sports-department-service --force
+aws ecr delete-repository --repository-name annual-sports-sports-participation-service --force
+aws ecr delete-repository --repository-name annual-sports-event-configuration-service --force
+aws ecr delete-repository --repository-name annual-sports-scheduling-service --force
+aws ecr delete-repository --repository-name annual-sports-scoring-service --force
+aws ecr delete-repository --repository-name annual-sports-reporting-service --force
 aws ecr delete-repository --repository-name annual-sports-frontend --force
 ```
 
-Repeat for the remaining service repositories, then clean up ACM certificates and Route 53 records manually.
+Delete the ALB, target groups, listeners, and security groups from the console or CLI, then clean up ACM certificates and Route 53 records manually.
 
 ## Best Practices Notes
 - Use MongoDB Atlas instead of self-hosting for production.

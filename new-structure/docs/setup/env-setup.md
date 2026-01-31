@@ -18,34 +18,19 @@ for service in \
 done
 ```
 
-Open each `.env` and update all values for your environment. Commonly updated values include:
+Open each `.env` and update the secret values for your environment. Commonly updated values include:
 
 - `MONGODB_URI`
-- `DATABASE_NAME`
 - `JWT_SECRET`
-- `REDIS_URL`
-- `GMAIL_USER`
 - `GMAIL_APP_PASSWORD`
-- `EMAIL_FROM`
-- service base URLs (for service-to-service calls)
+- `SENDGRID_API_KEY`
+- `RESEND_API_KEY`
+- `SMTP_PASSWORD`
 
 ## Docker Compose notes
 
-When running under Docker Compose, services cannot reach `localhost` for other services.
-Update service URLs to use Compose DNS names instead, for example:
-
-- `IDENTITY_URL=http://identity-service:8001`
-- `ENROLLMENT_URL=http://enrollment-service:8002`
-- `DEPARTMENT_URL=http://department-service:8003`
-- `SPORTS_PARTICIPATION_URL=http://sports-participation-service:8004`
-- `EVENT_CONFIGURATION_URL=http://event-configuration-service:8005`
-- `SCHEDULING_URL=http://scheduling-service:8006`
-- `SCORING_URL=http://scoring-service:8007`
-- `REPORTING_URL=http://reporting-service:8008`
-
-Set Redis to the Compose service name:
-
-- `REDIS_URL=redis://redis:6379/0`
+Non-secret settings (service URLs, Redis URLs, app settings) are defined in `docker-compose.yml`.
+`.env` files hold secrets only.
 
 MongoDB is not included in the Compose file. Use a managed MongoDB or add a MongoDB
 service and point `MONGODB_URI` to it.

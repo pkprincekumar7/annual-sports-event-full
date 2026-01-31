@@ -1,20 +1,20 @@
-## Scoring Service
+## Scheduling Service
 
-FastAPI service for points table operations. This ports `routes/pointsTable.js` and related
-helpers for points backfill.
+FastAPI service for event scheduling. This ports `routes/eventSchedule.js` and its supporting
+utilities (match validation, gender derivation, and cache handling).
 
 ### Setup
 
 - Install dependencies: `pip install -r requirements.txt`
 - Configure environment: copy `.env.example` to `.env` and fill values
-- Run locally: `uvicorn main:app --reload --port 8007`
+- Run locally: `uvicorn main:app --reload --port 8006`
 
 ### Required Services
 
 - Event Configuration Service: `EVENT_CONFIGURATION_URL`
 - Sports Participation Service: `SPORTS_PARTICIPATION_URL`
-- Scheduling Service: `SCHEDULING_URL`
 - Identity Service: `IDENTITY_URL`
+- Scoring Service (optional for cache parity): `SCORING_URL`
 - Redis: `REDIS_URL`
 
 ### Auth Propagation
@@ -23,21 +23,24 @@ helpers for points backfill.
 - No per-service tokens are supported.
 ### Endpoints
 
-- `GET /scorings/points-table/{sport}`
-- `POST /scorings/points-table/backfill/{sport}`
-- `POST /scorings/internal/points-table/update` (internal)
+- `GET /schedulings/event-schedule/{sport}`
+- `GET /schedulings/event-schedule/{sport}/teams-players`
+- `POST /schedulings/event-schedule`
+- `PUT /schedulings/event-schedule/{match_id}`
+- `DELETE /schedulings/event-schedule/{match_id}`
 
 ### API Docs (Swagger)
 
-- Local UI: `http://localhost:8007/scorings/docs`
+- Local UI: `http://localhost:8006/schedulings/docs`
 - Spec file: `swagger.yaml`
-- Nginx UI: `http://localhost:5173/scorings/docs`
-- Nginx Spec: `http://localhost:5173/scorings/swagger.yml`
+- Nginx UI: `http://localhost:8080/schedulings/docs`
+- Nginx Spec: `http://localhost:8080/schedulings/swagger.yml`
 
 ### Checklist
 
-- Points table responses match legacy payloads
-- Backfill recalculates league match results for both genders
+- Match validation mirrors legacy scheduling rules
+- Gender derivation uses participant data from external services
+- Cache invalidation follows the Node.js behavior
 
 ### Smoke Test
 

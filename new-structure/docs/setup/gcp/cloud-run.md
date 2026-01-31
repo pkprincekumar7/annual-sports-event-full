@@ -93,7 +93,7 @@ gcloud iam service-accounts create annual-sports-gateway \
 
 ## 5) Deploy Internal Microservices
 
-Example for Identity (repeat per service; use `--ingress internal`):
+Provision Redis (Memorystore) and MongoDB (Atlas). Set `REDIS_URL` and `MONGODB_URI` for each service.
 
 ```bash
 gcloud run deploy identity-service \
@@ -105,20 +105,126 @@ gcloud run deploy identity-service \
   --set-env-vars PORT=8001 \
   --set-env-vars JWT_SECRET="your-strong-secret" \
   --set-env-vars MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-identity" \
-  --set-env-vars DATABASE_NAME="annual-sports-identity" \
-  --set-env-vars REDIS_URL="redis://<redis-host>:6379/0" \
-  --set-env-vars GMAIL_USER="your-email@gmail.com" \
-  --set-env-vars GMAIL_APP_PASSWORD="your-16-char-app-password" \
-  --set-env-vars EMAIL_FROM="no-reply@your-domain.com"
-```
+  --set-env-vars REDIS_URL="redis://<redis-host>:6379/0"
 
-Repeat for the remaining services on ports `8002`–`8008`.
+gcloud run deploy enrollment-service \
+  --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-enrollment-service:latest" \
+  --region us-central1 \
+  --ingress internal \
+  --allow-unauthenticated \
+  --port 8002 \
+  --set-env-vars PORT=8002 \
+  --set-env-vars JWT_SECRET="your-strong-secret" \
+  --set-env-vars MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-enrollment" \
+  --set-env-vars REDIS_URL="redis://<redis-host>:6379/1"
+
+gcloud run deploy department-service \
+  --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-department-service:latest" \
+  --region us-central1 \
+  --ingress internal \
+  --allow-unauthenticated \
+  --port 8003 \
+  --set-env-vars PORT=8003 \
+  --set-env-vars JWT_SECRET="your-strong-secret" \
+  --set-env-vars MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-department" \
+  --set-env-vars REDIS_URL="redis://<redis-host>:6379/2"
+
+gcloud run deploy sports-participation-service \
+  --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-sports-participation-service:latest" \
+  --region us-central1 \
+  --ingress internal \
+  --allow-unauthenticated \
+  --port 8004 \
+  --set-env-vars PORT=8004 \
+  --set-env-vars JWT_SECRET="your-strong-secret" \
+  --set-env-vars MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-participation" \
+  --set-env-vars REDIS_URL="redis://<redis-host>:6379/3"
+
+gcloud run deploy event-configuration-service \
+  --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-event-configuration-service:latest" \
+  --region us-central1 \
+  --ingress internal \
+  --allow-unauthenticated \
+  --port 8005 \
+  --set-env-vars PORT=8005 \
+  --set-env-vars JWT_SECRET="your-strong-secret" \
+  --set-env-vars MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-event-config" \
+  --set-env-vars REDIS_URL="redis://<redis-host>:6379/4"
+
+gcloud run deploy scheduling-service \
+  --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-scheduling-service:latest" \
+  --region us-central1 \
+  --ingress internal \
+  --allow-unauthenticated \
+  --port 8006 \
+  --set-env-vars PORT=8006 \
+  --set-env-vars JWT_SECRET="your-strong-secret" \
+  --set-env-vars MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-scheduling" \
+  --set-env-vars REDIS_URL="redis://<redis-host>:6379/5"
+
+gcloud run deploy scoring-service \
+  --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-scoring-service:latest" \
+  --region us-central1 \
+  --ingress internal \
+  --allow-unauthenticated \
+  --port 8007 \
+  --set-env-vars PORT=8007 \
+  --set-env-vars JWT_SECRET="your-strong-secret" \
+  --set-env-vars MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-scoring" \
+  --set-env-vars REDIS_URL="redis://<redis-host>:6379/6"
+
+gcloud run deploy reporting-service \
+  --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/annual-sports-reporting-service:latest" \
+  --region us-central1 \
+  --ingress internal \
+  --allow-unauthenticated \
+  --port 8008 \
+  --set-env-vars PORT=8008 \
+  --set-env-vars JWT_SECRET="your-strong-secret" \
+  --set-env-vars MONGODB_URI="mongodb+srv://<user>:<pass>@<cluster>/annual-sports-reporting" \
+  --set-env-vars REDIS_URL="redis://<redis-host>:6379/7"
+```
 
 If you are enforcing IAM auth, grant the gateway service account invoke access
 to each service:
 
 ```bash
 gcloud run services add-iam-policy-binding identity-service \
+  --region us-central1 \
+  --member "serviceAccount:annual-sports-gateway@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role roles/run.invoker
+
+gcloud run services add-iam-policy-binding enrollment-service \
+  --region us-central1 \
+  --member "serviceAccount:annual-sports-gateway@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role roles/run.invoker
+
+gcloud run services add-iam-policy-binding department-service \
+  --region us-central1 \
+  --member "serviceAccount:annual-sports-gateway@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role roles/run.invoker
+
+gcloud run services add-iam-policy-binding sports-participation-service \
+  --region us-central1 \
+  --member "serviceAccount:annual-sports-gateway@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role roles/run.invoker
+
+gcloud run services add-iam-policy-binding event-configuration-service \
+  --region us-central1 \
+  --member "serviceAccount:annual-sports-gateway@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role roles/run.invoker
+
+gcloud run services add-iam-policy-binding scheduling-service \
+  --region us-central1 \
+  --member "serviceAccount:annual-sports-gateway@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role roles/run.invoker
+
+gcloud run services add-iam-policy-binding scoring-service \
+  --region us-central1 \
+  --member "serviceAccount:annual-sports-gateway@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role roles/run.invoker
+
+gcloud run services add-iam-policy-binding reporting-service \
   --region us-central1 \
   --member "serviceAccount:annual-sports-gateway@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role roles/run.invoker
@@ -206,6 +312,13 @@ Use Cloud Console to:
 gcloud run services delete annual-sports-frontend --region us-central1
 gcloud run services delete annual-sports-gateway --region us-central1
 gcloud run services delete identity-service --region us-central1
+gcloud run services delete enrollment-service --region us-central1
+gcloud run services delete department-service --region us-central1
+gcloud run services delete sports-participation-service --region us-central1
+gcloud run services delete event-configuration-service --region us-central1
+gcloud run services delete scheduling-service --region us-central1
+gcloud run services delete scoring-service --region us-central1
+gcloud run services delete reporting-service --region us-central1
 gcloud artifacts repositories delete annual-sports --location us-central1
 ```
 

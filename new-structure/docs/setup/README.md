@@ -3,7 +3,7 @@
 This folder contains setup-focused documentation for the new microservices structure.
 
 ## Start here
-- `env-setup.md` - Copy `.env.example` files and fill credentials
+- `env-setup.md` - Copy `.env.example` files and fill secret values
 
 ## Ubuntu (Linux)
 - `ubuntu/quick-start.md` - Local setup and running the app

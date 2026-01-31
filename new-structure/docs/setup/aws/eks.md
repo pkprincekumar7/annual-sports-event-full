@@ -175,37 +175,39 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   --set vpcId="$VPC_ID"
 ```
 
-## 7) Create Namespace and Secrets
+## 7) Create Namespace, Config, and Secrets
 
 ```bash
 kubectl create namespace annual-sports
 ```
 
-Create one secret per service (or a shared secret if you prefer). Example for Identity:
+Create ConfigMaps for non-secret values and Secrets for sensitive values. Non-secrets should match `x-common-env` in `new-structure/docker-compose.yml`. Secrets (MongoDB URI, JWT secret, email credentials) should come from AWS Secrets Manager or Kubernetes Secrets.
 
 ```bash
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/annual-sports-config.yaml
+kubectl -n annual-sports create secret generic annual-sports-secrets \
+  --from-literal=MONGODB_URI="mongodb://mongodb-0.mongodb:27017" \
+  --from-literal=JWT_SECRET="your-strong-secret"
+
 kubectl -n annual-sports create secret generic identity-secrets \
-  --from-literal=JWT_SECRET="your-strong-secret" \
-  --from-literal=MONGODB_URI="mongodb://mongodb-0.mongodb:27017/annual-sports-identity" \
-  --from-literal=DATABASE_NAME="annual-sports-identity" \
-  --from-literal=REDIS_URL="redis://redis:6379/0" \
-  --from-literal=GMAIL_USER="your-email@gmail.com" \
   --from-literal=GMAIL_APP_PASSWORD="your-16-char-app-password" \
-  --from-literal=EMAIL_FROM="no-reply@your-domain.com"
+  --from-literal=SENDGRID_API_KEY="your-sendgrid-api-key" \
+  --from-literal=RESEND_API_KEY="your-resend-api-key" \
+  --from-literal=SMTP_PASSWORD="your-smtp-password"
 ```
 
-Create frontend config:
+## 8) Deploy Redis and MongoDB
+
+Redis is required for caching. Use **ElastiCache for Redis** in production and set `REDIS_URL` for each service.
+If you want in-cluster Redis for testing, apply `new-structure/docs/setup/ubuntu/k8s/redis.yaml`.
+
+Deploy Redis (required for caching):
 
 ```bash
-kubectl -n annual-sports create configmap frontend-config \
-  --from-literal=VITE_API_URL="/"
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/redis.yaml
 ```
 
-## 8) Deploy MongoDB and Redis (Optional)
-
-If you want MongoDB inside the cluster, use `mongodb.yaml`.
-For production, use a managed database (MongoDB Atlas) and update `MONGODB_URI`.
-Deploy Redis via Helm or a simple Deployment/Service if you do not use a managed Redis.
+MongoDB is optional if you use a managed provider (MongoDB Atlas). For in-cluster MongoDB:
 
 ```bash
 kubectl apply -f mongodb.yaml
@@ -214,10 +216,20 @@ kubectl -n annual-sports rollout status statefulset/mongodb
 
 ## 9) Deploy Services and Frontend
 
-Create one Deployment/Service per microservice (example in `docs/setup/ubuntu/kubernetes.md`),
-then apply `frontend.yaml` with the frontend image. Verify rollouts:
+Create one Deployment/Service per microservice using the manifests in `new-structure/docs/setup/ubuntu/k8s`,
+then apply the frontend manifest. EKS uses ALB path routing; do not use the NGINX gateway.
 
 ```bash
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/identity-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/enrollment-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/department-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/sports-participation-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/event-configuration-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/scheduling-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/scoring-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/reporting-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/frontend.yaml
+
 kubectl -n annual-sports rollout status deploy/identity-service
 kubectl -n annual-sports rollout status deploy/annual-sports-frontend
 ```
@@ -421,11 +433,19 @@ Remove Kubernetes resources:
 kubectl delete ingress -n annual-sports annual-sports-ingress
 kubectl delete -f frontend.yaml
 kubectl delete -f identity-service.yaml
+kubectl delete -f enrollment-service.yaml
+kubectl delete -f department-service.yaml
+kubectl delete -f sports-participation-service.yaml
+kubectl delete -f event-configuration-service.yaml
+kubectl delete -f scheduling-service.yaml
+kubectl delete -f scoring-service.yaml
+kubectl delete -f reporting-service.yaml
 kubectl delete -f mongodb.yaml
+kubectl delete -f new-structure/docs/setup/ubuntu/k8s/redis.yaml
 kubectl delete namespace annual-sports
 ```
 
-Repeat for the remaining service manifests, then remove the load balancer controller:
+Remove the load balancer controller:
 
 ```bash
 helm uninstall aws-load-balancer-controller -n kube-system
@@ -445,10 +465,17 @@ Delete ECR repositories:
 
 ```bash
 aws ecr delete-repository --repository-name annual-sports-identity-service --force
+aws ecr delete-repository --repository-name annual-sports-enrollment-service --force
+aws ecr delete-repository --repository-name annual-sports-department-service --force
+aws ecr delete-repository --repository-name annual-sports-sports-participation-service --force
+aws ecr delete-repository --repository-name annual-sports-event-configuration-service --force
+aws ecr delete-repository --repository-name annual-sports-scheduling-service --force
+aws ecr delete-repository --repository-name annual-sports-scoring-service --force
+aws ecr delete-repository --repository-name annual-sports-reporting-service --force
 aws ecr delete-repository --repository-name annual-sports-frontend --force
 ```
 
-Repeat for the remaining service repositories, then clean up ACM certificates and Route 53 records manually.
+Clean up ACM certificates and Route 53 records manually.
 
 ## Best Practices Notes
 - Use MongoDB Atlas instead of in-cluster MongoDB for production.

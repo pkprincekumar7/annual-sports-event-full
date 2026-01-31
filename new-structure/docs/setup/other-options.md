@@ -13,7 +13,8 @@
 
 ## Backend: PaaS (Render/Railway/Heroku)
 1. Deploy each FastAPI service as its own app.
-2. Set environment variables from the service `.env.example` files.
+2. Set secret environment variables from the service `.env.example` files and set
+   non-secret values (service URLs, app settings) explicitly in your platform config.
 3. Update service-to-service URLs to use your deployed base URLs.
 4. Use a start command like:
    ```bash
@@ -45,4 +46,4 @@
 
 ## Kubernetes (Optional)
 Deploy separate Deployments/Services for each microservice, plus MongoDB and Redis.
-Set the same environment variables used in each `.env.example`.
+Set non-secret values via ConfigMaps and secrets via Secrets.

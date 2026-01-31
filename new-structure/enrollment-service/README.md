@@ -32,8 +32,8 @@ FastAPI service for batch management. This ports routes from `routes/batches.js`
 
 - Local UI: `http://localhost:8002/enrollments/docs`
 - Spec file: `swagger.yaml`
-- Nginx UI: `http://localhost:5173/enrollments/docs`
-- Nginx Spec: `http://localhost:5173/enrollments/swagger.yml`
+- Nginx UI: `http://localhost:8080/enrollments/docs`
+- Nginx Spec: `http://localhost:8080/enrollments/swagger.yml`
 
 ### Checklist
 

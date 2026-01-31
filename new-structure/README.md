@@ -27,14 +27,14 @@ This folder contains the FastAPI microservices + Vite frontend for the annual sp
 
 ### API Docs (Swagger)
 
-- Identity: `http://localhost:5173/identities/docs`
-- Enrollment: `http://localhost:5173/enrollments/docs`
-- Department: `http://localhost:5173/departments/docs`
-- Sports Participation: `http://localhost:5173/sports-participations/docs`
-- Event Configuration: `http://localhost:5173/event-configurations/docs`
-- Scheduling: `http://localhost:5173/schedulings/docs`
-- Scoring: `http://localhost:5173/scorings/docs`
-- Reporting: `http://localhost:5173/reportings/docs`
+- Identity: `http://localhost:8080/identities/docs`
+- Enrollment: `http://localhost:8080/enrollments/docs`
+- Department: `http://localhost:8080/departments/docs`
+- Sports Participation: `http://localhost:8080/sports-participations/docs`
+- Event Configuration: `http://localhost:8080/event-configurations/docs`
+- Scheduling: `http://localhost:8080/schedulings/docs`
+- Scoring: `http://localhost:8080/scorings/docs`
+- Reporting: `http://localhost:8080/reportings/docs`
 
 ### Prerequisites
 
@@ -44,8 +44,8 @@ This folder contains the FastAPI microservices + Vite frontend for the annual sp
 
 ### Environment Setup
 
-- Each service ships a `.env.example`. Copy it to `.env` and fill values.
-- Redis is required for all services via `REDIS_URL`.
+- Each service ships a `.env.example`. Copy it to `.env` and fill secret values.
+- Non-secret settings live in `docker-compose.yml`.
 - Service-to-service calls forward the incoming `Authorization: Bearer <token>` header.
   No per-service tokens are supported.
 

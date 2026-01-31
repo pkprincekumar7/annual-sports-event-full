@@ -51,8 +51,8 @@ FastAPI service for sports, captains, coordinators, teams, and participants. Thi
 
 - Local UI: `http://localhost:8004/sports-participations/docs`
 - Spec file: `swagger.yaml`
-- Nginx UI: `http://localhost:5173/sports-participations/docs`
-- Nginx Spec: `http://localhost:5173/sports-participations/swagger.yml`
+- Nginx UI: `http://localhost:8080/sports-participations/docs`
+- Nginx Spec: `http://localhost:8080/sports-participations/swagger.yml`
 
 ### Checklist
 

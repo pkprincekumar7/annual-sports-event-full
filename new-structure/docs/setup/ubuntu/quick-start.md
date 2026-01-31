@@ -69,14 +69,10 @@ for service in \
 done
 ```
 
-Update each `.env` with required values:
+Update each `.env` with required secret values:
 - `MONGODB_URI`
-- `DATABASE_NAME`
 - `JWT_SECRET`
-- `REDIS_URL`
-- `GMAIL_USER`
-- `GMAIL_APP_PASSWORD`
-- `EMAIL_FROM`
+- Identity service email secrets (one provider only)
 
 See `docs/setup/env-setup.md` for details.
 
@@ -86,11 +82,10 @@ See `docs/setup/env-setup.md` for details.
 docker compose up --build
 ```
 
-Open `http://localhost:5173`.
+Open `http://localhost:8080`.
 
 Notes for Docker Compose:
-- Update service URLs in each `.env` to use Compose DNS names (e.g., `http://identity-service:8001`).
-- Set `REDIS_URL=redis://redis:6379/0`.
+- Non-secret settings are defined in `docker-compose.yml`; `.env` files hold secrets only.
 - MongoDB is not included in the Compose file; use a managed MongoDB or add one.
 
 ## 7) Run Services Locally (No Docker)
@@ -103,7 +98,7 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8001
 ```
 
-Repeat for the remaining services with their ports:
+Start the remaining services with their ports:
 - Enrollment: `8002`
 - Department: `8003`
 - Sports Participation: `8004`

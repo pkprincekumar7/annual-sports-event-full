@@ -35,8 +35,8 @@ Optional integrations for delete validation:
 
 - Local UI: `http://localhost:8005/event-configurations/docs`
 - Spec file: `swagger.yaml`
-- Nginx UI: `http://localhost:5173/event-configurations/docs`
-- Nginx Spec: `http://localhost:5173/event-configurations/swagger.yml`
+- Nginx UI: `http://localhost:8080/event-configurations/docs`
+- Nginx Spec: `http://localhost:8080/event-configurations/swagger.yml`
 
 ### Checklist
 

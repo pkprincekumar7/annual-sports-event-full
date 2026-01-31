@@ -29,8 +29,8 @@ player participation and batch lookups for report generation.
 
 - Local UI: `http://localhost:8008/reportings/docs`
 - Spec file: `swagger.yaml`
-- Nginx UI: `http://localhost:5173/reportings/docs`
-- Nginx Spec: `http://localhost:5173/reportings/swagger.yml`
+- Nginx UI: `http://localhost:8080/reportings/docs`
+- Nginx Spec: `http://localhost:8080/reportings/swagger.yml`
 
 ### Checklist
 

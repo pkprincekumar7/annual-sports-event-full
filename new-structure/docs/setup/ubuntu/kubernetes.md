@@ -14,6 +14,8 @@ If you are new to Kubernetes, follow `new-structure/docs/setup/ubuntu/kubernetes
 
 From the repo root:
 
+Replace `your-registry` with your Docker registry/namespace (for example, `docker.io/<username>`).
+
 ```bash
 docker login
 

@@ -8,7 +8,7 @@ This guide deploys the frontend and multiple FastAPI services on a Kubernetes cl
 - Container registry access (Docker Hub, GHCR, ECR, etc.)
 - Docker login for your registry (required for pushing images)
 
-If you are new to Kubernetes, follow `docs/setup/ubuntu/kubernetes-prereqs.md` first.
+If you are new to Kubernetes, follow `new-structure/docs/setup/ubuntu/kubernetes-prereqs.md` first.
 
 ## 1) Build and Push Images
 
@@ -63,10 +63,10 @@ kubectl -n annual-sports patch serviceaccount default \
 
 ## 3) Create Secrets and Config
 
-Create a single ConfigMap for all non-secret values (service URLs, shared defaults, and per-service non-secret settings). Keep only sensitive values in Secrets. All Kubernetes manifests live in `docs/setup/ubuntu/k8s`.
+Create a single ConfigMap for all non-secret values (service URLs, shared defaults, and per-service non-secret settings). Keep only sensitive values in Secrets. All Kubernetes manifests live in `new-structure/docs/setup/ubuntu/k8s`.
 
 ```bash
-kubectl apply -f docs/setup/ubuntu/k8s/annual-sports-config.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/annual-sports-config.yaml
 ```
 
 `VITE_API_URL` is still a build-time value for the frontend image, so changing it requires a rebuild and redeploy.
@@ -98,17 +98,17 @@ If you are using an external MongoDB/Redis, update the service `.env` values acc
 
 ## 5) Deploy Services
 
-Create one Deployment and Service per microservice using the manifests in `docs/setup/ubuntu/k8s`:
+Create one Deployment and Service per microservice using the manifests in `new-structure/docs/setup/ubuntu/k8s`:
 
 ```bash
-kubectl apply -f docs/setup/ubuntu/k8s/identity-service.yaml
-kubectl apply -f docs/setup/ubuntu/k8s/enrollment-service.yaml
-kubectl apply -f docs/setup/ubuntu/k8s/department-service.yaml
-kubectl apply -f docs/setup/ubuntu/k8s/sports-participation-service.yaml
-kubectl apply -f docs/setup/ubuntu/k8s/event-configuration-service.yaml
-kubectl apply -f docs/setup/ubuntu/k8s/scheduling-service.yaml
-kubectl apply -f docs/setup/ubuntu/k8s/scoring-service.yaml
-kubectl apply -f docs/setup/ubuntu/k8s/reporting-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/identity-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/enrollment-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/department-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/sports-participation-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/event-configuration-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/scheduling-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/scoring-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/reporting-service.yaml
 ```
 
 Service ports:
@@ -126,7 +126,7 @@ Service ports:
 Create a Deployment/Service for the frontend image (port 80), then expose it via Ingress:
 
 ```bash
-kubectl apply -f docs/setup/ubuntu/k8s/frontend.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/frontend.yaml
 ```
 
 ## 7) Ingress (Optional)
@@ -136,7 +136,7 @@ with the content below. Update the `host` value and `ingressClassName` if your c
 requires it, then apply the file.
 
 ```bash
-kubectl apply -f docs/setup/ubuntu/k8s/ingress.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/ingress.yaml
 ```
 
 ## 8) Verify
@@ -166,8 +166,8 @@ kubectl -n annual-sports rollout undo deploy/annual-sports-frontend
 If a service manifest or the frontend manifest changes, re-apply and verify rollout:
 
 ```bash
-kubectl apply -f docs/setup/ubuntu/k8s/identity-service.yaml
-kubectl apply -f docs/setup/ubuntu/k8s/frontend.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/identity-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/frontend.yaml
 
 kubectl -n annual-sports rollout status deploy/identity-service
 kubectl -n annual-sports rollout status deploy/annual-sports-frontend
@@ -213,7 +213,7 @@ http://<PUBLIC_IP>:5173
 ```
 
 For a systemd-based port-forward that survives SSH disconnects and VM reboots, see:
-`docs/setup/ubuntu/kubectl-port-forward-systemd.md`.
+`new-structure/docs/setup/ubuntu/kubectl-port-forward-systemd.md`.
 
 If `minikube service` says "no node port", patch the service:
 

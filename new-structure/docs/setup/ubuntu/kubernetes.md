@@ -71,6 +71,8 @@ kubectl -n annual-sports patch serviceaccount default \
 
 Create a single ConfigMap for all non-secret values (service URLs, shared defaults, and per-service non-secret settings). Keep only sensitive values in Secrets. All Kubernetes manifests live in `new-structure/docs/setup/ubuntu/k8s`.
 
+In Kubernetes, services read configuration from ConfigMaps/Secrets; local `.env` files are not used.
+
 ```bash
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/annual-sports-config.yaml
 ```
@@ -131,6 +133,10 @@ kubectl -n annual-sports get svc redis
 - For local clusters, you can deploy MongoDB (use `mongodb.yaml`).
 
 If you are using an external MongoDB, update the service `.env` values accordingly.
+
+```bash
+kubectl apply -f mongodb.yaml
+```
 
 ## 6) Deploy Services
 

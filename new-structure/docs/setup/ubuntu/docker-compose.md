@@ -3,7 +3,7 @@
 Run the full stack using Docker Compose.
 
 ## Prerequisites
-- Docker Engine + Compose installed (`ubuntu/docker-engine-install.md`)
+- Docker Engine + Compose installed (`new-structure/docs/setup/ubuntu/docker-engine-install.md`)
 - `.env` configured for each service (copy from `.env.example`)
 
 ## 1) Start Containers
@@ -56,7 +56,7 @@ docker compose logs -f
 ```
 
 ## Ports
-- Gateway (Nginx + frontend): `http://localhost:5173`
+- Gateway (Nginx + frontend): `http://localhost:8080`
 - Identity: `http://localhost:8001`
 - Enrollment: `http://localhost:8002`
 - Department: `http://localhost:8003`
@@ -70,6 +70,6 @@ docker compose logs -f
 - The compose file runs Redis plus all services and the frontend gateway.
 - MongoDB is not included. Use a managed MongoDB or add a MongoDB service and update `MONGODB_URI`.
 - Service-to-service URLs must use Compose DNS names (e.g., `http://identity-service:8001`) instead of `localhost`.
-- Set `REDIS_URL=redis://redis:6379/0` when running in Compose.
+- Non-secret settings are defined in `docker-compose.yml`; `.env` files hold secrets only.
 - The frontend build uses `VITE_API_URL=/` and Nginx routes base paths like `/identities` to each service.
 - `VITE_API_URL` is a build-time value; changing it requires a rebuild.

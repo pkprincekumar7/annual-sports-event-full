@@ -63,24 +63,30 @@ kubectl -n annual-sports patch serviceaccount default \
 
 ## 3) Create Secrets and Config
 
-Create one secret per service (or a shared secret if you prefer). Example for Identity:
+Create a single ConfigMap for all non-secret values (service URLs, shared defaults, and per-service non-secret settings). Keep only sensitive values in Secrets. All Kubernetes manifests live in `docs/setup/ubuntu/k8s`.
+
+```bash
+kubectl apply -f docs/setup/ubuntu/k8s/annual-sports-config.yaml
+```
+
+`VITE_API_URL` is still a build-time value for the frontend image, so changing it requires a rebuild and redeploy.
+
+Create a shared Secret for common sensitive values (MongoDB URI, shared JWT secret, etc.), then create per-service Secrets for service-specific credentials.
+
+```bash
+kubectl -n annual-sports create secret generic annual-sports-secrets \
+  --from-literal=MONGODB_URI="mongodb://mongodb-0.mongodb:27017" \
+  --from-literal=JWT_SECRET="your-strong-secret"
+```
+
+Example for Identity (service-specific email/password secrets only):
 
 ```bash
 kubectl -n annual-sports create secret generic identity-secrets \
-  --from-literal=JWT_SECRET="your-strong-secret" \
-  --from-literal=MONGODB_URI="mongodb://mongodb-0.mongodb:27017/annual-sports-identity" \
-  --from-literal=DATABASE_NAME="annual-sports-identity" \
-  --from-literal=REDIS_URL="redis://redis:6379/0" \
-  --from-literal=GMAIL_USER="your-email@gmail.com" \
   --from-literal=GMAIL_APP_PASSWORD="your-16-char-app-password" \
-  --from-literal=EMAIL_FROM="no-reply@your-domain.com"
-```
-
-Create the frontend config:
-
-```bash
-kubectl -n annual-sports create configmap frontend-config \
-  --from-literal=VITE_API_URL="/"
+  --from-literal=SENDGRID_API_KEY="your-sendgrid-api-key" \
+  --from-literal=RESEND_API_KEY="your-resend-api-key" \
+  --from-literal=SMTP_PASSWORD="your-smtp-password"
 ```
 
 ## 4) Deploy MongoDB and Redis (Optional)
@@ -92,52 +98,21 @@ If you are using an external MongoDB/Redis, update the service `.env` values acc
 
 ## 5) Deploy Services
 
-Create one Deployment and Service per microservice. Example for Identity:
+Create one Deployment and Service per microservice using the manifests in `docs/setup/ubuntu/k8s`:
 
 ```bash
-cat <<'EOF' > identity-service.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: identity-service
-  namespace: annual-sports
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: identity-service
-  template:
-    metadata:
-      labels:
-        app: identity-service
-    spec:
-      containers:
-        - name: identity-service
-          image: your-registry/annual-sports-identity-service:latest
-          ports:
-            - containerPort: 8001
-          envFrom:
-            - secretRef:
-                name: identity-secrets
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: identity-service
-  namespace: annual-sports
-spec:
-  selector:
-    app: identity-service
-  ports:
-    - name: http
-      port: 8001
-      targetPort: 8001
-EOF
-
-kubectl apply -f identity-service.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/identity-service.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/enrollment-service.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/department-service.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/sports-participation-service.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/event-configuration-service.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/scheduling-service.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/scoring-service.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/reporting-service.yaml
 ```
 
-Repeat for the other services and ports:
+Service ports:
+- Identity: `8001`
 - Enrollment: `8002`
 - Department: `8003`
 - Sports Participation: `8004`
@@ -151,43 +126,7 @@ Repeat for the other services and ports:
 Create a Deployment/Service for the frontend image (port 80), then expose it via Ingress:
 
 ```bash
-cat <<'EOF' > frontend.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: annual-sports-frontend
-  namespace: annual-sports
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: annual-sports-frontend
-  template:
-    metadata:
-      labels:
-        app: annual-sports-frontend
-    spec:
-      containers:
-        - name: frontend
-          image: your-registry/annual-sports-frontend:latest
-          ports:
-            - containerPort: 80
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: annual-sports-frontend
-  namespace: annual-sports
-spec:
-  selector:
-    app: annual-sports-frontend
-  ports:
-    - name: http
-      port: 80
-      targetPort: 80
-EOF
-
-kubectl apply -f frontend.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/frontend.yaml
 ```
 
 ## 7) Ingress (Optional)
@@ -197,84 +136,7 @@ with the content below. Update the `host` value and `ingressClassName` if your c
 requires it, then apply the file.
 
 ```bash
-cat <<'EOF' > ingress.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: annual-sports-ingress
-  namespace: annual-sports
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: your-domain.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: annual-sports-frontend
-                port:
-                  number: 80
-          - path: /identities
-            pathType: Prefix
-            backend:
-              service:
-                name: identity-service
-                port:
-                  number: 8001
-          - path: /enrollments
-            pathType: Prefix
-            backend:
-              service:
-                name: enrollment-service
-                port:
-                  number: 8002
-          - path: /departments
-            pathType: Prefix
-            backend:
-              service:
-                name: department-service
-                port:
-                  number: 8003
-          - path: /sports-participations
-            pathType: Prefix
-            backend:
-              service:
-                name: sports-participation-service
-                port:
-                  number: 8004
-          - path: /event-configurations
-            pathType: Prefix
-            backend:
-              service:
-                name: event-configuration-service
-                port:
-                  number: 8005
-          - path: /schedulings
-            pathType: Prefix
-            backend:
-              service:
-                name: scheduling-service
-                port:
-                  number: 8006
-          - path: /scorings
-            pathType: Prefix
-            backend:
-              service:
-                name: scoring-service
-                port:
-                  number: 8007
-          - path: /reportings
-            pathType: Prefix
-            backend:
-              service:
-                name: reporting-service
-                port:
-                  number: 8008
-EOF
-
-kubectl apply -f ingress.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/ingress.yaml
 ```
 
 ## 8) Verify
@@ -304,8 +166,8 @@ kubectl -n annual-sports rollout undo deploy/annual-sports-frontend
 If a service manifest or the frontend manifest changes, re-apply and verify rollout:
 
 ```bash
-kubectl apply -f identity-service.yaml
-kubectl apply -f frontend.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/identity-service.yaml
+kubectl apply -f docs/setup/ubuntu/k8s/frontend.yaml
 
 kubectl -n annual-sports rollout status deploy/identity-service
 kubectl -n annual-sports rollout status deploy/annual-sports-frontend

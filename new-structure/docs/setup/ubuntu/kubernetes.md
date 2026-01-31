@@ -385,6 +385,32 @@ minikube delete
 minikube start
 ```
 
+### Stop and Restart Services (Minikube + systemd)
+
+Stop everything (port-forward + cluster):
+
+```bash
+sudo systemctl stop annual-sports-nginx-forward
+sudo systemctl disable annual-sports-nginx-forward
+minikube stop
+```
+
+If you also enabled minikube as a systemd service:
+
+```bash
+sudo systemctl stop minikube
+sudo systemctl disable minikube
+```
+
+Restart after a stop (manifests already applied):
+
+```bash
+sudo systemctl enable --now minikube
+sudo systemctl enable --now annual-sports-nginx-forward
+```
+
+If you deleted the namespace or minikube, re-apply the manifests before restarting.
+
 ## Notes
 - The frontend expects base paths like `/identities` and `/enrollments` to reach each service.
 - For production, use TLS via Ingress and move secrets to a secret manager.

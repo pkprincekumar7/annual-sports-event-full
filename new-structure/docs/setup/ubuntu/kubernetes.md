@@ -69,6 +69,13 @@ Create a single ConfigMap for all non-secret values (service URLs, shared defaul
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/annual-sports-config.yaml
 ```
 
+View ConfigMap values:
+
+```bash
+kubectl -n annual-sports get configmap annual-sports-config -o yaml
+kubectl -n annual-sports get configmap annual-sports-config -o jsonpath='{.data}'
+```
+
 `VITE_API_URL` is still a build-time value for the frontend image, so changing it requires a rebuild and redeploy.
 
 Create a shared Secret for common sensitive values (MongoDB URI, shared JWT secret, etc.), then create per-service Secrets for service-specific credentials.
@@ -89,16 +96,41 @@ kubectl -n annual-sports create secret generic identity-secrets \
   --from-literal=SMTP_PASSWORD="your-smtp-password"
 ```
 
-## 4) Deploy MongoDB and Redis (Optional)
+View Secrets:
 
-- For production, use managed MongoDB/Redis.
-- For local clusters, you can deploy MongoDB (use `mongodb.yaml`) and a Redis chart or simple Deployment/Service.
+```bash
+kubectl -n annual-sports get secrets
+kubectl -n annual-sports get secret annual-sports-secrets -o yaml
+kubectl -n annual-sports get secret annual-sports-secrets -o jsonpath='{.data.<key>}' | base64 --decode
+```
 
-If you are using an external MongoDB/Redis, update the service `.env` values accordingly.
+## 4) Deploy Redis
 
-## 5) Deploy Services
+Deploy Redis (matches `redis://redis:6379` in the ConfigMap):
+
+```bash
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/redis.yaml
+```
+
+Verify Redis:
+
+```bash
+kubectl -n annual-sports get pods
+kubectl -n annual-sports get svc redis
+```
+
+## 5) Deploy MongoDB (Optional)
+
+- For production, use managed MongoDB.
+- For local clusters, you can deploy MongoDB (use `mongodb.yaml`).
+
+If you are using an external MongoDB, update the service `.env` values accordingly.
+
+## 6) Deploy Services
 
 Create one Deployment and Service per microservice using the manifests in `new-structure/docs/setup/ubuntu/k8s`:
+
+Before applying the service manifests, update the `image` values in each YAML file to use your Docker registry (replace `your-registry` with your registry/namespace).
 
 ```bash
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/identity-service.yaml
@@ -111,6 +143,13 @@ kubectl apply -f new-structure/docs/setup/ubuntu/k8s/scoring-service.yaml
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/reporting-service.yaml
 ```
 
+Verify services:
+
+```bash
+kubectl -n annual-sports get pods
+kubectl -n annual-sports get svc
+```
+
 Service ports:
 - Identity: `8001`
 - Enrollment: `8002`
@@ -121,30 +160,112 @@ Service ports:
 - Scoring: `8007`
 - Reporting: `8008`
 
-## 6) Deploy Frontend
+## 7) Deploy Frontend
 
-Create a Deployment/Service for the frontend image (port 80), then expose it via Ingress:
+Create a Deployment/Service for the frontend image (port 80). You can access it via
+either the NGINX gateway, Ingress, or direct port-forwarding (see the Access section).
+
+Before applying the frontend manifest, update the `image` value to use your Docker registry (replace `your-registry` with your registry/namespace).
 
 ```bash
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/frontend.yaml
 ```
 
-## 7) Ingress (Optional)
+Verify frontend:
 
-If you have an Ingress controller installed (NGINX, Traefik), create an `ingress.yaml`
-with the content below. Update the `host` value and `ingressClassName` if your cluster
-requires it, then apply the file.
+```bash
+kubectl -n annual-sports get pods
+kubectl -n annual-sports get svc
+kubectl -n annual-sports rollout status deploy/annual-sports-frontend
+```
+
+## 8) NGINX Gateway (Recommended with Port-Forward)
+
+Use the bundled NGINX config to route API paths to backend services and `/` to the frontend.
+This fixes `text/html` responses when the frontend tries to call backend paths on the same host.
+
+```bash
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/nginx-configmap.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/nginx-gateway.yaml
+```
+
+Verify NGINX:
+
+```bash
+kubectl -n annual-sports get pods
+kubectl -n annual-sports get svc annual-sports-nginx
+```
+
+Port-forward the NGINX service and access the app:
+
+```bash
+kubectl -n annual-sports port-forward svc/annual-sports-nginx 8080:80 --address 0.0.0.0
+```
+
+Then open:
+
+```
+http://<PUBLIC_IP>:8080/
+```
+
+## 9) Ingress (Optional)
+
+If you are using NGINX Ingress, install/enable it first. For minikube:
+
+```bash
+minikube addons enable ingress
+```
+
+Create the ingress using `ingress.yaml`. If you set `host`, ensure you access the
+app with that host (DNS or `/etc/hosts`). If you omit `host`, the ingress matches
+any host (useful for direct public IP access). Keep `VITE_API_URL=/` so the
+frontend calls the backend via the same host.
 
 ```bash
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/ingress.yaml
 ```
 
-## 8) Verify
+Verify ingress:
 
 ```bash
-kubectl -n annual-sports get pods
-kubectl -n annual-sports get svc
 kubectl -n annual-sports get ingress
+```
+
+To access the app via the public IP, use the ingress controller NodePort:
+
+```bash
+kubectl -n ingress-nginx get svc ingress-nginx-controller
+```
+
+Example output:
+
+```
+NAME                       TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
+ingress-nginx-controller   NodePort   10.96.183.122   <none>        80:31234/TCP,443:31678/TCP   2m
+```
+
+Then open:
+
+```
+http://<PUBLIC_IP>:<INGRESS_NODEPORT>/
+```
+
+Example:
+
+```
+http://54.89.197.89:31234/
+```
+
+## 10) Apply Updated YAML
+
+If a service manifest or the frontend manifest changes, re-apply and verify rollout:
+
+```bash
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/identity-service.yaml
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/frontend.yaml
+
+kubectl -n annual-sports rollout status deploy/identity-service
+kubectl -n annual-sports rollout status deploy/annual-sports-frontend
 ```
 
 Check rollout history:
@@ -161,18 +282,6 @@ kubectl -n annual-sports rollout undo deploy/identity-service
 kubectl -n annual-sports rollout undo deploy/annual-sports-frontend
 ```
 
-## 9) Apply Updated YAML
-
-If a service manifest or the frontend manifest changes, re-apply and verify rollout:
-
-```bash
-kubectl apply -f new-structure/docs/setup/ubuntu/k8s/identity-service.yaml
-kubectl apply -f new-structure/docs/setup/ubuntu/k8s/frontend.yaml
-
-kubectl -n annual-sports rollout status deploy/identity-service
-kubectl -n annual-sports rollout status deploy/annual-sports-frontend
-```
-
 If the image tag stays the same (e.g., `latest`), restart to pull the new image:
 
 ```bash
@@ -180,7 +289,48 @@ kubectl -n annual-sports rollout restart deploy/identity-service
 kubectl -n annual-sports rollout restart deploy/annual-sports-frontend
 ```
 
-## 10) Access the Frontend
+## 11) Access the Frontend
+
+Choose one of the access methods below.
+
+NGINX gateway (recommended when using port-forwarding):
+
+```bash
+kubectl -n annual-sports port-forward svc/annual-sports-nginx 8080:80 --address 0.0.0.0
+```
+
+Then visit:
+
+```
+http://<PUBLIC_IP>:8080/
+```
+
+Ingress (recommended for production-style access):
+
+- If you have a LoadBalancer or NodePort for the ingress controller, use its address.
+- For minikube with ingress NodePort:
+
+```bash
+kubectl -n ingress-nginx get svc ingress-nginx-controller
+```
+
+Then visit:
+
+```
+http://<PUBLIC_IP>:<INGRESS_NODEPORT>/
+```
+
+Direct frontend port-forward (UI-only; API calls may return `text/html`):
+
+```bash
+kubectl -n annual-sports port-forward svc/annual-sports-frontend 5173:80 --address 0.0.0.0
+```
+
+Then visit:
+
+```
+http://<PUBLIC_IP>:5173
+```
 
 If you are using minikube:
 
@@ -194,35 +344,10 @@ If you get `xdg-open` / browser errors on a server VM, use the URL directly:
 minikube service -n annual-sports annual-sports-frontend --url
 ```
 
-If you kept the service as `ClusterIP`, use port-forwarding instead:
-
-```bash
-kubectl -n annual-sports port-forward svc/annual-sports-frontend 5173:80
-```
-
-If you are running on a remote Ubuntu instance and want to access from a local browser, bind the forward to all interfaces and open the port in your firewall/security group:
-
-```bash
-kubectl -n annual-sports port-forward svc/annual-sports-frontend 5173:80 --address 0.0.0.0
-```
-
-Then visit:
-
-```
-http://<PUBLIC_IP>:5173
-```
-
 For a systemd-based port-forward that survives SSH disconnects and VM reboots, see:
 `new-structure/docs/setup/ubuntu/kubectl-port-forward-systemd.md`.
 
-If `minikube service` says "no node port", patch the service:
-
-```bash
-kubectl -n annual-sports patch svc annual-sports-frontend -p '{"spec":{"type":"NodePort"}}'
-minikube service -n annual-sports annual-sports-frontend --url
-```
-
-## 11) Troubleshooting
+## 12) Troubleshooting
 
 ### ImagePullBackOff
 

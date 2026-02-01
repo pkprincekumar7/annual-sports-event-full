@@ -37,6 +37,6 @@ Available environments:
 
 ## Notes
 - Provide a globally unique `artifact_registry_name` in tfvars.
-- `dns_zone_name` is the DNS domain (for example, `learning-dev.com`).
+- `dns_zone_name` is the DNS domain (for example, `your-domain.com`).
 - Set `use_existing_dns_zone = true` and `dns_zone_resource_name` to reuse an existing managed zone.
 - Microservices use internal ingress; only the frontend and API gateway are public.

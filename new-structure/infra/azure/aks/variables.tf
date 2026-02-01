@@ -22,7 +22,7 @@ variable "resource_group_name" {
 
 variable "dns_zone_name" {
   type        = string
-  description = "Azure DNS zone name (for example, learning-dev.com)."
+  description = "Azure DNS zone name (for example, your-domain.com)."
 }
 
 variable "dns_zone_resource_group" {

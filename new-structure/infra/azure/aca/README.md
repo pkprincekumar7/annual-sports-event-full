@@ -37,7 +37,7 @@ Available environments:
 
 ## Notes
 - Provide a globally unique `acr_name` in tfvars.
-- `dns_zone_name` should be the Azure DNS zone (for example, `learning-dev.com`).
+- `dns_zone_name` should be the Azure DNS zone (for example, `your-domain.com`).
 - Set `use_existing_dns_zone = true` and `dns_zone_resource_group` to reuse an existing Azure DNS zone.
 - The API gateway uses an NGINX container image to route requests to service FQDNs.
 - Microservices run with internal-only ingress; only the frontend and API gateway are public.

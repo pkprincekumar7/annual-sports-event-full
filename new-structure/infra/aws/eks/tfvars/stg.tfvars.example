@@ -7,22 +7,13 @@ availability_zones = ["us-east-1a", "us-east-1b"]
 public_subnets      = ["10.30.1.0/24", "10.30.2.0/24"]
 private_subnets     = ["10.30.11.0/24", "10.30.12.0/24"]
 
-domain     = "sports-stg.learning-dev.com"
-api_domain = "sports-stg-api.learning-dev.com"
+domain     = "sports-stg.your-domain.com"
+api_domain = "sports-stg-api.your-domain.com"
 acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/replace-with-your-cert-id"
 
 image_tag = "latest"
 
-mongo_uris = {
-  "identity-service"             = "mongodb+srv://user:pass@cluster/annual-sports-identity-stg"
-  "enrollment-service"           = "mongodb+srv://user:pass@cluster/annual-sports-enrollment-stg"
-  "department-service"           = "mongodb+srv://user:pass@cluster/annual-sports-department-stg"
-  "sports-participation-service" = "mongodb+srv://user:pass@cluster/annual-sports-participation-stg"
-  "event-configuration-service"  = "mongodb+srv://user:pass@cluster/annual-sports-event-config-stg"
-  "scheduling-service"           = "mongodb+srv://user:pass@cluster/annual-sports-scheduling-stg"
-  "scoring-service"              = "mongodb+srv://user:pass@cluster/annual-sports-scoring-stg"
-  "reporting-service"            = "mongodb+srv://user:pass@cluster/annual-sports-reporting-stg"
-}
+mongo_uri = "mongodb+srv://user:pass@cluster"
 
 database_names = {
   "identity-service"             = "annual-sports-identity-stg"

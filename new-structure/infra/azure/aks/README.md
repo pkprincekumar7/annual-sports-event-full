@@ -37,7 +37,7 @@ Available environments:
 
 ## Notes
 - Provide a globally unique `acr_name` in tfvars.
-- `dns_zone_name` should be the Azure DNS zone (for example, `learning-dev.com`).
+- `dns_zone_name` should be the Azure DNS zone (for example, `your-domain.com`).
 - Set `use_existing_dns_zone = true` and `dns_zone_resource_group` to reuse an existing Azure DNS zone.
 - Mongo Atlas URIs and secrets are set in tfvars.
 - Services are ClusterIP-only; only the ingress is public.

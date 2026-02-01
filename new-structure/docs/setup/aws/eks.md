@@ -4,7 +4,6 @@ This guide deploys the app to AWS EKS with best-practice components:
 - ECR for images
 - EKS for workloads
 - AWS Load Balancer Controller (ALB) for ingress
-- ACM for TLS certificates
 
 It assumes you already have a domain and can create DNS records.
 
@@ -51,20 +50,19 @@ aws ecr create-repository --repository-name annual-sports-reporting-service
 aws ecr create-repository --repository-name annual-sports-frontend
 ```
 
-Get your account ID and region:
-
-```bash
-aws sts get-caller-identity --query Account --output text
-aws configure get region
-```
+You will set `AWS_ACCOUNT_ID` and `AWS_REGION` in step 4.
 
 ## 4) Build and Push Images
 
 Set variables:
 
 ```bash
-AWS_ACCOUNT_ID=<your-account-id>
-AWS_REGION=<your-region>
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+AWS_REGION=$(aws configure get region)
+IMAGE_TAG=<your-image-tag>
+CLUSTER_NAME=annual-sports
+NAMESPACE=annual-sports
+CERT_ARN=arn:aws:acm:us-east-1:123456789012:certificate/replace-with-your-cert-id
 ```
 
 Login to ECR:
@@ -87,19 +85,19 @@ for service in \
   scheduling-service \
   scoring-service \
   reporting-service; do
-  docker build -t "annual-sports-${service}:latest" "new-structure/$service"
-  docker tag "annual-sports-${service}:latest" \
-    "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-${service}:latest"
-  docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-${service}:latest"
+  docker build -t "annual-sports-${service}:${IMAGE_TAG}" "new-structure/$service"
+  docker tag "annual-sports-${service}:${IMAGE_TAG}" \
+    "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-${service}:${IMAGE_TAG}"
+  docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-${service}:${IMAGE_TAG}"
 done
 
-docker build -t annual-sports-frontend:latest \
+docker build -t annual-sports-frontend:${IMAGE_TAG} \
   --build-arg VITE_API_URL=/ \
   new-structure/frontend
-docker tag annual-sports-frontend:latest \
-  "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-frontend:latest"
+docker tag annual-sports-frontend:${IMAGE_TAG} \
+  "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-frontend:${IMAGE_TAG}"
 
-docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-frontend:latest"
+docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-frontend:${IMAGE_TAG}"
 ```
 
 `VITE_API_URL` is a build-time value; changing it requires a rebuild.
@@ -110,7 +108,7 @@ Create a cluster with managed nodes:
 
 ```bash
 eksctl create cluster \
-  --name annual-sports \
+  --name "$CLUSTER_NAME" \
   --region "$AWS_REGION" \
   --nodegroup-name standard \
   --node-type t3.medium \
@@ -133,7 +131,7 @@ Associate IAM OIDC provider:
 ```bash
 eksctl utils associate-iam-oidc-provider \
   --region "$AWS_REGION" \
-  --cluster annual-sports \
+  --cluster "$CLUSTER_NAME" \
   --approve
 ```
 
@@ -154,13 +152,13 @@ helm repo add eks https://aws.github.io/eks-charts
 helm repo update
 
 VPC_ID=$(aws eks describe-cluster \
-  --name annual-sports \
+  --name "$CLUSTER_NAME" \
   --region "$AWS_REGION" \
   --query "cluster.resourcesVpcConfig.vpcId" \
   --output text)
 
 eksctl create iamserviceaccount \
-  --cluster annual-sports \
+  --cluster "$CLUSTER_NAME" \
   --namespace kube-system \
   --name aws-load-balancer-controller \
   --attach-policy-arn "$POLICY_ARN" \
@@ -168,7 +166,7 @@ eksctl create iamserviceaccount \
 
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n kube-system \
-  --set clusterName=annual-sports \
+  --set clusterName="$CLUSTER_NAME" \
   --set serviceAccount.create=false \
   --set serviceAccount.name=aws-load-balancer-controller \
   --set region="$AWS_REGION" \
@@ -178,18 +176,18 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
 ## 7) Create Namespace, Config, and Secrets
 
 ```bash
-kubectl create namespace annual-sports
+kubectl create namespace "$NAMESPACE"
 ```
 
 Create ConfigMaps for non-secret values and Secrets for sensitive values. Non-secrets should match `x-common-env` in `new-structure/docker-compose.yml`. Secrets (MongoDB URI, JWT secret, email credentials) should come from AWS Secrets Manager or Kubernetes Secrets.
 
 ```bash
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/annual-sports-config.yaml
-kubectl -n annual-sports create secret generic annual-sports-secrets \
+kubectl -n "$NAMESPACE" create secret generic annual-sports-secrets \
   --from-literal=MONGODB_URI="mongodb://mongodb-0.mongodb:27017" \
   --from-literal=JWT_SECRET="your-strong-secret"
 
-kubectl -n annual-sports create secret generic identity-secrets \
+kubectl -n "$NAMESPACE" create secret generic identity-secrets \
   --from-literal=GMAIL_APP_PASSWORD="your-16-char-app-password" \
   --from-literal=SENDGRID_API_KEY="your-sendgrid-api-key" \
   --from-literal=RESEND_API_KEY="your-resend-api-key" \
@@ -210,8 +208,8 @@ kubectl apply -f new-structure/docs/setup/ubuntu/k8s/redis.yaml
 MongoDB is optional if you use a managed provider (MongoDB Atlas). For in-cluster MongoDB:
 
 ```bash
-kubectl apply -f mongodb.yaml
-kubectl -n annual-sports rollout status statefulset/mongodb
+kubectl apply -f new-structure/docs/setup/ubuntu/k8s/mongodb.yaml
+kubectl -n "$NAMESPACE" rollout status statefulset/mongodb
 ```
 
 ## 9) Deploy Services and Frontend
@@ -230,25 +228,22 @@ kubectl apply -f new-structure/docs/setup/ubuntu/k8s/scoring-service.yaml
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/reporting-service.yaml
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/frontend.yaml
 
-kubectl -n annual-sports rollout status deploy/identity-service
-kubectl -n annual-sports rollout status deploy/annual-sports-frontend
+kubectl -n "$NAMESPACE" rollout status deploy/identity-service
+kubectl -n "$NAMESPACE" rollout status deploy/annual-sports-frontend
 ```
 
 ## 10) Create an Ingress (ALB)
 
-Request certificates in ACM (same region as the cluster):
-- `your-domain.com`
-- `api.your-domain.com` (optional, if using a separate API subdomain)
-
-Create an `ingress.yaml` using ALB, replace the hosts and certificate ARN, then apply it:
+Create an `ingress.yaml` using ALB. Use `CERT_ARN` from step 4 to replace
+arm-certificate-arn and replace host, then apply it:
 
 ```bash
 cat <<'EOF' > ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: annual-sports-ingress
-  namespace: annual-sports
+  name: ${NAMESPACE}-ingress
+  namespace: ${NAMESPACE}
   annotations:
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
@@ -391,7 +386,7 @@ kubectl apply -f ingress.yaml
 Get the ALB hostname:
 
 ```bash
-kubectl -n annual-sports get ingress
+kubectl -n "$NAMESPACE" get ingress
 ```
 
 Create DNS records pointing your domains to the ALB hostname.
@@ -420,29 +415,55 @@ If you prefer the AWS Console:
 - EKS: create a cluster with managed node group (2+ nodes), then update kubeconfig.
 - IAM OIDC: enable the OIDC provider for the cluster.
 - Load Balancer Controller: create the IAM role + service account (IRSA), then install the Helm chart.
-- ACM: request certificates for your domains and validate via DNS.
 - Route 53: create A/ALIAS records pointing to the ALB hostname.
 
 You will still apply Kubernetes manifests with `kubectl`.
 
 ## Teardown
 
+Delete Route 53 records first (optional, only if you created them):
+
+```bash
+# Reuse CLUSTER_NAME, NAMESPACE, AWS_REGION, and CERT_ARN from earlier steps.
+
+ROUTE53_ZONE_ID=<your-hosted-zone-id>
+ALB_HOSTNAME=$(kubectl -n "$NAMESPACE" get ingress "${NAMESPACE}-ingress" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+ALB_ZONE_ID=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?DNSName=='${ALB_HOSTNAME}'].CanonicalHostedZoneId | [0]" --output text)
+
+aws route53 change-resource-record-sets --hosted-zone-id "$ROUTE53_ZONE_ID" --change-batch '{
+  "Changes": [
+    {
+      "Action": "DELETE",
+      "ResourceRecordSet": {
+        "Name": "your-domain.com",
+        "Type": "A",
+        "AliasTarget": {
+          "HostedZoneId": "'"$ALB_ZONE_ID"'",
+          "DNSName": "'"$ALB_HOSTNAME"'",
+          "EvaluateTargetHealth": true
+        }
+      }
+    }
+  ]
+}'
+```
+
 Remove Kubernetes resources:
 
 ```bash
-kubectl delete ingress -n annual-sports annual-sports-ingress
-kubectl delete -f frontend.yaml
-kubectl delete -f identity-service.yaml
-kubectl delete -f enrollment-service.yaml
-kubectl delete -f department-service.yaml
-kubectl delete -f sports-participation-service.yaml
-kubectl delete -f event-configuration-service.yaml
-kubectl delete -f scheduling-service.yaml
-kubectl delete -f scoring-service.yaml
-kubectl delete -f reporting-service.yaml
-kubectl delete -f mongodb.yaml
+kubectl delete ingress -n "$NAMESPACE" "${NAMESPACE}-ingress"
+kubectl delete -f new-structure/docs/setup/ubuntu/k8s/frontend.yaml
+kubectl delete -f new-structure/docs/setup/ubuntu/k8s/identity-service.yaml
+kubectl delete -f new-structure/docs/setup/ubuntu/k8s/enrollment-service.yaml
+kubectl delete -f new-structure/docs/setup/ubuntu/k8s/department-service.yaml
+kubectl delete -f new-structure/docs/setup/ubuntu/k8s/sports-participation-service.yaml
+kubectl delete -f new-structure/docs/setup/ubuntu/k8s/event-configuration-service.yaml
+kubectl delete -f new-structure/docs/setup/ubuntu/k8s/scheduling-service.yaml
+kubectl delete -f new-structure/docs/setup/ubuntu/k8s/scoring-service.yaml
+kubectl delete -f new-structure/docs/setup/ubuntu/k8s/reporting-service.yaml
+kubectl delete -f new-structure/docs/setup/ubuntu/k8s/mongodb.yaml
 kubectl delete -f new-structure/docs/setup/ubuntu/k8s/redis.yaml
-kubectl delete namespace annual-sports
+kubectl delete namespace "$NAMESPACE"
 ```
 
 Remove the load balancer controller:
@@ -450,15 +471,18 @@ Remove the load balancer controller:
 ```bash
 helm uninstall aws-load-balancer-controller -n kube-system
 eksctl delete iamserviceaccount \
-  --cluster annual-sports \
+  --cluster "$CLUSTER_NAME" \
   --namespace kube-system \
   --name aws-load-balancer-controller
+
+# Reuse POLICY_ARN from step 6.
+aws iam delete-policy --policy-arn "$POLICY_ARN"
 ```
 
 Delete the EKS cluster:
 
 ```bash
-eksctl delete cluster --name annual-sports --region "$AWS_REGION"
+eksctl delete cluster --name "$CLUSTER_NAME" --region "$AWS_REGION"
 ```
 
 Delete ECR repositories:
@@ -474,8 +498,6 @@ aws ecr delete-repository --repository-name annual-sports-scoring-service --forc
 aws ecr delete-repository --repository-name annual-sports-reporting-service --force
 aws ecr delete-repository --repository-name annual-sports-frontend --force
 ```
-
-Clean up ACM certificates and Route 53 records manually.
 
 ## Best Practices Notes
 - Use MongoDB Atlas instead of in-cluster MongoDB for production.

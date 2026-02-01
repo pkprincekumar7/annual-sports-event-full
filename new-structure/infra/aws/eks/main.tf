@@ -14,6 +14,17 @@ locals {
     "reporting-service" = { port = 8008 }
   }
 
+  redis_db_index = {
+    "identity-service"             = 0
+    "enrollment-service"           = 1
+    "department-service"           = 2
+    "sports-participation-service" = 3
+    "event-configuration-service"  = 4
+    "scheduling-service"           = 5
+    "scoring-service"              = 6
+    "reporting-service"            = 7
+  }
+
   ecr_repos = concat(keys(local.services), ["frontend"])
 
   service_url_env = {
@@ -33,39 +44,55 @@ locals {
     ADMIN_REG_NUMBER = var.admin_reg_number
     APP_ENV          = var.app_env
     LOG_LEVEL        = var.log_level
-    REDIS_URL        = local.redis_url
-    EMAIL_PROVIDER   = var.email_provider
-    GMAIL_USER       = var.gmail_user
-    GMAIL_APP_PASSWORD = var.gmail_app_password
-    SENDGRID_USER    = var.sendgrid_user
-    SENDGRID_API_KEY = var.sendgrid_api_key
-    RESEND_API_KEY   = var.resend_api_key
-    SMTP_HOST        = var.smtp_host
-    SMTP_USER        = var.smtp_user
-    SMTP_PASSWORD    = var.smtp_password
-    SMTP_PORT        = tostring(var.smtp_port)
-    SMTP_SECURE      = tostring(var.smtp_secure)
-    EMAIL_FROM       = var.email_from
-    EMAIL_FROM_NAME  = var.email_from_name
-    APP_NAME         = var.app_name
   }
 
   mongo_env = {
     for name, _ in local.services :
     name => {
-      MONGODB_URI  = var.mongo_uris[name]
+      MONGODB_URI  = var.mongo_uri
       DATABASE_NAME = var.database_names[name]
     }
   }
 
+  redis_env = {
+    for name, index in local.redis_db_index :
+    name => {
+      REDIS_URL = "${local.redis_base_url}/${index}"
+    }
+  }
+
+  identity_env = {
+    EMAIL_PROVIDER     = var.email_provider
+    GMAIL_USER         = var.gmail_user
+    GMAIL_APP_PASSWORD = var.gmail_app_password
+    SENDGRID_USER      = var.sendgrid_user
+    SENDGRID_API_KEY   = var.sendgrid_api_key
+    RESEND_API_KEY     = var.resend_api_key
+    SMTP_HOST          = var.smtp_host
+    SMTP_USER          = var.smtp_user
+    SMTP_PASSWORD      = var.smtp_password
+    SMTP_PORT          = tostring(var.smtp_port)
+    SMTP_SECURE        = tostring(var.smtp_secure)
+    EMAIL_FROM         = var.email_from
+    EMAIL_FROM_NAME    = var.email_from_name
+    APP_NAME           = var.app_name
+  }
+
   service_env = {
     for name, _ in local.services :
-    name => merge(local.service_url_env, local.common_env, local.mongo_env[name])
+    name => merge(
+      local.service_url_env,
+      local.common_env,
+      local.mongo_env[name],
+      local.redis_env[name],
+      name == "identity-service" ? local.identity_env : {}
+    )
   }
 
   image_prefix = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
 
-  redis_url = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:${aws_elasticache_cluster.redis.port}"
+  redis_base_url = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:${aws_elasticache_cluster.redis.port}"
+  redis_url      = local.redis_base_url
 
   name_prefix     = substr(var.cluster_name, 0, 12)
   redis_name      = "${local.name_prefix}-redis"

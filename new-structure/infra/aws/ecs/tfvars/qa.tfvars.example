@@ -2,28 +2,20 @@
 aws_region     = "us-east-1"
 aws_account_id = "123456789012"
 cluster_name   = "annual-sports-qa"
+service_discovery_namespace = "annual-sports.qa.local"
 
 availability_zones = ["us-east-1a", "us-east-1b"]
 public_subnets      = ["10.20.1.0/24", "10.20.2.0/24"]
 private_subnets     = ["10.20.11.0/24", "10.20.12.0/24"]
 
-domain     = "sports-qa.learning-dev.com"
-api_domain = "sports-qa-api.learning-dev.com"
+domain     = "sports-qa.your-domain.com"
+api_domain = "sports-qa-api.your-domain.com"
 route53_zone_id = "Z1234567890"
 acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/replace-with-your-cert-id"
 
 image_tag = "latest"
 
-mongo_uris = {
-  "identity-service"             = "mongodb+srv://user:pass@cluster/annual-sports-identity-qa"
-  "enrollment-service"           = "mongodb+srv://user:pass@cluster/annual-sports-enrollment-qa"
-  "department-service"           = "mongodb+srv://user:pass@cluster/annual-sports-department-qa"
-  "sports-participation-service" = "mongodb+srv://user:pass@cluster/annual-sports-participation-qa"
-  "event-configuration-service"  = "mongodb+srv://user:pass@cluster/annual-sports-event-config-qa"
-  "scheduling-service"           = "mongodb+srv://user:pass@cluster/annual-sports-scheduling-qa"
-  "scoring-service"              = "mongodb+srv://user:pass@cluster/annual-sports-scoring-qa"
-  "reporting-service"            = "mongodb+srv://user:pass@cluster/annual-sports-reporting-qa"
-}
+mongo_uri_secret_name = "annual-sports-mongo"
 
 database_names = {
   "identity-service"             = "annual-sports-identity-qa"
@@ -36,8 +28,11 @@ database_names = {
   "reporting-service"            = "annual-sports-reporting-qa"
 }
 
-jwt_secret = "replace-with-strong-secret"
+jwt_secret_name = "annual-sports-jwt-secret"
 email_provider = "gmail"
 gmail_user = "your-email@gmail.com"
-gmail_app_password = "your-app-password"
+gmail_app_password_secret_name = "annual-sports-gmail-app-password"
+sendgrid_api_key_secret_name = "annual-sports-sendgrid-api-key"
+resend_api_key_secret_name = "annual-sports-resend-api-key"
+smtp_password_secret_name = "annual-sports-smtp-password"
 email_from = "no-reply@your-domain.com"

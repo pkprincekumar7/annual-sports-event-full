@@ -14,6 +14,17 @@ locals {
     "reporting-service" = { port = 8008, health_path = "/health" }
   }
 
+  redis_db_index = {
+    "identity-service"             = 0
+    "enrollment-service"           = 1
+    "department-service"           = 2
+    "sports-participation-service" = 3
+    "event-configuration-service"  = 4
+    "scheduling-service"           = 5
+    "scoring-service"              = 6
+    "reporting-service"            = 7
+  }
+
   ecr_repos = concat(keys(local.services), ["frontend"])
   image_prefix = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
   name_prefix = substr(var.cluster_name, 0, 12)
@@ -44,42 +55,94 @@ locals {
   }
 
   common_env = {
-    JWT_SECRET       = var.jwt_secret
     JWT_EXPIRES_IN   = var.jwt_expires_in
     ADMIN_REG_NUMBER = var.admin_reg_number
     APP_ENV          = var.app_env
     LOG_LEVEL        = var.log_level
-    REDIS_URL        = local.redis_url
-    EMAIL_PROVIDER   = var.email_provider
-    GMAIL_USER       = var.gmail_user
-    GMAIL_APP_PASSWORD = var.gmail_app_password
-    SENDGRID_USER    = var.sendgrid_user
-    SENDGRID_API_KEY = var.sendgrid_api_key
-    RESEND_API_KEY   = var.resend_api_key
-    SMTP_HOST        = var.smtp_host
-    SMTP_USER        = var.smtp_user
-    SMTP_PASSWORD    = var.smtp_password
-    SMTP_PORT        = tostring(var.smtp_port)
-    SMTP_SECURE      = tostring(var.smtp_secure)
-    EMAIL_FROM       = var.email_from
-    EMAIL_FROM_NAME  = var.email_from_name
-    APP_NAME         = var.app_name
   }
 
   mongo_env = {
     for name, _ in local.services :
     name => {
-      MONGODB_URI  = var.mongo_uris[name]
       DATABASE_NAME = var.database_names[name]
     }
   }
 
-  service_env = {
-    for name, _ in local.services :
-    name => merge(local.service_url_env, local.common_env, local.mongo_env[name])
+  redis_env = {
+    for name, index in local.redis_db_index :
+    name => {
+      REDIS_URL = "${local.redis_base_url}/${index}"
+    }
   }
 
-  redis_url = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:${aws_elasticache_cluster.redis.port}"
+  identity_env = {
+    EMAIL_PROVIDER  = var.email_provider
+    GMAIL_USER      = var.gmail_user
+    SENDGRID_USER   = var.sendgrid_user
+    SMTP_HOST       = var.smtp_host
+    SMTP_USER       = var.smtp_user
+    SMTP_PORT       = tostring(var.smtp_port)
+    SMTP_SECURE     = tostring(var.smtp_secure)
+    EMAIL_FROM      = var.email_from
+    EMAIL_FROM_NAME = var.email_from_name
+    APP_NAME        = var.app_name
+  }
+
+  service_env = {
+    for name, _ in local.services :
+    name => merge(
+      local.service_url_env,
+      local.common_env,
+      local.mongo_env[name],
+      local.redis_env[name],
+      name == "identity-service" ? local.identity_env : {}
+    )
+  }
+
+  base_secret_env = [
+    {
+      name      = "JWT_SECRET"
+      valueFrom = aws_secretsmanager_secret.jwt_secret.arn
+    }
+  ]
+
+  mongo_secret_env = [
+    {
+      name      = "MONGODB_URI"
+      valueFrom = aws_secretsmanager_secret.mongo_uri.arn
+    }
+  ]
+
+  identity_secret_env = [
+    {
+      name      = "GMAIL_APP_PASSWORD"
+      valueFrom = aws_secretsmanager_secret.gmail_app_password.arn
+    },
+    {
+      name      = "SENDGRID_API_KEY"
+      valueFrom = aws_secretsmanager_secret.sendgrid_api_key.arn
+    },
+    {
+      name      = "RESEND_API_KEY"
+      valueFrom = aws_secretsmanager_secret.resend_api_key.arn
+    },
+    {
+      name      = "SMTP_PASSWORD"
+      valueFrom = aws_secretsmanager_secret.smtp_password.arn
+    }
+  ]
+
+  service_secrets = {
+    for name, _ in local.services :
+    name => concat(
+      local.base_secret_env,
+      local.mongo_secret_env,
+      name == "identity-service" ? local.identity_secret_env : []
+    )
+  }
+
+  redis_base_url = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:${aws_elasticache_cluster.redis.port}"
+  redis_url      = local.redis_base_url
 }
 
 module "vpc" {
@@ -114,6 +177,23 @@ resource "aws_service_discovery_private_dns_namespace" "namespace" {
 resource "aws_service_discovery_service" "services" {
   for_each = local.services
   name     = each.key
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.namespace.id
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
+
+resource "aws_service_discovery_service" "frontend" {
+  name = "annual-sports-frontend"
 
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.namespace.id
@@ -366,6 +446,69 @@ resource "aws_iam_role_policy_attachment" "task_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_secretsmanager_secret" "jwt_secret" {
+  name = var.jwt_secret_name
+}
+
+resource "aws_secretsmanager_secret" "mongo_uri" {
+  name = var.mongo_uri_secret_name
+}
+
+resource "aws_secretsmanager_secret" "gmail_app_password" {
+  name = var.gmail_app_password_secret_name
+}
+
+resource "aws_secretsmanager_secret" "sendgrid_api_key" {
+  name = var.sendgrid_api_key_secret_name
+}
+
+resource "aws_secretsmanager_secret" "resend_api_key" {
+  name = var.resend_api_key_secret_name
+}
+
+resource "aws_secretsmanager_secret" "smtp_password" {
+  name = var.smtp_password_secret_name
+}
+
+resource "aws_iam_policy" "secrets_access" {
+  name        = "${local.name_prefix}-secrets-access"
+  description = "Allow ECS task execution to read Secrets Manager values."
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "task_execution_secrets" {
+  role       = aws_iam_role.task_execution.name
+  policy_arn = aws_iam_policy.secrets_access.arn
+}
+
+resource "aws_iam_role" "task_role" {
+  name = "${local.name_prefix}-task-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
 resource "aws_ecs_task_definition" "services" {
   for_each             = local.services
   family               = "${var.cluster_name}-${each.key}"
@@ -374,7 +517,7 @@ resource "aws_ecs_task_definition" "services" {
   cpu                  = tostring(var.service_cpu)
   memory               = tostring(var.service_memory)
   execution_role_arn   = aws_iam_role.task_execution.arn
-  task_role_arn        = aws_iam_role.task_execution.arn
+  task_role_arn        = aws_iam_role.task_role.arn
 
   container_definitions = jsonencode([
     {
@@ -392,6 +535,12 @@ resource "aws_ecs_task_definition" "services" {
         for k, v in local.service_env[each.key] : {
           name  = k
           value = v
+        }
+      ]
+      secrets = [
+        for secret in local.service_secrets[each.key] : {
+          name      = secret.name
+          valueFrom = secret.valueFrom
         }
       ]
       logConfiguration = {
@@ -413,7 +562,7 @@ resource "aws_ecs_task_definition" "frontend" {
   cpu                  = tostring(var.frontend_cpu)
   memory               = tostring(var.frontend_memory)
   execution_role_arn   = aws_iam_role.task_execution.arn
-  task_role_arn        = aws_iam_role.task_execution.arn
+  task_role_arn        = aws_iam_role.task_role.arn
 
   container_definitions = jsonencode([
     {
@@ -477,6 +626,10 @@ resource "aws_ecs_service" "frontend" {
     subnets          = module.vpc.private_subnets
     security_groups  = [aws_security_group.ecs_tasks.id]
     assign_public_ip = false
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.frontend.arn
   }
 
   load_balancer {

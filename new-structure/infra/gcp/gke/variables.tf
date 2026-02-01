@@ -77,7 +77,7 @@ variable "redis_memory_gb" {
 
 variable "dns_zone_name" {
   type        = string
-  description = "DNS zone domain (for example, learning-dev.com)."
+  description = "DNS zone domain (for example, your-domain.com)."
 }
 
 variable "dns_zone_resource_name" {

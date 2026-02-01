@@ -96,19 +96,19 @@ variable "service_memory" {
 
 variable "frontend_cpu" {
   type        = number
-  default     = 256
+  default     = 512
   description = "CPU units for frontend task."
 }
 
 variable "frontend_memory" {
   type        = number
-  default     = 512
+  default     = 1024
   description = "Memory (MiB) for frontend task."
 }
 
-variable "mongo_uris" {
-  type        = map(string)
-  description = "MongoDB Atlas URIs per service."
+variable "mongo_uri_secret_name" {
+  type        = string
+  description = "Secrets Manager secret name for MongoDB URI (shared)."
 }
 
 variable "database_names" {
@@ -116,9 +116,9 @@ variable "database_names" {
   description = "Database names per service."
 }
 
-variable "jwt_secret" {
+variable "jwt_secret_name" {
   type        = string
-  description = "JWT secret for all services."
+  description = "Secrets Manager secret name for JWT secret."
 }
 
 variable "jwt_expires_in" {
@@ -157,10 +157,10 @@ variable "gmail_user" {
   description = "Gmail user for email."
 }
 
-variable "gmail_app_password" {
+variable "gmail_app_password_secret_name" {
   type        = string
   default     = ""
-  description = "Gmail app password."
+  description = "Secrets Manager secret name for Gmail app password."
 }
 
 variable "sendgrid_user" {
@@ -169,16 +169,16 @@ variable "sendgrid_user" {
   description = "SendGrid user."
 }
 
-variable "sendgrid_api_key" {
+variable "sendgrid_api_key_secret_name" {
   type        = string
   default     = ""
-  description = "SendGrid API key."
+  description = "Secrets Manager secret name for SendGrid API key."
 }
 
-variable "resend_api_key" {
+variable "resend_api_key_secret_name" {
   type        = string
   default     = ""
-  description = "Resend API key."
+  description = "Secrets Manager secret name for Resend API key."
 }
 
 variable "smtp_host" {
@@ -193,10 +193,10 @@ variable "smtp_user" {
   description = "SMTP user."
 }
 
-variable "smtp_password" {
+variable "smtp_password_secret_name" {
   type        = string
   default     = ""
-  description = "SMTP password."
+  description = "Secrets Manager secret name for SMTP password."
 }
 
 variable "smtp_port" {

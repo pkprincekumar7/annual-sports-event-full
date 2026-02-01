@@ -94,9 +94,9 @@ variable "redis_num_cache_nodes" {
   description = "Number of Redis cache nodes."
 }
 
-variable "mongo_uris" {
-  type        = map(string)
-  description = "MongoDB Atlas URIs per service."
+variable "mongo_uri" {
+  type        = string
+  description = "MongoDB Atlas URI (shared)."
 }
 
 variable "database_names" {

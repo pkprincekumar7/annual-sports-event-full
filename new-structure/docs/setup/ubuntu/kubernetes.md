@@ -147,6 +147,8 @@ Create one Deployment and Service per microservice using the manifests in `new-s
 Before applying the service manifests, update the `image` values in each YAML file to use your Docker registry (replace `your-registry` with your registry/namespace).
 
 ```bash
+sed -i "s|your-registry|<<registry>>|g" new-structure/docs/setup/ubuntu/k8s/*.yaml
+
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/identity-service.yaml
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/enrollment-service.yaml
 kubectl apply -f new-structure/docs/setup/ubuntu/k8s/department-service.yaml

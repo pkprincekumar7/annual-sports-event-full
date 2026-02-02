@@ -2,6 +2,7 @@
 aws_region     = "us-east-1"
 aws_account_id = "123456789012"
 cluster_name   = "annual-sports-dev"
+vpc_cidr       = "10.10.0.0/16"
 service_discovery_namespace = "annual-sports.dev.local"
 
 availability_zones = ["us-east-1a", "us-east-1b"]
@@ -15,7 +16,7 @@ acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/replace-wi
 
 image_tag = "latest"
 
-mongo_uri_secret_name = "annual-sports-mongo"
+mongo_uri_secret_name = "annual-sports-mongo-uri-dev"
 
 database_names = {
   "identity-service"             = "annual-sports-identity-dev"
@@ -28,11 +29,11 @@ database_names = {
   "reporting-service"            = "annual-sports-reporting-dev"
 }
 
-jwt_secret_name = "annual-sports-jwt-secret"
+jwt_secret_name = "annual-sports-jwt-dev"
 email_provider = "gmail"
 gmail_user = "your-email@gmail.com"
-gmail_app_password_secret_name = "annual-sports-gmail-app-password"
-sendgrid_api_key_secret_name = "annual-sports-sendgrid-api-key"
-resend_api_key_secret_name = "annual-sports-resend-api-key"
-smtp_password_secret_name = "annual-sports-smtp-password"
+gmail_app_password_secret_name = "annual-sports-gmail-app-password-dev"
+sendgrid_api_key_secret_name = "annual-sports-sendgrid-api-key-dev"
+resend_api_key_secret_name = "annual-sports-resend-api-key-dev"
+smtp_password_secret_name = "annual-sports-smtp-password-dev"
 email_from = "no-reply@your-domain.com"

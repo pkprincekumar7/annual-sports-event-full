@@ -9,7 +9,7 @@ output "redis_endpoint" {
 }
 
 output "redis_url" {
-  value       = local.redis_url
+  value       = local.redis_base_url
   description = "Redis connection URL."
 }
 

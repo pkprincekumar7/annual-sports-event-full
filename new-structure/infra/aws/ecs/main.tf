@@ -142,7 +142,6 @@ locals {
   }
 
   redis_base_url = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:${aws_elasticache_cluster.redis.port}"
-  redis_url      = local.redis_base_url
 }
 
 module "vpc" {
@@ -163,6 +162,7 @@ module "vpc" {
 resource "aws_ecr_repository" "repos" {
   for_each = toset(local.ecr_repos)
   name     = "annual-sports-${each.key}"
+  force_delete = true
 }
 
 resource "aws_ecs_cluster" "cluster" {
@@ -177,6 +177,11 @@ resource "aws_service_discovery_private_dns_namespace" "namespace" {
 resource "aws_service_discovery_service" "services" {
   for_each = local.services
   name     = each.key
+  force_destroy = true
+
+  lifecycle {
+    ignore_changes = [health_check_custom_config]
+  }
 
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.namespace.id
@@ -185,15 +190,16 @@ resource "aws_service_discovery_service" "services" {
       type = "A"
     }
     routing_policy = "MULTIVALUE"
-  }
-
-  health_check_custom_config {
-    failure_threshold = 1
   }
 }
 
 resource "aws_service_discovery_service" "frontend" {
   name = "annual-sports-frontend"
+  force_destroy = true
+
+  lifecycle {
+    ignore_changes = [health_check_custom_config]
+  }
 
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.namespace.id
@@ -202,10 +208,6 @@ resource "aws_service_discovery_service" "frontend" {
       type = "A"
     }
     routing_policy = "MULTIVALUE"
-  }
-
-  health_check_custom_config {
-    failure_threshold = 1
   }
 }
 
@@ -241,26 +243,39 @@ resource "aws_security_group" "ecs_tasks" {
   description = "ECS tasks security group"
   vpc_id      = module.vpc.vpc_id
 
-  ingress {
-    from_port       = 80
-    to_port         = 80
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
-  ingress {
-    from_port       = 8001
-    to_port         = 8008
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+resource "aws_security_group_rule" "ecs_tasks_ingress_from_alb_http" {
+  type                     = "ingress"
+  from_port                = 80
+  to_port                  = 80
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ecs_tasks.id
+  source_security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_security_group_rule" "ecs_tasks_ingress_from_alb_services" {
+  type                     = "ingress"
+  from_port                = 8001
+  to_port                  = 8008
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.ecs_tasks.id
+  source_security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_security_group_rule" "ecs_tasks_ingress_from_self" {
+  type              = "ingress"
+  from_port         = 8001
+  to_port           = 8008
+  protocol          = "tcp"
+  security_group_id = aws_security_group.ecs_tasks.id
+  self              = true
 }
 
 resource "aws_elasticache_subnet_group" "redis" {
@@ -509,6 +524,31 @@ resource "aws_iam_role" "task_role" {
   })
 }
 
+resource "aws_iam_policy" "ecs_exec" {
+  name        = "${local.name_prefix}-ecs-exec"
+  description = "Allow ECS Exec via SSM."
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "task_role_ecs_exec" {
+  role       = aws_iam_role.task_role.name
+  policy_arn = aws_iam_policy.ecs_exec.arn
+}
+
 resource "aws_ecs_task_definition" "services" {
   for_each             = local.services
   family               = "${var.cluster_name}-${each.key}"
@@ -595,6 +635,9 @@ resource "aws_ecs_service" "services" {
   task_definition = aws_ecs_task_definition.services[each.key].arn
   desired_count   = 1
   launch_type     = "FARGATE"
+  enable_execute_command = true
+  platform_version      = "LATEST"
+  force_new_deployment  = true
 
   network_configuration {
     subnets          = module.vpc.private_subnets
@@ -621,6 +664,9 @@ resource "aws_ecs_service" "frontend" {
   task_definition = aws_ecs_task_definition.frontend.arn
   desired_count   = 1
   launch_type     = "FARGATE"
+  enable_execute_command = true
+  platform_version      = "LATEST"
+  force_new_deployment  = true
 
   network_configuration {
     subnets          = module.vpc.private_subnets

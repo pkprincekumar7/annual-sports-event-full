@@ -67,6 +67,22 @@ AWS_REGION=<your-region>
 IMAGE_TAG=<your-image-tag>
 ```
 
+Print values (if you used the AWS CLI defaults):
+
+```bash
+echo "$AWS_ACCOUNT_ID"
+echo "$AWS_REGION"
+echo "$IMAGE_TAG"
+
+# Or populate and print:
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+AWS_REGION=$(aws configure get region)
+IMAGE_TAG=<your-image-tag>
+echo "$AWS_ACCOUNT_ID"
+echo "$AWS_REGION"
+echo "$IMAGE_TAG"
+```
+
 Login to ECR:
 
 ```bash
@@ -130,6 +146,36 @@ If you provided `acm_certificate_arn` and DNS, use HTTPS and your domain:
 ```bash
 curl -I https://your-domain.com
 curl -I https://your-domain.com/identities/docs
+```
+
+## Updating Images
+
+After pushing a new image to ECR, redeploy ECS services so tasks pull the new image.
+
+If you use a **new tag** (recommended):
+- Update `image_tag` in `dev.tfvars`
+- Apply:
+
+```bash
+terraform apply -var-file=dev.tfvars
+```
+
+If you reuse the **same tag** (for example, `latest`), force a new deployment:
+
+```bash
+CLUSTER_NAME=annual-sports-dev
+for svc in \
+  annual-sports-frontend \
+  identity-service \
+  enrollment-service \
+  department-service \
+  sports-participation-service \
+  event-configuration-service \
+  scheduling-service \
+  scoring-service \
+  reporting-service; do
+  aws ecs update-service --cluster "$CLUSTER_NAME" --service "$svc" --force-new-deployment
+done
 ```
 
 ## Multiple Environments

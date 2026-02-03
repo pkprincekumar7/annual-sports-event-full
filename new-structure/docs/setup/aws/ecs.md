@@ -90,7 +90,7 @@ AWS_REGION=$(aws configure get region)
 IMAGE_TAG=<your-image-tag>
 CLUSTER_NAME=annual-sports-dev
 NAME_PREFIX=as-dev
-SERVICE_NAMESPACE=annual-sports.local
+SERVICE_NAMESPACE=${NAME_PREFIX}.local
 CERT_ARN=arn:aws:acm:us-east-1:123456789012:certificate/replace-with-your-cert-id
 ```
 
@@ -145,6 +145,7 @@ CLI example:
 VPC_ID=$(aws ec2 create-vpc --cidr-block 10.0.0.0/16 --query 'Vpc.VpcId' --output text)
 aws ec2 modify-vpc-attribute --vpc-id "$VPC_ID" --enable-dns-support
 aws ec2 modify-vpc-attribute --vpc-id "$VPC_ID" --enable-dns-hostnames
+aws ec2 create-tags --resources "$VPC_ID" --tags Key=Name,Value="${NAME_PREFIX}-vpc"
 
 # Internet gateway + public route table
 IGW_ID=$(aws ec2 create-internet-gateway --query 'InternetGateway.InternetGatewayId' --output text)
@@ -165,6 +166,7 @@ aws ec2 associate-route-table --subnet-id "$PUB_SUBNET_B" --route-table-id "$PUB
 # NAT gateway for private subnets
 EIP_ALLOC_ID=$(aws ec2 allocate-address --domain vpc --query 'AllocationId' --output text)
 NAT_ID=$(aws ec2 create-nat-gateway --subnet-id "$PUB_SUBNET_A" --allocation-id "$EIP_ALLOC_ID" --query 'NatGateway.NatGatewayId' --output text)
+aws ec2 wait nat-gateway-available --nat-gateway-ids "$NAT_ID"
 PRIVATE_RT_ID=$(aws ec2 create-route-table --vpc-id "$VPC_ID" --query 'RouteTable.RouteTableId' --output text)
 aws ec2 create-route --route-table-id "$PRIVATE_RT_ID" --destination-cidr-block 0.0.0.0/0 --nat-gateway-id "$NAT_ID"
 aws ec2 associate-route-table --subnet-id "$PRIV_SUBNET_A" --route-table-id "$PRIVATE_RT_ID"
@@ -179,7 +181,7 @@ aws ecs create-cluster --cluster-name "$CLUSTER_NAME"
 
 ### 6) Create a Cloud Map Private Namespace
 
-Create a private DNS namespace (choose any name, example: `annual-sports.local`):
+Create a private DNS namespace (use the value from Step 3, example: `as-dev.local`):
 
 ```bash
 # Reuse SERVICE_NAMESPACE from step 3.
@@ -189,49 +191,47 @@ NAMESPACE_OP_ID=$(aws servicediscovery create-private-dns-namespace \
   --vpc "$VPC_ID" \
   --query 'OperationId' --output text)
 
-NAMESPACE_ID=$(aws servicediscovery get-operation \
-  --operation-id "$NAMESPACE_OP_ID" \
-  --query 'Operation.Targets.NAMESPACE' --output text)
+while true; do
+  STATUS=$(aws servicediscovery get-operation --operation-id "$NAMESPACE_OP_ID" --query 'Operation.Status' --output text)
+  if [ "$STATUS" = "SUCCESS" ]; then
+    break
+  fi
+  sleep 5
+done
+
+NAMESPACE_ID=$(aws servicediscovery get-operation --operation-id "$NAMESPACE_OP_ID" --query 'Operation.Targets.NAMESPACE' --output text)
 
 IDENTITY_SD_ARN=$(aws servicediscovery create-service \
   --name identity-service \
   --dns-config "NamespaceId=$NAMESPACE_ID,DnsRecords=[{Type=A,TTL=60}]" \
-  --health-check-custom-config FailureThreshold=1 \
   --query 'Service.Arn' --output text)
 ENROLLMENT_SD_ARN=$(aws servicediscovery create-service \
   --name enrollment-service \
   --dns-config "NamespaceId=$NAMESPACE_ID,DnsRecords=[{Type=A,TTL=60}]" \
-  --health-check-custom-config FailureThreshold=1 \
   --query 'Service.Arn' --output text)
 DEPARTMENT_SD_ARN=$(aws servicediscovery create-service \
   --name department-service \
   --dns-config "NamespaceId=$NAMESPACE_ID,DnsRecords=[{Type=A,TTL=60}]" \
-  --health-check-custom-config FailureThreshold=1 \
   --query 'Service.Arn' --output text)
 SPORTS_PARTICIPATION_SD_ARN=$(aws servicediscovery create-service \
   --name sports-participation-service \
   --dns-config "NamespaceId=$NAMESPACE_ID,DnsRecords=[{Type=A,TTL=60}]" \
-  --health-check-custom-config FailureThreshold=1 \
   --query 'Service.Arn' --output text)
 EVENT_CONFIGURATION_SD_ARN=$(aws servicediscovery create-service \
   --name event-configuration-service \
   --dns-config "NamespaceId=$NAMESPACE_ID,DnsRecords=[{Type=A,TTL=60}]" \
-  --health-check-custom-config FailureThreshold=1 \
   --query 'Service.Arn' --output text)
 SCHEDULING_SD_ARN=$(aws servicediscovery create-service \
   --name scheduling-service \
   --dns-config "NamespaceId=$NAMESPACE_ID,DnsRecords=[{Type=A,TTL=60}]" \
-  --health-check-custom-config FailureThreshold=1 \
   --query 'Service.Arn' --output text)
 SCORING_SD_ARN=$(aws servicediscovery create-service \
   --name scoring-service \
   --dns-config "NamespaceId=$NAMESPACE_ID,DnsRecords=[{Type=A,TTL=60}]" \
-  --health-check-custom-config FailureThreshold=1 \
   --query 'Service.Arn' --output text)
 REPORTING_SD_ARN=$(aws servicediscovery create-service \
   --name reporting-service \
   --dns-config "NamespaceId=$NAMESPACE_ID,DnsRecords=[{Type=A,TTL=60}]" \
-  --health-check-custom-config FailureThreshold=1 \
   --query 'Service.Arn' --output text)
 ```
 
@@ -908,7 +908,7 @@ done
 ### 10) Delete VPC Resources
 
 ```bash
-VPC_ID=${VPC_ID:-$(aws ec2 describe-vpcs --filters Name=cidr,Values=10.0.0.0/16 --query 'Vpcs[0].VpcId' --output text)}
+VPC_ID=${VPC_ID:-$(aws ec2 describe-vpcs --filters Name=tag:Name,Values="${NAME_PREFIX}-vpc" --query 'Vpcs[0].VpcId' --output text)}
 
 NAT_ID=$(aws ec2 describe-nat-gateways --filter Name=vpc-id,Values="$VPC_ID" --query 'NatGateways[0].NatGatewayId' --output text)
 EIP_ALLOC_ID=$(aws ec2 describe-nat-gateways --nat-gateway-ids "$NAT_ID" --query 'NatGateways[0].NatGatewayAddresses[0].AllocationId' --output text)
@@ -947,6 +947,15 @@ aws ecr delete-repository --repository-name ${NAME_PREFIX}-frontend --force
 
 ### 12) Delete Secrets (Optional)
 
+```bash
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-jwt --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-mongo-uri --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-gmail-app-password --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-sendgrid-api-key --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-resend-api-key --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-smtp-password --force-delete-without-recovery
+```
+
 ### 13) Delete IAM Roles (Optional)
 
 ```bash
@@ -956,15 +965,6 @@ aws iam detach-role-policy \
 aws iam delete-role-policy --role-name "${NAME_PREFIX}-task-execution" --policy-name ecs-secrets-policy
 aws iam delete-role --role-name "${NAME_PREFIX}-task-execution"
 aws iam delete-role --role-name "${NAME_PREFIX}-task-role"
-```
-
-```bash
-aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-jwt --force-delete-without-recovery
-aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-mongo-uri --force-delete-without-recovery
-aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-gmail-app-password --force-delete-without-recovery
-aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-sendgrid-api-key --force-delete-without-recovery
-aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-resend-api-key --force-delete-without-recovery
-aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-smtp-password --force-delete-without-recovery
 ```
 
 ## Best Practices Notes

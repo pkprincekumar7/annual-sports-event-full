@@ -104,9 +104,11 @@ echo "$IMAGE_TAG"
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 AWS_REGION=$(aws configure get region)
 IMAGE_TAG=<your-image-tag>
+NAME_PREFIX=<your-name-prefix>
 echo "$AWS_ACCOUNT_ID"
 echo "$AWS_REGION"
 echo "$IMAGE_TAG"
+echo "$NAME_PREFIX"
 ```
 
 Login to ECR:
@@ -129,14 +131,14 @@ for service in \
   scheduling-service \
   scoring-service \
   reporting-service; do
-  docker build -t "${NAME_PREFIX}-${service}:${IMAGE_TAG}" "new-structure/$service"
+  docker build -t "${NAME_PREFIX}-${service}:${IMAGE_TAG}" "../../../$service"
   docker tag "${NAME_PREFIX}-${service}:${IMAGE_TAG}" \
     "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-${service}:${IMAGE_TAG}"
   docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-${service}:${IMAGE_TAG}"
 done
 
 docker build -t ${NAME_PREFIX}-frontend:${IMAGE_TAG} --build-arg VITE_API_URL=/ \
-  new-structure/frontend
+  ../../../frontend
 
 docker tag ${NAME_PREFIX}-frontend:${IMAGE_TAG} \
   "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-frontend:${IMAGE_TAG}"

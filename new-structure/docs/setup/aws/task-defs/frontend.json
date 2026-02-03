@@ -1,5 +1,5 @@
 {
-  "family": "${CLUSTER_NAME}-frontend",
+  "family": "${NAME_PREFIX}-frontend",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
@@ -9,7 +9,7 @@
   "containerDefinitions": [
     {
       "name": "frontend",
-      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/annual-sports-frontend:${IMAGE_TAG}",
+      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${NAME_PREFIX}-frontend:${IMAGE_TAG}",
       "essential": true,
       "portMappings": [
         { "containerPort": 80, "protocol": "tcp" }
@@ -18,7 +18,7 @@
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/${CLUSTER_NAME}/frontend",
+          "awslogs-group": "/ecs/${NAME_PREFIX}/frontend",
           "awslogs-region": "${AWS_REGION}",
           "awslogs-stream-prefix": "ecs"
         }

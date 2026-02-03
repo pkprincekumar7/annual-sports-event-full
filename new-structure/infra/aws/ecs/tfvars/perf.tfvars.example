@@ -3,6 +3,7 @@ aws_region     = "us-east-1"
 aws_account_id = "123456789012"
 cluster_name   = "annual-sports-perf"
 vpc_cidr       = "10.40.0.0/16"
+name_prefix    = "as-perf"
 service_discovery_namespace = "annual-sports.perf.local"
 
 availability_zones = ["us-east-1a", "us-east-1b"]
@@ -16,24 +17,24 @@ acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/replace-wi
 
 image_tag = "latest"
 
-mongo_uri_secret_name = "annual-sports-mongo-uri-perf"
+mongo_uri_secret_name = "as-perf-mongo-uri"
 
 database_names = {
-  "identity-service"             = "annual-sports-identity-perf"
-  "enrollment-service"           = "annual-sports-enrollment-perf"
-  "department-service"           = "annual-sports-department-perf"
-  "sports-participation-service" = "annual-sports-participation-perf"
-  "event-configuration-service"  = "annual-sports-event-config-perf"
-  "scheduling-service"           = "annual-sports-scheduling-perf"
-  "scoring-service"              = "annual-sports-scoring-perf"
-  "reporting-service"            = "annual-sports-reporting-perf"
+  "identity-service"             = "as-perf-identity"
+  "enrollment-service"           = "as-perf-enrollment"
+  "department-service"           = "as-perf-department"
+  "sports-participation-service" = "as-perf-sports-part"
+  "event-configuration-service"  = "as-perf-event-config"
+  "scheduling-service"           = "as-perf-scheduling"
+  "scoring-service"              = "as-perf-scoring"
+  "reporting-service"            = "as-perf-reporting"
 }
 
-jwt_secret_name = "annual-sports-jwt-perf"
+jwt_secret_name = "as-perf-jwt"
 email_provider = "gmail"
 gmail_user = "your-email@gmail.com"
-gmail_app_password_secret_name = "annual-sports-gmail-app-password-perf"
-sendgrid_api_key_secret_name = "annual-sports-sendgrid-api-key-perf"
-resend_api_key_secret_name = "annual-sports-resend-api-key-perf"
-smtp_password_secret_name = "annual-sports-smtp-password-perf"
+gmail_app_password_secret_name = "as-perf-gmail-app-password"
+sendgrid_api_key_secret_name = "as-perf-sendgrid-api-key"
+resend_api_key_secret_name = "as-perf-resend-api-key"
+smtp_password_secret_name = "as-perf-smtp-password"
 email_from = "no-reply@your-domain.com"

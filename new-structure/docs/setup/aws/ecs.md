@@ -26,54 +26,58 @@ The manual flow creates secrets now; Terraform creates them automatically based 
 the secret names you provide in `tfvars`.
 
 Create these secrets **in the same region** you will deploy ECS:
-- `annual-sports-jwt-secret` (JWT secret)
-- `annual-sports-mongo` (shared MongoDB URI; DB name comes from `DATABASE_NAME`)
+- `${NAME_PREFIX}-jwt` (JWT secret)
+- `${NAME_PREFIX}-mongo-uri` (shared MongoDB URI; DB name comes from `DATABASE_NAME`)
 - Identity-only email secrets:
-  - `annual-sports-gmail-app-password`
-  - `annual-sports-sendgrid-api-key`
-  - `annual-sports-resend-api-key`
-  - `annual-sports-smtp-password`
+  - `${NAME_PREFIX}-gmail-app-password`
+  - `${NAME_PREFIX}-sendgrid-api-key`
+  - `${NAME_PREFIX}-resend-api-key`
+  - `${NAME_PREFIX}-smtp-password`
 
-Example commands (replace values):
+Set the name prefix and create secrets (replace values):
 
 ```bash
+NAME_PREFIX=as-dev
+
 aws secretsmanager create-secret \
-  --name annual-sports-jwt-secret \
+  --name ${NAME_PREFIX}-jwt \
   --secret-string "replace-with-strong-secret"
 
 aws secretsmanager create-secret \
-  --name annual-sports-mongo \
+  --name ${NAME_PREFIX}-mongo-uri \
   --secret-string "mongodb+srv://user:pass@cluster"
 
 aws secretsmanager create-secret \
-  --name annual-sports-gmail-app-password \
+  --name ${NAME_PREFIX}-gmail-app-password \
   --secret-string "your-app-password"
 
 aws secretsmanager create-secret \
-  --name annual-sports-sendgrid-api-key \
+  --name ${NAME_PREFIX}-sendgrid-api-key \
   --secret-string "your-sendgrid-api-key"
 
 aws secretsmanager create-secret \
-  --name annual-sports-resend-api-key \
+  --name ${NAME_PREFIX}-resend-api-key \
   --secret-string "your-resend-api-key"
 
 aws secretsmanager create-secret \
-  --name annual-sports-smtp-password \
+  --name ${NAME_PREFIX}-smtp-password \
   --secret-string "your-smtp-password"
 ```
 
 ### 2) Create ECR Repositories
 
 ```bash
-aws ecr create-repository --repository-name annual-sports-identity-service
-aws ecr create-repository --repository-name annual-sports-enrollment-service
-aws ecr create-repository --repository-name annual-sports-department-service
-aws ecr create-repository --repository-name annual-sports-sports-participation-service
-aws ecr create-repository --repository-name annual-sports-event-configuration-service
-aws ecr create-repository --repository-name annual-sports-scheduling-service
-aws ecr create-repository --repository-name annual-sports-scoring-service
-aws ecr create-repository --repository-name annual-sports-reporting-service
-aws ecr create-repository --repository-name annual-sports-frontend
+NAME_PREFIX=as-dev
+
+aws ecr create-repository --repository-name ${NAME_PREFIX}-identity-service
+aws ecr create-repository --repository-name ${NAME_PREFIX}-enrollment-service
+aws ecr create-repository --repository-name ${NAME_PREFIX}-department-service
+aws ecr create-repository --repository-name ${NAME_PREFIX}-sports-participation-service
+aws ecr create-repository --repository-name ${NAME_PREFIX}-event-configuration-service
+aws ecr create-repository --repository-name ${NAME_PREFIX}-scheduling-service
+aws ecr create-repository --repository-name ${NAME_PREFIX}-scoring-service
+aws ecr create-repository --repository-name ${NAME_PREFIX}-reporting-service
+aws ecr create-repository --repository-name ${NAME_PREFIX}-frontend
 ```
 
 ### 3) Build and Push Images
@@ -84,8 +88,8 @@ Set variables:
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 AWS_REGION=$(aws configure get region)
 IMAGE_TAG=<your-image-tag>
-CLUSTER_NAME=annual-sports
-NAME_PREFIX=$(echo "$CLUSTER_NAME" | cut -c1-12)
+CLUSTER_NAME=annual-sports-dev
+NAME_PREFIX=as-dev
 SERVICE_NAMESPACE=annual-sports.local
 CERT_ARN=arn:aws:acm:us-east-1:123456789012:certificate/replace-with-your-cert-id
 ```
@@ -110,19 +114,19 @@ for service in \
   scheduling-service \
   scoring-service \
   reporting-service; do
-  docker build -t "annual-sports-${service}:${IMAGE_TAG}" "new-structure/$service"
-  docker tag "annual-sports-${service}:${IMAGE_TAG}" \
-    "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-${service}:${IMAGE_TAG}"
-  docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-${service}:${IMAGE_TAG}"
+  docker build -t "${NAME_PREFIX}-${service}:${IMAGE_TAG}" "new-structure/$service"
+  docker tag "${NAME_PREFIX}-${service}:${IMAGE_TAG}" \
+    "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-${service}:${IMAGE_TAG}"
+  docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-${service}:${IMAGE_TAG}"
 done
 
-docker build -t annual-sports-frontend:${IMAGE_TAG} --build-arg VITE_API_URL=/ \
+docker build -t ${NAME_PREFIX}-frontend:${IMAGE_TAG} --build-arg VITE_API_URL=/ \
   new-structure/frontend
 
-docker tag annual-sports-frontend:${IMAGE_TAG} \
-  "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-frontend:${IMAGE_TAG}"
+docker tag ${NAME_PREFIX}-frontend:${IMAGE_TAG} \
+  "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-frontend:${IMAGE_TAG}"
 
-docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/annual-sports-frontend:${IMAGE_TAG}"
+docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-frontend:${IMAGE_TAG}"
 ```
 
 `VITE_API_URL` is a build-time value; changing it requires a rebuild.
@@ -229,11 +233,6 @@ REPORTING_SD_ARN=$(aws servicediscovery create-service \
   --dns-config "NamespaceId=$NAMESPACE_ID,DnsRecords=[{Type=A,TTL=60}]" \
   --health-check-custom-config FailureThreshold=1 \
   --query 'Service.Arn' --output text)
-FRONTEND_SD_ARN=$(aws servicediscovery create-service \
-  --name annual-sports-frontend \
-  --dns-config "NamespaceId=$NAMESPACE_ID,DnsRecords=[{Type=A,TTL=60}]" \
-  --health-check-custom-config FailureThreshold=1 \
-  --query 'Service.Arn' --output text)
 ```
 
 ### 7) Create IAM Roles
@@ -304,8 +303,8 @@ for name in \
   scheduling-service \
   scoring-service \
   reporting-service; do
-  aws logs create-log-group --log-group-name "/ecs/${CLUSTER_NAME}/${name}" || true
-  aws logs put-retention-policy --log-group-name "/ecs/${CLUSTER_NAME}/${name}" --retention-in-days 14
+  aws logs create-log-group --log-group-name "/ecs/${NAME_PREFIX}/${name}" || true
+  aws logs put-retention-policy --log-group-name "/ecs/${NAME_PREFIX}/${name}" --retention-in-days 14
 done
 ```
 
@@ -394,12 +393,12 @@ cd new-structure/docs/setup/aws
 # and SERVICE_NAMESPACE from Step 3.
 
 # Secrets ARNs (created in step 1)
-JWT_SECRET_ARN=$(aws secretsmanager describe-secret --secret-id annual-sports-jwt-secret --query 'ARN' --output text)
-MONGO_URI_SECRET_ARN=$(aws secretsmanager describe-secret --secret-id annual-sports-mongo --query 'ARN' --output text)
-GMAIL_APP_PASSWORD_ARN=$(aws secretsmanager describe-secret --secret-id annual-sports-gmail-app-password --query 'ARN' --output text)
-SENDGRID_API_KEY_ARN=$(aws secretsmanager describe-secret --secret-id annual-sports-sendgrid-api-key --query 'ARN' --output text)
-RESEND_API_KEY_ARN=$(aws secretsmanager describe-secret --secret-id annual-sports-resend-api-key --query 'ARN' --output text)
-SMTP_PASSWORD_ARN=$(aws secretsmanager describe-secret --secret-id annual-sports-smtp-password --query 'ARN' --output text)
+JWT_SECRET_ARN=$(aws secretsmanager describe-secret --secret-id ${NAME_PREFIX}-jwt --query 'ARN' --output text)
+MONGO_URI_SECRET_ARN=$(aws secretsmanager describe-secret --secret-id ${NAME_PREFIX}-mongo-uri --query 'ARN' --output text)
+GMAIL_APP_PASSWORD_ARN=$(aws secretsmanager describe-secret --secret-id ${NAME_PREFIX}-gmail-app-password --query 'ARN' --output text)
+SENDGRID_API_KEY_ARN=$(aws secretsmanager describe-secret --secret-id ${NAME_PREFIX}-sendgrid-api-key --query 'ARN' --output text)
+RESEND_API_KEY_ARN=$(aws secretsmanager describe-secret --secret-id ${NAME_PREFIX}-resend-api-key --query 'ARN' --output text)
+SMTP_PASSWORD_ARN=$(aws secretsmanager describe-secret --secret-id ${NAME_PREFIX}-smtp-password --query 'ARN' --output text)
 
 # Redis endpoint (created in step 11)
 REDIS_ENDPOINT=$(aws elasticache describe-cache-clusters \
@@ -495,37 +494,37 @@ ENROLLMENT_TG_ARN=$(aws elbv2 create-target-group \
   --target-type ip \
   --query 'TargetGroups[0].TargetGroupArn' --output text)
 DEPARTMENT_TG_ARN=$(aws elbv2 create-target-group \
-  --name "${NAME_PREFIX}-dept" \
+  --name "${NAME_PREFIX}-dep" \
   --protocol HTTP --port 8003 \
   --vpc-id "$VPC_ID" \
   --target-type ip \
   --query 'TargetGroups[0].TargetGroupArn' --output text)
 SPORTS_PARTICIPATION_TG_ARN=$(aws elbv2 create-target-group \
-  --name "${NAME_PREFIX}-sport" \
+  --name "${NAME_PREFIX}-sp" \
   --protocol HTTP --port 8004 \
   --vpc-id "$VPC_ID" \
   --target-type ip \
   --query 'TargetGroups[0].TargetGroupArn' --output text)
 EVENT_CONFIGURATION_TG_ARN=$(aws elbv2 create-target-group \
-  --name "${NAME_PREFIX}-event" \
+  --name "${NAME_PREFIX}-evt" \
   --protocol HTTP --port 8005 \
   --vpc-id "$VPC_ID" \
   --target-type ip \
   --query 'TargetGroups[0].TargetGroupArn' --output text)
 SCHEDULING_TG_ARN=$(aws elbv2 create-target-group \
-  --name "${NAME_PREFIX}-sched" \
+  --name "${NAME_PREFIX}-sch" \
   --protocol HTTP --port 8006 \
   --vpc-id "$VPC_ID" \
   --target-type ip \
   --query 'TargetGroups[0].TargetGroupArn' --output text)
 SCORING_TG_ARN=$(aws elbv2 create-target-group \
-  --name "${NAME_PREFIX}-score" \
+  --name "${NAME_PREFIX}-sco" \
   --protocol HTTP --port 8007 \
   --vpc-id "$VPC_ID" \
   --target-type ip \
   --query 'TargetGroups[0].TargetGroupArn' --output text)
 REPORTING_TG_ARN=$(aws elbv2 create-target-group \
-  --name "${NAME_PREFIX}-report" \
+  --name "${NAME_PREFIX}-rep" \
   --protocol HTTP --port 8008 \
   --vpc-id "$VPC_ID" \
   --target-type ip \
@@ -596,7 +595,7 @@ aws elbv2 create-rule \
 ### 13) Create ECS Services
 
 Create services in the cluster (Fargate, private subnets):
-- `annual-sports-frontend` → attach to frontend target group
+- `${NAME_PREFIX}-frontend` → attach to frontend target group
 - one service per microservice → attach to its target group
 
 Set desired count to 1+ and enable autoscaling as needed.
@@ -606,18 +605,17 @@ CLI example:
 ```bash
 aws ecs create-service \
   --cluster "$CLUSTER_NAME" \
-  --service-name annual-sports-frontend \
-  --task-definition "${CLUSTER_NAME}-frontend" \
+  --service-name "${NAME_PREFIX}-frontend" \
+  --task-definition "${NAME_PREFIX}-frontend" \
   --desired-count 1 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$PRIV_SUBNET_A,$PRIV_SUBNET_B],securityGroups=[$ECS_SG_ID],assignPublicIp=DISABLED}" \
-  --load-balancers "targetGroupArn=$FRONTEND_TG_ARN,containerName=frontend,containerPort=80" \
-  --service-registries "registryArn=$FRONTEND_SD_ARN"
+  --load-balancers "targetGroupArn=$FRONTEND_TG_ARN,containerName=frontend,containerPort=80"
 
 aws ecs create-service \
   --cluster "$CLUSTER_NAME" \
-  --service-name identity-service \
-  --task-definition "${CLUSTER_NAME}-identity-service" \
+  --service-name "${NAME_PREFIX}-identity-service" \
+  --task-definition "${NAME_PREFIX}-identity-service" \
   --desired-count 1 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$PRIV_SUBNET_A,$PRIV_SUBNET_B],securityGroups=[$ECS_SG_ID],assignPublicIp=DISABLED}" \
@@ -626,8 +624,8 @@ aws ecs create-service \
 
 aws ecs create-service \
   --cluster "$CLUSTER_NAME" \
-  --service-name enrollment-service \
-  --task-definition "${CLUSTER_NAME}-enrollment-service" \
+  --service-name "${NAME_PREFIX}-enrollment-service" \
+  --task-definition "${NAME_PREFIX}-enrollment-service" \
   --desired-count 1 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$PRIV_SUBNET_A,$PRIV_SUBNET_B],securityGroups=[$ECS_SG_ID],assignPublicIp=DISABLED}" \
@@ -636,8 +634,8 @@ aws ecs create-service \
 
 aws ecs create-service \
   --cluster "$CLUSTER_NAME" \
-  --service-name department-service \
-  --task-definition "${CLUSTER_NAME}-department-service" \
+  --service-name "${NAME_PREFIX}-department-service" \
+  --task-definition "${NAME_PREFIX}-department-service" \
   --desired-count 1 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$PRIV_SUBNET_A,$PRIV_SUBNET_B],securityGroups=[$ECS_SG_ID],assignPublicIp=DISABLED}" \
@@ -646,8 +644,8 @@ aws ecs create-service \
 
 aws ecs create-service \
   --cluster "$CLUSTER_NAME" \
-  --service-name sports-participation-service \
-  --task-definition "${CLUSTER_NAME}-sports-participation-service" \
+  --service-name "${NAME_PREFIX}-sports-participation-service" \
+  --task-definition "${NAME_PREFIX}-sports-participation-service" \
   --desired-count 1 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$PRIV_SUBNET_A,$PRIV_SUBNET_B],securityGroups=[$ECS_SG_ID],assignPublicIp=DISABLED}" \
@@ -656,8 +654,8 @@ aws ecs create-service \
 
 aws ecs create-service \
   --cluster "$CLUSTER_NAME" \
-  --service-name event-configuration-service \
-  --task-definition "${CLUSTER_NAME}-event-configuration-service" \
+  --service-name "${NAME_PREFIX}-event-configuration-service" \
+  --task-definition "${NAME_PREFIX}-event-configuration-service" \
   --desired-count 1 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$PRIV_SUBNET_A,$PRIV_SUBNET_B],securityGroups=[$ECS_SG_ID],assignPublicIp=DISABLED}" \
@@ -666,8 +664,8 @@ aws ecs create-service \
 
 aws ecs create-service \
   --cluster "$CLUSTER_NAME" \
-  --service-name scheduling-service \
-  --task-definition "${CLUSTER_NAME}-scheduling-service" \
+  --service-name "${NAME_PREFIX}-scheduling-service" \
+  --task-definition "${NAME_PREFIX}-scheduling-service" \
   --desired-count 1 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$PRIV_SUBNET_A,$PRIV_SUBNET_B],securityGroups=[$ECS_SG_ID],assignPublicIp=DISABLED}" \
@@ -676,8 +674,8 @@ aws ecs create-service \
 
 aws ecs create-service \
   --cluster "$CLUSTER_NAME" \
-  --service-name scoring-service \
-  --task-definition "${CLUSTER_NAME}-scoring-service" \
+  --service-name "${NAME_PREFIX}-scoring-service" \
+  --task-definition "${NAME_PREFIX}-scoring-service" \
   --desired-count 1 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$PRIV_SUBNET_A,$PRIV_SUBNET_B],securityGroups=[$ECS_SG_ID],assignPublicIp=DISABLED}" \
@@ -686,8 +684,8 @@ aws ecs create-service \
 
 aws ecs create-service \
   --cluster "$CLUSTER_NAME" \
-  --service-name reporting-service \
-  --task-definition "${CLUSTER_NAME}-reporting-service" \
+  --service-name "${NAME_PREFIX}-reporting-service" \
+  --task-definition "${NAME_PREFIX}-reporting-service" \
   --desired-count 1 \
   --launch-type FARGATE \
   --network-configuration "awsvpcConfiguration={subnets=[$PRIV_SUBNET_A,$PRIV_SUBNET_B],securityGroups=[$ECS_SG_ID],assignPublicIp=DISABLED}" \
@@ -756,41 +754,41 @@ Run the following steps in order to avoid dependency errors.
 ### 1) Delete ECS Services
 
 ```bash
-aws ecs delete-service --cluster "$CLUSTER_NAME" --service annual-sports-frontend --force
-aws ecs delete-service --cluster "$CLUSTER_NAME" --service identity-service --force
-aws ecs delete-service --cluster "$CLUSTER_NAME" --service enrollment-service --force
-aws ecs delete-service --cluster "$CLUSTER_NAME" --service department-service --force
-aws ecs delete-service --cluster "$CLUSTER_NAME" --service sports-participation-service --force
-aws ecs delete-service --cluster "$CLUSTER_NAME" --service event-configuration-service --force
-aws ecs delete-service --cluster "$CLUSTER_NAME" --service scheduling-service --force
-aws ecs delete-service --cluster "$CLUSTER_NAME" --service scoring-service --force
-aws ecs delete-service --cluster "$CLUSTER_NAME" --service reporting-service --force
+aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-frontend" --force
+aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-identity-service" --force
+aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-enrollment-service" --force
+aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-department-service" --force
+aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-sports-participation-service" --force
+aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-event-configuration-service" --force
+aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-scheduling-service" --force
+aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-scoring-service" --force
+aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-reporting-service" --force
 
 aws ecs wait services-inactive --cluster "$CLUSTER_NAME" --services \
-  annual-sports-frontend \
-  identity-service \
-  enrollment-service \
-  department-service \
-  sports-participation-service \
-  event-configuration-service \
-  scheduling-service \
-  scoring-service \
-  reporting-service
+  "${NAME_PREFIX}-frontend" \
+  "${NAME_PREFIX}-identity-service" \
+  "${NAME_PREFIX}-enrollment-service" \
+  "${NAME_PREFIX}-department-service" \
+  "${NAME_PREFIX}-sports-participation-service" \
+  "${NAME_PREFIX}-event-configuration-service" \
+  "${NAME_PREFIX}-scheduling-service" \
+  "${NAME_PREFIX}-scoring-service" \
+  "${NAME_PREFIX}-reporting-service"
 ```
 
 ### 2) Deregister Task Definitions (Optional)
 
 ```bash
 for family in \
-  "${CLUSTER_NAME}-frontend" \
-  "${CLUSTER_NAME}-identity-service" \
-  "${CLUSTER_NAME}-enrollment-service" \
-  "${CLUSTER_NAME}-department-service" \
-  "${CLUSTER_NAME}-sports-participation-service" \
-  "${CLUSTER_NAME}-event-configuration-service" \
-  "${CLUSTER_NAME}-scheduling-service" \
-  "${CLUSTER_NAME}-scoring-service" \
-  "${CLUSTER_NAME}-reporting-service"; do
+  "${NAME_PREFIX}-frontend" \
+  "${NAME_PREFIX}-identity-service" \
+  "${NAME_PREFIX}-enrollment-service" \
+  "${NAME_PREFIX}-department-service" \
+  "${NAME_PREFIX}-sports-participation-service" \
+  "${NAME_PREFIX}-event-configuration-service" \
+  "${NAME_PREFIX}-scheduling-service" \
+  "${NAME_PREFIX}-scoring-service" \
+  "${NAME_PREFIX}-reporting-service"; do
   for arn in $(aws ecs list-task-definitions --family-prefix "$family" --query 'taskDefinitionArns[]' --output text); do
     aws ecs deregister-task-definition --task-definition "$arn"
   done
@@ -841,12 +839,12 @@ for tg_arn in $(aws elbv2 describe-target-groups --names \
   "${NAME_PREFIX}-frontend" \
   "${NAME_PREFIX}-id" \
   "${NAME_PREFIX}-enr" \
-  "${NAME_PREFIX}-dept" \
-  "${NAME_PREFIX}-sport" \
-  "${NAME_PREFIX}-event" \
-  "${NAME_PREFIX}-sched" \
-  "${NAME_PREFIX}-score" \
-  "${NAME_PREFIX}-report" \
+  "${NAME_PREFIX}-dep" \
+  "${NAME_PREFIX}-sp" \
+  "${NAME_PREFIX}-evt" \
+  "${NAME_PREFIX}-sch" \
+  "${NAME_PREFIX}-sco" \
+  "${NAME_PREFIX}-rep" \
   --query 'TargetGroups[].TargetGroupArn' --output text); do
   aws elbv2 delete-target-group --target-group-arn "$tg_arn"
 done
@@ -895,7 +893,7 @@ for name in \
   scheduling-service \
   scoring-service \
   reporting-service; do
-  aws logs delete-log-group --log-group-name "/ecs/${CLUSTER_NAME}/${name}"
+  aws logs delete-log-group --log-group-name "/ecs/${NAME_PREFIX}/${name}"
 done
 ```
 
@@ -936,15 +934,15 @@ aws ec2 delete-vpc --vpc-id "$VPC_ID"
 ### 11) Delete ECR Repositories
 
 ```bash
-aws ecr delete-repository --repository-name annual-sports-identity-service --force
-aws ecr delete-repository --repository-name annual-sports-enrollment-service --force
-aws ecr delete-repository --repository-name annual-sports-department-service --force
-aws ecr delete-repository --repository-name annual-sports-sports-participation-service --force
-aws ecr delete-repository --repository-name annual-sports-event-configuration-service --force
-aws ecr delete-repository --repository-name annual-sports-scheduling-service --force
-aws ecr delete-repository --repository-name annual-sports-scoring-service --force
-aws ecr delete-repository --repository-name annual-sports-reporting-service --force
-aws ecr delete-repository --repository-name annual-sports-frontend --force
+aws ecr delete-repository --repository-name ${NAME_PREFIX}-identity-service --force
+aws ecr delete-repository --repository-name ${NAME_PREFIX}-enrollment-service --force
+aws ecr delete-repository --repository-name ${NAME_PREFIX}-department-service --force
+aws ecr delete-repository --repository-name ${NAME_PREFIX}-sports-participation-service --force
+aws ecr delete-repository --repository-name ${NAME_PREFIX}-event-configuration-service --force
+aws ecr delete-repository --repository-name ${NAME_PREFIX}-scheduling-service --force
+aws ecr delete-repository --repository-name ${NAME_PREFIX}-scoring-service --force
+aws ecr delete-repository --repository-name ${NAME_PREFIX}-reporting-service --force
+aws ecr delete-repository --repository-name ${NAME_PREFIX}-frontend --force
 ```
 
 ### 12) Delete Secrets (Optional)
@@ -961,12 +959,12 @@ aws iam delete-role --role-name "${NAME_PREFIX}-task-role"
 ```
 
 ```bash
-aws secretsmanager delete-secret --secret-id annual-sports-jwt-secret --force-delete-without-recovery
-aws secretsmanager delete-secret --secret-id annual-sports-mongo --force-delete-without-recovery
-aws secretsmanager delete-secret --secret-id annual-sports-gmail-app-password --force-delete-without-recovery
-aws secretsmanager delete-secret --secret-id annual-sports-sendgrid-api-key --force-delete-without-recovery
-aws secretsmanager delete-secret --secret-id annual-sports-resend-api-key --force-delete-without-recovery
-aws secretsmanager delete-secret --secret-id annual-sports-smtp-password --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-jwt --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-mongo-uri --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-gmail-app-password --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-sendgrid-api-key --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-resend-api-key --force-delete-without-recovery
+aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-smtp-password --force-delete-without-recovery
 ```
 
 ## Best Practices Notes

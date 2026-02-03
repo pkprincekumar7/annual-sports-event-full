@@ -3,6 +3,7 @@ aws_region     = "us-east-1"
 aws_account_id = "123456789012"
 cluster_name   = "annual-sports-prod"
 vpc_cidr       = "10.50.0.0/16"
+name_prefix    = "as-prod"
 service_discovery_namespace = "annual-sports.prod.local"
 
 availability_zones = ["us-east-1a", "us-east-1b"]
@@ -16,24 +17,24 @@ acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/replace-wi
 
 image_tag = "latest"
 
-mongo_uri_secret_name = "annual-sports-mongo-uri-prod"
+mongo_uri_secret_name = "as-prod-mongo-uri"
 
 database_names = {
-  "identity-service"             = "annual-sports-identity-prod"
-  "enrollment-service"           = "annual-sports-enrollment-prod"
-  "department-service"           = "annual-sports-department-prod"
-  "sports-participation-service" = "annual-sports-participation-prod"
-  "event-configuration-service"  = "annual-sports-event-config-prod"
-  "scheduling-service"           = "annual-sports-scheduling-prod"
-  "scoring-service"              = "annual-sports-scoring-prod"
-  "reporting-service"            = "annual-sports-reporting-prod"
+  "identity-service"             = "as-prod-identity"
+  "enrollment-service"           = "as-prod-enrollment"
+  "department-service"           = "as-prod-department"
+  "sports-participation-service" = "as-prod-sports-part"
+  "event-configuration-service"  = "as-prod-event-config"
+  "scheduling-service"           = "as-prod-scheduling"
+  "scoring-service"              = "as-prod-scoring"
+  "reporting-service"            = "as-prod-reporting"
 }
 
-jwt_secret_name = "annual-sports-jwt-prod"
+jwt_secret_name = "as-prod-jwt"
 email_provider = "gmail"
 gmail_user = "your-email@gmail.com"
-gmail_app_password_secret_name = "annual-sports-gmail-app-password-prod"
-sendgrid_api_key_secret_name = "annual-sports-sendgrid-api-key-prod"
-resend_api_key_secret_name = "annual-sports-resend-api-key-prod"
-smtp_password_secret_name = "annual-sports-smtp-password-prod"
+gmail_app_password_secret_name = "as-prod-gmail-app-password"
+sendgrid_api_key_secret_name = "as-prod-sendgrid-api-key"
+resend_api_key_secret_name = "as-prod-resend-api-key"
+smtp_password_secret_name = "as-prod-smtp-password"
 email_from = "no-reply@your-domain.com"

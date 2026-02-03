@@ -3,6 +3,7 @@ aws_region     = "us-east-1"
 aws_account_id = "123456789012"
 cluster_name   = "annual-sports-stg"
 vpc_cidr       = "10.30.0.0/16"
+name_prefix    = "as-stg"
 service_discovery_namespace = "annual-sports.stg.local"
 
 availability_zones = ["us-east-1a", "us-east-1b"]
@@ -16,24 +17,24 @@ acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/replace-wi
 
 image_tag = "latest"
 
-mongo_uri_secret_name = "annual-sports-mongo-uri-stg"
+mongo_uri_secret_name = "as-stg-mongo-uri"
 
 database_names = {
-  "identity-service"             = "annual-sports-identity-stg"
-  "enrollment-service"           = "annual-sports-enrollment-stg"
-  "department-service"           = "annual-sports-department-stg"
-  "sports-participation-service" = "annual-sports-participation-stg"
-  "event-configuration-service"  = "annual-sports-event-config-stg"
-  "scheduling-service"           = "annual-sports-scheduling-stg"
-  "scoring-service"              = "annual-sports-scoring-stg"
-  "reporting-service"            = "annual-sports-reporting-stg"
+  "identity-service"             = "as-stg-identity"
+  "enrollment-service"           = "as-stg-enrollment"
+  "department-service"           = "as-stg-department"
+  "sports-participation-service" = "as-stg-sports-part"
+  "event-configuration-service"  = "as-stg-event-config"
+  "scheduling-service"           = "as-stg-scheduling"
+  "scoring-service"              = "as-stg-scoring"
+  "reporting-service"            = "as-stg-reporting"
 }
 
-jwt_secret_name = "annual-sports-jwt-stg"
+jwt_secret_name = "as-stg-jwt"
 email_provider = "gmail"
 gmail_user = "your-email@gmail.com"
-gmail_app_password_secret_name = "annual-sports-gmail-app-password-stg"
-sendgrid_api_key_secret_name = "annual-sports-sendgrid-api-key-stg"
-resend_api_key_secret_name = "annual-sports-resend-api-key-stg"
-smtp_password_secret_name = "annual-sports-smtp-password-stg"
+gmail_app_password_secret_name = "as-stg-gmail-app-password"
+sendgrid_api_key_secret_name = "as-stg-sendgrid-api-key"
+resend_api_key_secret_name = "as-stg-resend-api-key"
+smtp_password_secret_name = "as-stg-smtp-password"
 email_from = "no-reply@your-domain.com"

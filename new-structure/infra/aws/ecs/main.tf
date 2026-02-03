@@ -27,19 +27,19 @@ locals {
 
   ecr_repos = concat(keys(local.services), ["frontend"])
   image_prefix = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
-  name_prefix = substr(var.cluster_name, 0, 12)
+  name_prefix = var.name_prefix
   alb_name    = "${local.name_prefix}-alb"
   ecs_tasks_name = "${local.name_prefix}-ecs-tasks"
   redis_name     = "${local.name_prefix}-redis"
   tg_names = {
     "identity-service"             = "id"
     "enrollment-service"           = "enr"
-    "department-service"           = "dept"
-    "sports-participation-service" = "sport"
-    "event-configuration-service"  = "event"
-    "scheduling-service"           = "sched"
-    "scoring-service"              = "score"
-    "reporting-service"            = "report"
+    "department-service"           = "dep"
+    "sports-participation-service" = "sp"
+    "event-configuration-service"  = "evt"
+    "scheduling-service"           = "sch"
+    "scoring-service"              = "sco"
+    "reporting-service"            = "rep"
   }
   has_route53_zone = var.route53_zone_id != ""
 
@@ -148,7 +148,7 @@ module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 6.0"
 
-  name = var.cluster_name
+  name = "${local.name_prefix}-vpc"
   cidr = var.vpc_cidr
 
   azs             = var.availability_zones
@@ -161,7 +161,7 @@ module "vpc" {
 
 resource "aws_ecr_repository" "repos" {
   for_each = toset(local.ecr_repos)
-  name     = "annual-sports-${each.key}"
+  name     = "${local.name_prefix}-${each.key}"
   force_delete = true
 }
 
@@ -193,62 +193,52 @@ resource "aws_service_discovery_service" "services" {
   }
 }
 
-resource "aws_service_discovery_service" "frontend" {
-  name = "annual-sports-frontend"
-  force_destroy = true
-
-  lifecycle {
-    ignore_changes = [health_check_custom_config]
-  }
-
-  dns_config {
-    namespace_id = aws_service_discovery_private_dns_namespace.namespace.id
-    dns_records {
-      ttl  = 10
-      type = "A"
-    }
-    routing_policy = "MULTIVALUE"
-  }
-}
-
 resource "aws_security_group" "alb" {
   name        = local.alb_name
   description = "ALB security group"
   vpc_id      = module.vpc.vpc_id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 }
 
 resource "aws_security_group" "ecs_tasks" {
   name        = local.ecs_tasks_name
   description = "ECS tasks security group"
   vpc_id      = module.vpc.vpc_id
+}
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+resource "aws_security_group_rule" "alb_ingress_http" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_security_group_rule" "alb_ingress_https" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_security_group_rule" "alb_egress" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.alb.id
+}
+
+resource "aws_security_group_rule" "ecs_tasks_egress" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.ecs_tasks.id
 }
 
 resource "aws_security_group_rule" "ecs_tasks_ingress_from_alb_http" {
@@ -431,12 +421,12 @@ resource "aws_lb_listener_rule" "service_paths" {
 
 resource "aws_cloudwatch_log_group" "services" {
   for_each = local.services
-  name     = "/ecs/${var.cluster_name}/${each.key}"
+  name     = "/ecs/${local.name_prefix}/${each.key}"
   retention_in_days = 14
 }
 
 resource "aws_cloudwatch_log_group" "frontend" {
-  name              = "/ecs/${var.cluster_name}/frontend"
+  name              = "/ecs/${local.name_prefix}/frontend"
   retention_in_days = 14
 }
 
@@ -551,7 +541,7 @@ resource "aws_iam_role_policy_attachment" "task_role_ecs_exec" {
 
 resource "aws_ecs_task_definition" "services" {
   for_each             = local.services
-  family               = "${var.cluster_name}-${each.key}"
+  family               = "${local.name_prefix}-${each.key}"
   network_mode         = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                  = tostring(var.service_cpu)
@@ -562,7 +552,7 @@ resource "aws_ecs_task_definition" "services" {
   container_definitions = jsonencode([
     {
       name      = each.key
-      image     = "${local.image_prefix}/annual-sports-${each.key}:${var.image_tag}"
+      image     = "${local.image_prefix}/${local.name_prefix}-${each.key}:${var.image_tag}"
       essential = true
       portMappings = [
         {
@@ -596,7 +586,7 @@ resource "aws_ecs_task_definition" "services" {
 }
 
 resource "aws_ecs_task_definition" "frontend" {
-  family               = "${var.cluster_name}-frontend"
+  family               = "${local.name_prefix}-frontend"
   network_mode         = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                  = tostring(var.frontend_cpu)
@@ -607,7 +597,7 @@ resource "aws_ecs_task_definition" "frontend" {
   container_definitions = jsonencode([
     {
       name      = "frontend"
-      image     = "${local.image_prefix}/annual-sports-frontend:${var.image_tag}"
+      image     = "${local.image_prefix}/${local.name_prefix}-frontend:${var.image_tag}"
       essential = true
       portMappings = [
         {
@@ -630,7 +620,7 @@ resource "aws_ecs_task_definition" "frontend" {
 
 resource "aws_ecs_service" "services" {
   for_each        = local.services
-  name            = each.key
+  name            = "${local.name_prefix}-${each.key}"
   cluster         = aws_ecs_cluster.cluster.id
   task_definition = aws_ecs_task_definition.services[each.key].arn
   desired_count   = 1
@@ -659,7 +649,7 @@ resource "aws_ecs_service" "services" {
 }
 
 resource "aws_ecs_service" "frontend" {
-  name            = "annual-sports-frontend"
+  name            = "${local.name_prefix}-frontend"
   cluster         = aws_ecs_cluster.cluster.id
   task_definition = aws_ecs_task_definition.frontend.arn
   desired_count   = 1
@@ -672,10 +662,6 @@ resource "aws_ecs_service" "frontend" {
     subnets          = module.vpc.private_subnets
     security_groups  = [aws_security_group.ecs_tasks.id]
     assign_public_ip = false
-  }
-
-  service_registries {
-    registry_arn = aws_service_discovery_service.frontend.arn
   }
 
   load_balancer {

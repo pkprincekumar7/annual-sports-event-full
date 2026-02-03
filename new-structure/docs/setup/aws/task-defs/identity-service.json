@@ -1,5 +1,5 @@
 {
-  "family": "${CLUSTER_NAME}-identity-service",
+  "family": "${NAME_PREFIX}-identity-service",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
@@ -9,7 +9,7 @@
   "containerDefinitions": [
     {
       "name": "identity-service",
-      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/annual-sports-identity-service:${IMAGE_TAG}",
+      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${NAME_PREFIX}-identity-service:${IMAGE_TAG}",
       "essential": true,
       "portMappings": [
         { "containerPort": 8001, "protocol": "tcp" }
@@ -37,7 +37,7 @@
         { "name": "EMAIL_FROM", "value": "no-reply@your-domain.com" },
         { "name": "EMAIL_FROM_NAME", "value": "Sports Event Management" },
         { "name": "APP_NAME", "value": "Sports Event Management System" },
-        { "name": "DATABASE_NAME", "value": "annual-sports-identity" },
+        { "name": "DATABASE_NAME", "value": "${NAME_PREFIX}-identity" },
         { "name": "REDIS_URL", "value": "redis://${REDIS_ENDPOINT}:6379/0" }
       ],
       "secrets": [
@@ -51,7 +51,7 @@
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/${CLUSTER_NAME}/identity-service",
+          "awslogs-group": "/ecs/${NAME_PREFIX}/identity-service",
           "awslogs-region": "${AWS_REGION}",
           "awslogs-stream-prefix": "ecs"
         }

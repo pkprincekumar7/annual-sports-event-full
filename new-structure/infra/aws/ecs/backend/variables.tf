@@ -46,11 +46,6 @@ variable "image_tag" {
   description = "Docker image tag for all services."
 }
 
-variable "domain" {
-  type        = string
-  description = "Primary domain for the frontend."
-}
-
 variable "api_domain" {
   type        = string
   default     = ""
@@ -60,13 +55,13 @@ variable "api_domain" {
 variable "acm_certificate_arn" {
   type        = string
   default     = ""
-  description = "Optional ACM certificate ARN for HTTPS listener."
+  description = "Optional ACM certificate ARN for the ALB HTTPS listener (API)."
 }
 
 variable "route53_zone_id" {
   type        = string
   default     = ""
-  description = "Optional Route 53 hosted zone ID for creating DNS records."
+  description = "Optional Route 53 hosted zone ID for API DNS record."
 }
 
 variable "redis_node_type" {
@@ -97,18 +92,6 @@ variable "service_memory" {
   type        = number
   default     = 1024
   description = "Memory (MiB) for each service task."
-}
-
-variable "frontend_cpu" {
-  type        = number
-  default     = 512
-  description = "CPU units for frontend task."
-}
-
-variable "frontend_memory" {
-  type        = number
-  default     = 1024
-  description = "Memory (MiB) for frontend task."
 }
 
 variable "mongo_uri_secret_name" {

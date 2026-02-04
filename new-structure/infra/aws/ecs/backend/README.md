@@ -1,8 +1,8 @@
-# AWS ECS Fargate with Terraform (Frontend + Microservices)
+# AWS ECS Fargate with Terraform (Backend)
 
 Terraform for ECS is already scaffolded here:
 
-`new-structure/infra/aws/ecs`
+`new-structure/infra/aws/ecs/backend`
 
 ## Prerequisites
 - Terraform 1.13+
@@ -22,8 +22,7 @@ Recommended bucket/table setup:
 ### 1) Configure Secrets Manager Names
 
 Terraform creates the Secrets Manager resources. You only need to provide the
-secret names in `tfvars`. After `terraform apply`, populate the secret values in
-AWS Secrets Manager.
+secret names in `tfvars`. Populate secret values separately in AWS Secrets Manager.
 
 Required names:
 - `jwt_secret_name`
@@ -37,7 +36,7 @@ Required names:
 ### 2) Initialize Terraform
 
 ```bash
-cd new-structure/infra/aws/ecs
+cd new-structure/infra/aws/ecs/backend
 terraform init -backend-config=hcl/backend-dev.hcl
 cp tfvars/dev.tfvars.example dev.tfvars
 ```
@@ -48,9 +47,9 @@ Update `dev.tfvars`:
 - `name_prefix` (short prefix like `as-dev` for shared AWS resource names)
 - `service_discovery_namespace` (private DNS, example: `as-dev.local`)
 - `public_subnets`, `private_subnets`, `availability_zones`
-- `domain` (and `api_domain` if needed)
-- `route53_zone_id` (optional, to auto-create DNS records)
-- `acm_certificate_arn` (optional, enables HTTPS listener)
+- `api_domain` (optional, API domain)
+- `route53_zone_id` (optional, to auto-create API DNS record)
+- `acm_certificate_arn` (optional, enables HTTPS listener for API/ALB)
 - `image_tag` (must match the tag you push)
 - `database_names` (map; one DB per service)
 - `jwt_secret_name`, `mongo_uri_secret_name`, and identity email secret names
@@ -82,7 +81,7 @@ Terraform manages ECR, so create repos first:
 terraform apply -target=aws_ecr_repository.repos -var-file=dev.tfvars
 ```
 
-### 4) Build and Push Images
+### 4) Build and Push Images (Backend Services)
 
 Set variables:
 
@@ -136,25 +135,43 @@ for service in \
     "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-${service}:${IMAGE_TAG}"
   docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-${service}:${IMAGE_TAG}"
 done
-
-docker build -t ${NAME_PREFIX}-frontend:${IMAGE_TAG} --build-arg VITE_API_URL=/ \
-  ../../../frontend
-
-docker tag ${NAME_PREFIX}-frontend:${IMAGE_TAG} \
-  "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-frontend:${IMAGE_TAG}"
-
-docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-frontend:${IMAGE_TAG}"
 ```
 
-`VITE_API_URL` is a build-time value; changing it requires a rebuild.
+### 5) Create Secrets (Target Apply) and Populate Values
 
-### 5) Apply Full Stack
+Create the Secrets Manager resources with Terraform.
+
+```bash
+terraform apply -target=aws_secretsmanager_secret.jwt_secret \
+  -target=aws_secretsmanager_secret.mongo_uri \
+  -target=aws_secretsmanager_secret.gmail_app_password \
+  -target=aws_secretsmanager_secret.sendgrid_api_key \
+  -target=aws_secretsmanager_secret.resend_api_key \
+  -target=aws_secretsmanager_secret.smtp_password \
+  -var-file=dev.tfvars
+```
+
+Add secret values in AWS Secrets Manager (Console or CLI) before applying the
+full stack.
+
+CLI examples (replace values):
+
+```bash
+aws secretsmanager put-secret-value --secret-id "${NAME_PREFIX}-jwt" --secret-string "replace-with-strong-secret"
+aws secretsmanager put-secret-value --secret-id "${NAME_PREFIX}-mongo-uri" --secret-string "mongodb+srv://user:pass@cluster"
+aws secretsmanager put-secret-value --secret-id "${NAME_PREFIX}-gmail-app-password" --secret-string "your-app-password"
+aws secretsmanager put-secret-value --secret-id "${NAME_PREFIX}-sendgrid-api-key" --secret-string "your-sendgrid-api-key"
+aws secretsmanager put-secret-value --secret-id "${NAME_PREFIX}-resend-api-key" --secret-string "your-resend-api-key"
+aws secretsmanager put-secret-value --secret-id "${NAME_PREFIX}-smtp-password" --secret-string "your-smtp-password"
+```
+
+### 6) Apply Full Stack
 
 ```bash
 terraform apply -var-file=dev.tfvars
 ```
 
-### 6) Verify
+### 7) Verify
 
 Get ALB DNS:
 
@@ -162,18 +179,16 @@ Get ALB DNS:
 terraform output -raw alb_dns_name
 ```
 
-Then test:
+Then test the API:
 
 ```bash
-curl -I http://<alb-dns-name>
 curl -I http://<alb-dns-name>/identities/docs
 ```
 
-If you provided `acm_certificate_arn` and DNS, use HTTPS and your domain:
+If you provided `acm_certificate_arn` and DNS, use HTTPS:
 
 ```bash
-curl -I https://your-domain.com
-curl -I https://your-domain.com/identities/docs
+curl -I https://your-api-domain.com/identities/docs
 ```
 
 Other useful outputs:
@@ -185,7 +200,7 @@ terraform output
 See `outputs.tf` for available values (for example: `redis_endpoint`, `redis_url`,
 `service_discovery_namespace`, `ecr_repository_urls`).
 
-### 7) Connect to a Fargate Task (ECS Exec) + Run Curl
+### 8) Connect to a Fargate Task (ECS Exec) + Run Curl
 
 ECS Exec is already enabled in Terraform. If you just applied, wait for tasks
 to restart (or force a new deployment) before connecting.
@@ -240,7 +255,6 @@ force a new deployment to refresh tasks:
 CLUSTER_NAME=<your-cluster-name>
 NAME_PREFIX=<your-name-prefix>
 for svc in \
-  ${NAME_PREFIX}-frontend \
   ${NAME_PREFIX}-identity-service \
   ${NAME_PREFIX}-enrollment-service \
   ${NAME_PREFIX}-department-service \
@@ -265,7 +279,7 @@ Available environments:
 - `prod` → `hcl/backend-prod.hcl`, `tfvars/prod.tfvars.example`
 
 ```bash
-cd new-structure/infra/aws/ecs
+cd new-structure/infra/aws/ecs/backend
 terraform init -backend-config=hcl/backend-dev.hcl
 cp tfvars/dev.tfvars.example dev.tfvars
 terraform plan -var-file=dev.tfvars
@@ -278,8 +292,7 @@ Repeat with `qa`, `stg`, `perf`, or `prod` by swapping the backend/tfvars files
 ## Notes
 - Configure Secrets Manager secret names in your environment tfvars (for example, `dev.tfvars`).
 - The MongoDB URI secret is shared; each service selects the DB via `DATABASE_NAME`.
-- Set `route53_zone_id` in tfvars to have Terraform create Route 53 records for `domain` and `api_domain`.
+- Set `route53_zone_id` in tfvars to have Terraform create the API Route 53 record (`api_domain`).
 - Redis is provisioned via ElastiCache; the services use that endpoint automatically.
 - Cloud Map service discovery is enabled; set an environment-specific `service_discovery_namespace` in tfvars.
-- `VITE_API_URL` is build-time; rebuild the frontend image when it changes.
 - ECS tasks run in private subnets; only the ALB is public.

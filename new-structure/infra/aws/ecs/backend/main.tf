@@ -25,7 +25,7 @@ locals {
     "reporting-service"            = 7
   }
 
-  ecr_repos = concat(keys(local.services), ["frontend"])
+  ecr_repos = keys(local.services)
   image_prefix = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
   name_prefix = var.name_prefix
   alb_name    = "${local.name_prefix}-alb"
@@ -41,7 +41,7 @@ locals {
     "scoring-service"              = "sco"
     "reporting-service"            = "rep"
   }
-  has_route53_zone = var.route53_zone_id != ""
+  has_route53_zone     = var.route53_zone_id != ""
 
   service_url_env = {
     IDENTITY_URL             = "http://identity-service.${var.service_discovery_namespace}:8001"
@@ -241,15 +241,6 @@ resource "aws_security_group_rule" "ecs_tasks_egress" {
   security_group_id = aws_security_group.ecs_tasks.id
 }
 
-resource "aws_security_group_rule" "ecs_tasks_ingress_from_alb_http" {
-  type                     = "ingress"
-  from_port                = 80
-  to_port                  = 80
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.ecs_tasks.id
-  source_security_group_id = aws_security_group.alb.id
-}
-
 resource "aws_security_group_rule" "ecs_tasks_ingress_from_alb_services" {
   type                     = "ingress"
   from_port                = 8001
@@ -315,19 +306,6 @@ resource "aws_lb" "app" {
   subnets            = module.vpc.public_subnets
 }
 
-resource "aws_route53_record" "frontend_domain" {
-  count   = local.has_route53_zone ? 1 : 0
-  zone_id = var.route53_zone_id
-  name    = var.domain
-  type    = "A"
-
-  alias {
-    name                   = aws_lb.app.dns_name
-    zone_id                = aws_lb.app.zone_id
-    evaluate_target_health = true
-  }
-}
-
 resource "aws_route53_record" "api_domain" {
   count   = local.has_route53_zone && var.api_domain != "" ? 1 : 0
   zone_id = var.route53_zone_id
@@ -338,17 +316,6 @@ resource "aws_route53_record" "api_domain" {
     name                   = aws_lb.app.dns_name
     zone_id                = aws_lb.app.zone_id
     evaluate_target_health = true
-  }
-}
-
-resource "aws_lb_target_group" "frontend" {
-  name        = "${local.name_prefix}-frontend"
-  port        = 80
-  protocol    = "HTTP"
-  target_type = "ip"
-  vpc_id      = module.vpc.vpc_id
-  health_check {
-    path = "/"
   }
 }
 
@@ -370,8 +337,12 @@ resource "aws_lb_listener" "http" {
   protocol          = "HTTP"
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.frontend.arn
+    type = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Not Found"
+      status_code  = "404"
+    }
   }
 }
 
@@ -384,8 +355,12 @@ resource "aws_lb_listener" "https" {
   certificate_arn   = var.acm_certificate_arn
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.frontend.arn
+    type = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Not Found"
+      status_code  = "404"
+    }
   }
 }
 
@@ -422,11 +397,6 @@ resource "aws_lb_listener_rule" "service_paths" {
 resource "aws_cloudwatch_log_group" "services" {
   for_each = local.services
   name     = "/ecs/${local.name_prefix}/${each.key}"
-  retention_in_days = 14
-}
-
-resource "aws_cloudwatch_log_group" "frontend" {
-  name              = "/ecs/${local.name_prefix}/frontend"
   retention_in_days = 14
 }
 
@@ -585,39 +555,6 @@ resource "aws_ecs_task_definition" "services" {
   ])
 }
 
-resource "aws_ecs_task_definition" "frontend" {
-  family               = "${local.name_prefix}-frontend"
-  network_mode         = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  cpu                  = tostring(var.frontend_cpu)
-  memory               = tostring(var.frontend_memory)
-  execution_role_arn   = aws_iam_role.task_execution.arn
-  task_role_arn        = aws_iam_role.task_role.arn
-
-  container_definitions = jsonencode([
-    {
-      name      = "frontend"
-      image     = "${local.image_prefix}/${local.name_prefix}-frontend:${var.image_tag}"
-      essential = true
-      portMappings = [
-        {
-          containerPort = 80
-          hostPort      = 80
-          protocol      = "tcp"
-        }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.frontend.name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "ecs"
-        }
-      }
-    }
-  ])
-}
-
 resource "aws_ecs_service" "services" {
   for_each        = local.services
   name            = "${local.name_prefix}-${each.key}"
@@ -648,27 +585,3 @@ resource "aws_ecs_service" "services" {
   depends_on = [aws_lb_listener.http]
 }
 
-resource "aws_ecs_service" "frontend" {
-  name            = "${local.name_prefix}-frontend"
-  cluster         = aws_ecs_cluster.cluster.id
-  task_definition = aws_ecs_task_definition.frontend.arn
-  desired_count   = 1
-  launch_type     = "FARGATE"
-  enable_execute_command = true
-  platform_version      = "LATEST"
-  force_new_deployment  = true
-
-  network_configuration {
-    subnets          = module.vpc.private_subnets
-    security_groups  = [aws_security_group.ecs_tasks.id]
-    assign_public_ip = false
-  }
-
-  load_balancer {
-    target_group_arn = aws_lb_target_group.frontend.arn
-    container_name   = "frontend"
-    container_port   = 80
-  }
-
-  depends_on = [aws_lb_listener.http]
-}

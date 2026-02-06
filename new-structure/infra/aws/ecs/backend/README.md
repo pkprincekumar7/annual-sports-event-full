@@ -130,7 +130,7 @@ for service in \
   scheduling-service \
   scoring-service \
   reporting-service; do
-  docker build -t "${NAME_PREFIX}-${service}:${IMAGE_TAG}" "../../../$service"
+  docker build -t "${NAME_PREFIX}-${service}:${IMAGE_TAG}" "../../../../$service"
   docker tag "${NAME_PREFIX}-${service}:${IMAGE_TAG}" \
     "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-${service}:${IMAGE_TAG}"
   docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-${service}:${IMAGE_TAG}"
@@ -163,6 +163,41 @@ aws secretsmanager put-secret-value --secret-id "${NAME_PREFIX}-gmail-app-passwo
 aws secretsmanager put-secret-value --secret-id "${NAME_PREFIX}-sendgrid-api-key" --secret-string "your-sendgrid-api-key"
 aws secretsmanager put-secret-value --secret-id "${NAME_PREFIX}-resend-api-key" --secret-string "your-resend-api-key"
 aws secretsmanager put-secret-value --secret-id "${NAME_PREFIX}-smtp-password" --secret-string "your-smtp-password"
+```
+
+If a secret name was previously deleted and is now scheduled for deletion,
+restore it before running the Terraform target apply:
+
+```bash
+aws secretsmanager restore-secret --secret-id "${NAME_PREFIX}-jwt"
+aws secretsmanager restore-secret --secret-id "${NAME_PREFIX}-mongo-uri"
+aws secretsmanager restore-secret --secret-id "${NAME_PREFIX}-gmail-app-password"
+aws secretsmanager restore-secret --secret-id "${NAME_PREFIX}-sendgrid-api-key"
+aws secretsmanager restore-secret --secret-id "${NAME_PREFIX}-resend-api-key"
+aws secretsmanager restore-secret --secret-id "${NAME_PREFIX}-smtp-password"
+```
+
+If the secrets already exist and you want Terraform to manage them, import them
+into state before the full apply:
+
+```bash
+SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "${NAME_PREFIX}-jwt" --query 'ARN' --output text)
+terraform import -var-file=dev.tfvars aws_secretsmanager_secret.jwt_secret "$SECRET_ARN"
+
+SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "${NAME_PREFIX}-mongo-uri" --query 'ARN' --output text)
+terraform import -var-file=dev.tfvars aws_secretsmanager_secret.mongo_uri "$SECRET_ARN"
+
+SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "${NAME_PREFIX}-gmail-app-password" --query 'ARN' --output text)
+terraform import -var-file=dev.tfvars aws_secretsmanager_secret.gmail_app_password "$SECRET_ARN"
+
+SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "${NAME_PREFIX}-sendgrid-api-key" --query 'ARN' --output text)
+terraform import -var-file=dev.tfvars aws_secretsmanager_secret.sendgrid_api_key "$SECRET_ARN"
+
+SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "${NAME_PREFIX}-resend-api-key" --query 'ARN' --output text)
+terraform import -var-file=dev.tfvars aws_secretsmanager_secret.resend_api_key "$SECRET_ARN"
+
+SECRET_ARN=$(aws secretsmanager describe-secret --secret-id "${NAME_PREFIX}-smtp-password" --query 'ARN' --output text)
+terraform import -var-file=dev.tfvars aws_secretsmanager_secret.smtp_password "$SECRET_ARN"
 ```
 
 ### 6) Apply Full Stack

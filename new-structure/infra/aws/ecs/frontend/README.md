@@ -42,13 +42,13 @@ terraform apply -var-file=dev.tfvars
 ### 3) Deploy Frontend Build
 
 ```bash
-cd ../../../frontend
+cd ../../../../frontend
 VITE_API_URL=https://your-api-domain.com npm install
 VITE_API_URL=https://your-api-domain.com npm run build
 cd -
 
 FRONTEND_BUCKET=$(terraform output -raw frontend_bucket_name)
-aws s3 sync ../../../frontend/dist "s3://$FRONTEND_BUCKET"
+aws s3 sync ../../../../frontend/dist "s3://$FRONTEND_BUCKET"
 ```
 
 Invalidate CloudFront cache after upload:
@@ -56,4 +56,11 @@ Invalidate CloudFront cache after upload:
 ```bash
 CF_DISTRIBUTION_ID=$(terraform output -raw frontend_cloudfront_distribution_id)
 aws cloudfront create-invalidation --distribution-id "$CF_DISTRIBUTION_ID" --paths "/*"
+```
+
+Check invalidation status:
+
+```bash
+aws cloudfront list-invalidations --distribution-id "$CF_DISTRIBUTION_ID"
+aws cloudfront get-invalidation --distribution-id "$CF_DISTRIBUTION_ID" --id "<invalidation-id>"
 ```

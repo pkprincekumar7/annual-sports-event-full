@@ -1,5 +1,5 @@
 bucket         = "your-terraform-state-bucket"
-key            = "annual-sports/qa/frontend/terraform.tfstate"
+key            = "terraform-state-files/annual-sports/qa/ecs/frontend/terraform.tfstate"
 region         = "us-east-1"
 dynamodb_table = "terraform-locks"
 encrypt        = true

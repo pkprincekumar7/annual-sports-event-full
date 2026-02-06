@@ -1,4 +1,4 @@
-# AWS ECS (Fargate) Deployment (Frontend + Microservices)
+# AWS ECS (Fargate) Deployment (Backend + Frontend)
 
 This guide deploys the app to AWS ECS Fargate with best-practice components:
 - ECR for images
@@ -14,9 +14,10 @@ It assumes you already have a domain and can create DNS records.
 
 ## Terraform (Optional)
 
-If you want Terraform to provision everything end-to-end, follow:
+If you want Terraform to provision everything end-to-end, use the separate stacks:
 
-`new-structure/infra/aws/ecs/README.md`
+- Backend: `new-structure/infra/aws/ecs/backend/README.md`
+- Frontend: `new-structure/infra/aws/ecs/frontend/README.md`
 
 ## Manual Setup (Console or CLI)
 
@@ -77,7 +78,6 @@ aws ecr create-repository --repository-name ${NAME_PREFIX}-event-configuration-s
 aws ecr create-repository --repository-name ${NAME_PREFIX}-scheduling-service
 aws ecr create-repository --repository-name ${NAME_PREFIX}-scoring-service
 aws ecr create-repository --repository-name ${NAME_PREFIX}-reporting-service
-aws ecr create-repository --repository-name ${NAME_PREFIX}-frontend
 ```
 
 ### 3) Build and Push Images
@@ -91,7 +91,9 @@ IMAGE_TAG=<your-image-tag>
 CLUSTER_NAME=annual-sports-dev
 NAME_PREFIX=as-dev
 SERVICE_NAMESPACE=${NAME_PREFIX}.local
-CERT_ARN=arn:aws:acm:us-east-1:123456789012:certificate/replace-with-your-cert-id
+# ALB cert must be in the same region as ECS/ALB
+CERT_ARN=arn:aws:acm:${AWS_REGION}:123456789012:certificate/replace-with-your-cert-id
+CLOUDFRONT_CERT_ARN=arn:aws:acm:us-east-1:123456789012:certificate/replace-with-your-cloudfront-cert-id
 ```
 
 Login to ECR:
@@ -119,17 +121,11 @@ for service in \
     "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-${service}:${IMAGE_TAG}"
   docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-${service}:${IMAGE_TAG}"
 done
-
-docker build -t ${NAME_PREFIX}-frontend:${IMAGE_TAG} --build-arg VITE_API_URL=/ \
-  new-structure/frontend
-
-docker tag ${NAME_PREFIX}-frontend:${IMAGE_TAG} \
-  "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-frontend:${IMAGE_TAG}"
-
-docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${NAME_PREFIX}-frontend:${IMAGE_TAG}"
 ```
 
 `VITE_API_URL` is a build-time value; changing it requires a rebuild.
+
+Frontend is hosted on S3 + CloudFront (see Step 14).
 
 ### 4) Create a VPC
 
@@ -294,7 +290,6 @@ Create log groups used by task definitions:
 
 ```bash
 for name in \
-  frontend \
   identity-service \
   enrollment-service \
   department-service \
@@ -310,15 +305,14 @@ done
 
 ### 9) Create Task Definitions
 
-Create a task definition per microservice plus one for the frontend (Fargate):
+Create a task definition per microservice (Fargate):
 - CPU/memory (e.g., 512/1024)
 - Container images from ECR
 - Port mappings:
   - services: `8001`–`8008`
-  - frontend: `80`
 - Environment variables per service:
   - Non-secret values (app settings + service URLs) should match `x-common-env` in `new-structure/docker-compose.yml`.
-  - `DATABASE_NAME` differs per service (same values as in `docker-compose.yml`).
+- `DATABASE_NAME` differs per service (use your `${NAME_PREFIX}-...` names).
   - Secrets should come from AWS Secrets Manager:
     - `JWT_SECRET` from `jwt_secret_arn`
     - `MONGODB_URI` from `mongo_uri_secret_arn` (shared)
@@ -354,6 +348,11 @@ ECS_SG_ID=$(aws ec2 create-security-group \
   --description "ECS tasks security group" \
   --vpc-id "$VPC_ID" \
   --query 'GroupId' --output text)
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$ECS_SG_ID" \
+  --protocol tcp --port 8001-8008 \
+  --source-group "$ECS_SG_ID"
 
 REDIS_SG_ID=$(aws ec2 create-security-group \
   --group-name "${NAME_PREFIX}-redis" \
@@ -400,7 +399,7 @@ SENDGRID_API_KEY_ARN=$(aws secretsmanager describe-secret --secret-id ${NAME_PRE
 RESEND_API_KEY_ARN=$(aws secretsmanager describe-secret --secret-id ${NAME_PREFIX}-resend-api-key --query 'ARN' --output text)
 SMTP_PASSWORD_ARN=$(aws secretsmanager describe-secret --secret-id ${NAME_PREFIX}-smtp-password --query 'ARN' --output text)
 
-# Redis endpoint (created in step 11)
+# Redis endpoint (created in step 10)
 REDIS_ENDPOINT=$(aws elasticache describe-cache-clusters \
   --cache-cluster-id "${NAME_PREFIX}-redis" \
   --show-cache-node-info \
@@ -427,21 +426,19 @@ aws ecs register-task-definition --cli-input-json file://task-defs/rendered/even
 aws ecs register-task-definition --cli-input-json file://task-defs/rendered/scheduling-service.json
 aws ecs register-task-definition --cli-input-json file://task-defs/rendered/scoring-service.json
 aws ecs register-task-definition --cli-input-json file://task-defs/rendered/reporting-service.json
-aws ecs register-task-definition --cli-input-json file://task-defs/rendered/frontend.json
 ```
 
 ### 12) Create an Application Load Balancer
 
-Create an ALB with two target groups:
-- `${NAME_PREFIX}-frontend` target group (port 80)
-- one target group per service (ports 8001–8008)
+Create an ALB with one target group per service (ports 8001–8008).
 
 Create listeners:
-- HTTPS 443 (use existing `CERT_ARN` from step 3) → forward `/` to frontend target group
+- HTTPS 443 (use existing `CERT_ARN` from step 3) → default fixed 404
 - HTTPS 443 rules for `/identities`, `/enrollments`, `/departments`, `/sports-participations`,
   `/event-configurations`, `/schedulings`, `/scorings`, `/reportings`
 
-If you prefer HTTP-only, keep the HTTP listener shown below and skip the HTTPS variant.
+If you prefer HTTP-only, create an HTTP listener with a fixed 404 default action
+and skip the HTTPS variant.
 
 CLI example:
 
@@ -461,10 +458,6 @@ aws ec2 authorize-security-group-ingress \
 
 aws ec2 authorize-security-group-ingress \
   --group-id "$ECS_SG_ID" \
-  --protocol tcp --port 80 \
-  --source-group "$ALB_SG_ID"
-aws ec2 authorize-security-group-ingress \
-  --group-id "$ECS_SG_ID" \
   --protocol tcp --port 8001-8008 \
   --source-group "$ALB_SG_ID"
 
@@ -473,13 +466,6 @@ ALB_ARN=$(aws elbv2 create-load-balancer \
   --subnets "$PUB_SUBNET_A" "$PUB_SUBNET_B" \
   --security-groups "$ALB_SG_ID" \
   --query 'LoadBalancers[0].LoadBalancerArn' --output text)
-
-FRONTEND_TG_ARN=$(aws elbv2 create-target-group \
-  --name "${NAME_PREFIX}-frontend" \
-  --protocol HTTP --port 80 \
-  --vpc-id "$VPC_ID" \
-  --target-type ip \
-  --query 'TargetGroups[0].TargetGroupArn' --output text)
 
 IDENTITY_TG_ARN=$(aws elbv2 create-target-group \
   --name "${NAME_PREFIX}-id" \
@@ -530,17 +516,11 @@ REPORTING_TG_ARN=$(aws elbv2 create-target-group \
   --target-type ip \
   --query 'TargetGroups[0].TargetGroupArn' --output text)
 
-# LISTENER_ARN=$(aws elbv2 create-listener \
-#   --load-balancer-arn "$ALB_ARN" \
-#   --protocol HTTP --port 80 \
-#   --default-actions Type=forward,TargetGroupArn="$FRONTEND_TG_ARN" \
-#   --query 'Listeners[0].ListenerArn' --output text)
-
 LISTENER_ARN=$(aws elbv2 create-listener \
   --load-balancer-arn "$ALB_ARN" \
   --protocol HTTPS --port 443 \
   --certificate-arn "$CERT_ARN" \
-  --default-actions Type=forward,TargetGroupArn="$FRONTEND_TG_ARN" \
+  --default-actions Type=fixed-response,FixedResponseConfig={StatusCode=404,ContentType=text/plain,MessageBody="Not Found"} \
   --query 'Listeners[0].ListenerArn' --output text)
 
 aws elbv2 create-rule \
@@ -594,24 +574,13 @@ aws elbv2 create-rule \
 
 ### 13) Create ECS Services
 
-Create services in the cluster (Fargate, private subnets):
-- `${NAME_PREFIX}-frontend` → attach to frontend target group
-- one service per microservice → attach to its target group
+Create services in the cluster (Fargate, private subnets), one per microservice → attach to its target group.
 
 Set desired count to 1+ and enable autoscaling as needed.
 
 CLI example:
 
 ```bash
-aws ecs create-service \
-  --cluster "$CLUSTER_NAME" \
-  --service-name "${NAME_PREFIX}-frontend" \
-  --task-definition "${NAME_PREFIX}-frontend" \
-  --desired-count 1 \
-  --launch-type FARGATE \
-  --network-configuration "awsvpcConfiguration={subnets=[$PRIV_SUBNET_A,$PRIV_SUBNET_B],securityGroups=[$ECS_SG_ID],assignPublicIp=DISABLED}" \
-  --load-balancers "targetGroupArn=$FRONTEND_TG_ARN,containerName=frontend,containerPort=80"
-
 aws ecs create-service \
   --cluster "$CLUSTER_NAME" \
   --service-name "${NAME_PREFIX}-identity-service" \
@@ -693,13 +662,119 @@ aws ecs create-service \
   --service-registries "registryArn=$REPORTING_SD_ARN"
 ```
 
-### 14) DNS Setup
+### 14) Host Frontend on S3 + CloudFront
 
-Create DNS records pointing to the ALB:
-- `your-domain.com` → ALB
-- `api.your-domain.com` → ALB (optional)
+If you prefer Terraform for frontend hosting, use:
+`new-structure/infra/aws/ecs/frontend/README.md`. The steps below are manual.
 
-If using a single domain, only the root domain is required.
+Build and upload the static frontend:
+
+```bash
+cd new-structure/frontend
+VITE_API_URL=https://your-api-domain.com npm install
+VITE_API_URL=https://your-api-domain.com npm run build
+cd -
+
+FRONTEND_BUCKET=<your-frontend-bucket>
+# If the bucket already exists, skip creation.
+if ! aws s3api head-bucket --bucket "$FRONTEND_BUCKET" 2>/dev/null; then
+  if [ "$AWS_REGION" = "us-east-1" ]; then
+    aws s3api create-bucket --bucket "$FRONTEND_BUCKET" --region "$AWS_REGION"
+  else
+    aws s3api create-bucket --bucket "$FRONTEND_BUCKET" --region "$AWS_REGION" \
+      --create-bucket-configuration LocationConstraint="$AWS_REGION"
+  fi
+  aws s3api put-public-access-block --bucket "$FRONTEND_BUCKET" \
+    --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+fi
+
+aws s3 sync new-structure/frontend/dist "s3://$FRONTEND_BUCKET"
+```
+
+Create an Origin Access Control (OAC) and CloudFront distribution:
+
+```bash
+## CloudFront requires the certificate in us-east-1
+OAC_ID=$(aws cloudfront create-origin-access-control --origin-access-control-config '{
+  "Name": "'"${NAME_PREFIX}"'-frontend-oac",
+  "Description": "OAC for frontend bucket",
+  "SigningProtocol": "sigv4",
+  "SigningBehavior": "always",
+  "OriginAccessControlOriginType": "s3"
+}' --query 'OriginAccessControl.Id' --output text)
+
+cat > cloudfront-frontend.json <<EOF
+{
+  "CallerReference": "${NAME_PREFIX}-frontend-$(date +%s)",
+  "Aliases": { "Quantity": 1, "Items": ["your-domain.com"] },
+  "DefaultRootObject": "index.html",
+  "Origins": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "Id": "s3-frontend",
+        "DomainName": "${FRONTEND_BUCKET}.s3.${AWS_REGION}.amazonaws.com",
+        "OriginAccessControlId": "${OAC_ID}",
+        "S3OriginConfig": { "OriginAccessIdentity": "" }
+      }
+    ]
+  },
+  "DefaultCacheBehavior": {
+    "TargetOriginId": "s3-frontend",
+    "ViewerProtocolPolicy": "redirect-to-https",
+    "AllowedMethods": { "Quantity": 3, "Items": ["GET","HEAD","OPTIONS"], "CachedMethods": { "Quantity": 3, "Items": ["GET","HEAD","OPTIONS"] } },
+    "Compress": true,
+    "ForwardedValues": { "QueryString": false, "Cookies": { "Forward": "none" } }
+  },
+  "CustomErrorResponses": {
+    "Quantity": 2,
+    "Items": [
+      { "ErrorCode": 403, "ResponseCode": 200, "ResponsePagePath": "/index.html", "ErrorCachingMinTTL": 0 },
+      { "ErrorCode": 404, "ResponseCode": 200, "ResponsePagePath": "/index.html", "ErrorCachingMinTTL": 0 }
+    ]
+  },
+  "ViewerCertificate": {
+    "ACMCertificateArn": "${CLOUDFRONT_CERT_ARN}",
+    "SSLSupportMethod": "sni-only"
+  },
+  "Restrictions": { "GeoRestriction": { "RestrictionType": "none", "Quantity": 0 } },
+  "Enabled": true
+}
+EOF
+
+CF_ID=$(aws cloudfront create-distribution --distribution-config file://cloudfront-frontend.json --query 'Distribution.Id' --output text)
+CF_DOMAIN=$(aws cloudfront get-distribution --id "$CF_ID" --query 'Distribution.DomainName' --output text)
+```
+
+Attach an S3 bucket policy for CloudFront:
+
+```bash
+cat > s3-frontend-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Service": "cloudfront.amazonaws.com" },
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::${FRONTEND_BUCKET}/*",
+      "Condition": { "StringEquals": { "AWS:SourceArn": "arn:aws:cloudfront::${AWS_ACCOUNT_ID}:distribution/${CF_ID}" } }
+    }
+  ]
+}
+EOF
+
+aws s3api put-bucket-policy --bucket "$FRONTEND_BUCKET" --policy file://s3-frontend-policy.json
+```
+
+### 15) DNS Setup
+
+Create DNS records:
+- `your-domain.com` → CloudFront (frontend)
+- `api.your-domain.com` → ALB (optional API domain)
+
+If you do not want a custom frontend domain, skip the `your-domain.com` record
+and use the CloudFront domain directly.
 
 CLI example (Route 53 alias record):
 
@@ -708,6 +783,8 @@ ROUTE53_ZONE_ID=<your-hosted-zone-id>
 
 ALB_DNS_NAME=$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --query 'LoadBalancers[0].DNSName' --output text)
 ALB_ZONE_ID=$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --query 'LoadBalancers[0].CanonicalHostedZoneId' --output text)
+CF_DOMAIN=$(aws cloudfront get-distribution --id "$CF_ID" --query 'Distribution.DomainName' --output text)
+CF_ZONE_ID="Z2FDTNDATAQYW2"
 
 aws route53 change-resource-record-sets --hosted-zone-id "$ROUTE53_ZONE_ID" --change-batch '{
   "Changes": [
@@ -715,6 +792,18 @@ aws route53 change-resource-record-sets --hosted-zone-id "$ROUTE53_ZONE_ID" --ch
       "Action": "UPSERT",
       "ResourceRecordSet": {
         "Name": "your-domain.com",
+        "Type": "A",
+        "AliasTarget": {
+          "HostedZoneId": "'"$CF_ZONE_ID"'",
+          "DNSName": "'"$CF_DOMAIN"'",
+          "EvaluateTargetHealth": false
+        }
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "api.your-domain.com",
         "Type": "A",
         "AliasTarget": {
           "HostedZoneId": "'"$ALB_ZONE_ID"'",
@@ -727,19 +816,24 @@ aws route53 change-resource-record-sets --hosted-zone-id "$ROUTE53_ZONE_ID" --ch
 }'
 ```
 
-### 15) Verify
+### 16) Verify
 
 ```bash
 curl -I https://your-domain.com
-curl -I https://your-domain.com/identities/docs
+curl -I https://your-api-domain.com/identities/docs
 ```
 
-If you are using HTTP (no TLS), test with the ALB DNS name:
+If you did not configure a custom frontend domain:
+
+```bash
+curl -I "https://$CF_DOMAIN"
+```
+
+If you are using HTTP (no TLS), test the API with the ALB DNS name:
 
 ```bash
 ALB_DNS_NAME=$(aws elbv2 describe-load-balancers --names "${NAME_PREFIX}-alb" --query 'LoadBalancers[0].DNSName' --output text)
 
-curl -I "http://$ALB_DNS_NAME"
 curl -I "http://$ALB_DNS_NAME/identities/docs"
 ```
 
@@ -754,7 +848,6 @@ Run the following steps in order to avoid dependency errors.
 ### 1) Delete ECS Services
 
 ```bash
-aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-frontend" --force
 aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-identity-service" --force
 aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-enrollment-service" --force
 aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-department-service" --force
@@ -765,7 +858,6 @@ aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-scori
 aws ecs delete-service --cluster "$CLUSTER_NAME" --service "${NAME_PREFIX}-reporting-service" --force
 
 aws ecs wait services-inactive --cluster "$CLUSTER_NAME" --services \
-  "${NAME_PREFIX}-frontend" \
   "${NAME_PREFIX}-identity-service" \
   "${NAME_PREFIX}-enrollment-service" \
   "${NAME_PREFIX}-department-service" \
@@ -780,7 +872,6 @@ aws ecs wait services-inactive --cluster "$CLUSTER_NAME" --services \
 
 ```bash
 for family in \
-  "${NAME_PREFIX}-frontend" \
   "${NAME_PREFIX}-identity-service" \
   "${NAME_PREFIX}-enrollment-service" \
   "${NAME_PREFIX}-department-service" \
@@ -797,13 +888,15 @@ done
 
 ### 3) Delete Route 53 Records (Optional)
 
-If you created Route 53 records, delete them before removing the ALB:
+If you created Route 53 records, delete them before removing CloudFront or the ALB:
 
 ```bash
 ROUTE53_ZONE_ID=<your-hosted-zone-id>
 ALB_ARN=$(aws elbv2 describe-load-balancers --names "${NAME_PREFIX}-alb" --query 'LoadBalancers[0].LoadBalancerArn' --output text)
 ALB_DNS_NAME=$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --query 'LoadBalancers[0].DNSName' --output text)
 ALB_ZONE_ID=$(aws elbv2 describe-load-balancers --load-balancer-arns "$ALB_ARN" --query 'LoadBalancers[0].CanonicalHostedZoneId' --output text)
+CF_DOMAIN=$(aws cloudfront get-distribution --id "$CF_ID" --query 'Distribution.DomainName' --output text)
+CF_ZONE_ID="Z2FDTNDATAQYW2"
 
 aws route53 change-resource-record-sets --hosted-zone-id "$ROUTE53_ZONE_ID" --change-batch '{
   "Changes": [
@@ -811,6 +904,18 @@ aws route53 change-resource-record-sets --hosted-zone-id "$ROUTE53_ZONE_ID" --ch
       "Action": "DELETE",
       "ResourceRecordSet": {
         "Name": "your-domain.com",
+        "Type": "A",
+        "AliasTarget": {
+          "HostedZoneId": "'"$CF_ZONE_ID"'",
+          "DNSName": "'"$CF_DOMAIN"'",
+          "EvaluateTargetHealth": false
+        }
+      }
+    },
+    {
+      "Action": "DELETE",
+      "ResourceRecordSet": {
+        "Name": "api.your-domain.com",
         "Type": "A",
         "AliasTarget": {
           "HostedZoneId": "'"$ALB_ZONE_ID"'",
@@ -823,7 +928,38 @@ aws route53 change-resource-record-sets --hosted-zone-id "$ROUTE53_ZONE_ID" --ch
 }'
 ```
 
-### 4) Delete ALB Listener Rules, Listener, Target Groups, and ALB
+### 4) Delete CloudFront Distribution and S3 Bucket
+
+```bash
+# Disable and delete CloudFront
+CF_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items && contains(Aliases.Items, 'your-domain.com')].Id | [0]" --output text)
+if [ -n "$CF_ID" ] && [ "$CF_ID" != "None" ]; then
+  ETAG=$(aws cloudfront get-distribution-config --id "$CF_ID" --query 'ETag' --output text)
+  aws cloudfront get-distribution-config --id "$CF_ID" --query 'DistributionConfig' --output json > cf-config.json
+
+  python - <<'PY'
+import json
+with open("cf-config.json") as f:
+  data = json.load(f)
+data["Enabled"] = False
+with open("cf-config.json", "w") as f:
+  json.dump(data, f)
+PY
+
+  aws cloudfront update-distribution --id "$CF_ID" --if-match "$ETAG" --distribution-config file://cf-config.json
+  aws cloudfront wait distribution-deployed --id "$CF_ID"
+
+  ETAG=$(aws cloudfront get-distribution-config --id "$CF_ID" --query 'ETag' --output text)
+  aws cloudfront delete-distribution --id "$CF_ID" --if-match "$ETAG"
+fi
+
+# Delete S3 bucket
+FRONTEND_BUCKET=${NAME_PREFIX}-${AWS_ACCOUNT_ID}-frontend
+aws s3 rm "s3://$FRONTEND_BUCKET" --recursive
+aws s3api delete-bucket --bucket "$FRONTEND_BUCKET"
+```
+
+### 5) Delete ALB Listener Rules, Listener, Target Groups, and ALB
 
 ```bash
 ALB_ARN=$(aws elbv2 describe-load-balancers --names "${NAME_PREFIX}-alb" --query 'LoadBalancers[0].LoadBalancerArn' --output text)
@@ -836,7 +972,6 @@ done
 aws elbv2 delete-listener --listener-arn "$LISTENER_ARN"
 
 for tg_arn in $(aws elbv2 describe-target-groups --names \
-  "${NAME_PREFIX}-frontend" \
   "${NAME_PREFIX}-id" \
   "${NAME_PREFIX}-enr" \
   "${NAME_PREFIX}-dep" \
@@ -854,7 +989,7 @@ aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN"
 aws elbv2 wait load-balancers-deleted --load-balancer-arns "$ALB_ARN"
 ```
 
-### 5) Delete Cloud Map Services and Namespace
+### 6) Delete Cloud Map Services and Namespace
 
 ```bash
 NAMESPACE_ID=$(aws servicediscovery list-namespaces --query "Namespaces[?Name=='${SERVICE_NAMESPACE}'].Id | [0]" --output text)
@@ -866,7 +1001,7 @@ done
 aws servicediscovery delete-namespace --id "$NAMESPACE_ID"
 ```
 
-### 6) Delete ElastiCache Redis
+### 7) Delete ElastiCache Redis
 
 ```bash
 aws elasticache delete-cache-cluster --cache-cluster-id "${NAME_PREFIX}-redis"
@@ -874,17 +1009,16 @@ aws elasticache wait cache-cluster-deleted --cache-cluster-id "${NAME_PREFIX}-re
 aws elasticache delete-cache-subnet-group --cache-subnet-group-name "${NAME_PREFIX}-redis"
 ```
 
-### 7) Delete ECS Cluster
+### 8) Delete ECS Cluster
 
 ```bash
 aws ecs delete-cluster --cluster "$CLUSTER_NAME"
 ```
 
-### 8) Delete CloudWatch Log Groups
+### 9) Delete CloudWatch Log Groups
 
 ```bash
 for name in \
-  frontend \
   identity-service \
   enrollment-service \
   department-service \
@@ -897,7 +1031,7 @@ for name in \
 done
 ```
 
-### 9) Delete Security Groups
+### 10) Delete Security Groups
 
 ```bash
 for sg_id in $(aws ec2 describe-security-groups --filters Name=group-name,Values="${NAME_PREFIX}-alb","${NAME_PREFIX}-ecs-tasks","${NAME_PREFIX}-redis" --query 'SecurityGroups[].GroupId' --output text); do
@@ -905,7 +1039,7 @@ for sg_id in $(aws ec2 describe-security-groups --filters Name=group-name,Values
 done
 ```
 
-### 10) Delete VPC Resources
+### 11) Delete VPC Resources
 
 ```bash
 VPC_ID=${VPC_ID:-$(aws ec2 describe-vpcs --filters Name=tag:Name,Values="${NAME_PREFIX}-vpc" --query 'Vpcs[0].VpcId' --output text)}
@@ -931,7 +1065,7 @@ done
 aws ec2 delete-vpc --vpc-id "$VPC_ID"
 ```
 
-### 11) Delete ECR Repositories
+### 12) Delete ECR Repositories
 
 ```bash
 aws ecr delete-repository --repository-name ${NAME_PREFIX}-identity-service --force
@@ -942,10 +1076,9 @@ aws ecr delete-repository --repository-name ${NAME_PREFIX}-event-configuration-s
 aws ecr delete-repository --repository-name ${NAME_PREFIX}-scheduling-service --force
 aws ecr delete-repository --repository-name ${NAME_PREFIX}-scoring-service --force
 aws ecr delete-repository --repository-name ${NAME_PREFIX}-reporting-service --force
-aws ecr delete-repository --repository-name ${NAME_PREFIX}-frontend --force
 ```
 
-### 12) Delete Secrets (Optional)
+### 13) Delete Secrets (Optional)
 
 ```bash
 aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-jwt --force-delete-without-recovery
@@ -956,7 +1089,7 @@ aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-resend-api-key --for
 aws secretsmanager delete-secret --secret-id ${NAME_PREFIX}-smtp-password --force-delete-without-recovery
 ```
 
-### 13) Delete IAM Roles (Optional)
+### 14) Delete IAM Roles (Optional)
 
 ```bash
 aws iam detach-role-policy \
